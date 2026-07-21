@@ -20,8 +20,8 @@ later):
   governments → end game → save → stats) with **no runtime errors**.
 
 ## Repository / hosting
-- GitHub repo: **(fill in URL after first push)** — public.
-- Live site: **(GitHub Pages URL, filled in after Pages enable)**.
+- GitHub repo: **https://github.com/TimothyHadfield/secret-hitler-companion** — public.
+- Live site: **https://timothyhadfield.github.io/secret-hitler-companion/** (may take 1–2 min to go live on first deploy).
 - Deploy model: push to `main` → GitHub Pages serves the root. No build step (plain static).
 
 ## File map

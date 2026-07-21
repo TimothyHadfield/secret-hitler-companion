@@ -4,7 +4,8 @@ A web companion & analyzer for the board game **Secret Hitler**. Use it alongsid
 table game for **randomization**, live **probability** analysis, and **statistics**.
 Online play is planned for a later phase.
 
-🔗 **Live site:** _(GitHub Pages URL — added after first deploy)_
+🔗 **Live site:** https://timothyhadfield.github.io/secret-hitler-companion/
+📦 **Repo:** https://github.com/TimothyHadfield/secret-hitler-companion
 
 ## Features
 - **Randomization** — shuffles seating and picks the first President.
