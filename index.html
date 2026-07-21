@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Secret Hitler — Companion</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <h1>Secret&nbsp;Hitler <span class="muted" style="font-size:14px">companion</span></h1>
+      <div class="spacer"></div>
+      <button id="btnStats" class="ghost">Statistics</button>
+      <button id="btnNew" class="ghost">New Game</button>
+    </div>
+
+    <!-- ===================== SETUP SCREEN ===================== -->
+    <section id="setupScreen" class="panel">
+      <h2>Players</h2>
+      <p class="muted">Add 5–10 players. Seating and the first President are randomized when you start.</p>
+      <div class="row">
+        <div>
+          <label for="nameInput">Player name</label>
+          <input id="nameInput" placeholder="e.g. Tim" autocomplete="off" />
+        </div>
+        <button id="btnAddPlayer">Add player</button>
+      </div>
+      <ul id="playerList"></ul>
+      <div class="row">
+        <button id="btnRandomize" class="primary">Randomize seating &amp; start</button>
+        <span id="setupHint" class="muted"></span>
+      </div>
+    </section>
+
+    <!-- ===================== GAME SCREEN ===================== -->
+    <section id="gameScreen" class="hidden">
+      <!-- round / modifier bar -->
+      <div class="roundbar panel">
+        <div><span class="pill">Round <b id="roundNum">1</b></span></div>
+        <div class="stepper">
+          <label style="margin:0">Round liberal modifier</label>
+          <button id="modMinus">−</button>
+          <b id="roundMod" style="min-width:20px;display:inline-block;text-align:center">0</b>
+          <button id="modPlus">+</button>
+        </div>
+        <div class="bottomcards" id="bottomCardsWrap">
+          <span class="muted">Bottom cards:</span>
+          <span id="bottomCards" class="muted">—</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="muted" id="deckReadout"></div>
+      </div>
+
+      <div class="row" style="align-items:stretch; gap:16px;">
+        <!-- table -->
+        <div class="panel" style="flex:2; min-width:340px;">
+          <div class="table-area" id="tableArea">
+            <div class="felt"></div>
+            <div class="center-boards">
+              <div class="board fac">
+                <div class="board-label">Fascist track</div>
+                <div class="track" id="facTrack"></div>
+              </div>
+              <div class="board lib">
+                <div class="board-label">Liberal track</div>
+                <div class="track" id="libTrack"></div>
+              </div>
+              <div class="piles">
+                <div class="pile">Draw: <b id="drawPile">—</b></div>
+                <div class="pile">Discard: <b id="discardPile">—</b></div>
+              </div>
+            </div>
+            <!-- seat nodes injected here -->
+          </div>
+        </div>
+
+        <!-- side: next-draw odds + record form -->
+        <div class="panel" style="flex:1; min-width:280px;">
+          <h3 style="margin-top:0">Next hand odds</h3>
+          <p class="muted" style="margin:0 0 6px">Chance the next President draws…</p>
+          <div class="next-draw" id="nextDraw"></div>
+
+          <div class="gov-form">
+            <h3>Record government</h3>
+            <div class="grid">
+              <div>
+                <label>President</label>
+                <select id="selPres"></select>
+              </div>
+              <div>
+                <label>Chancellor</label>
+                <select id="selChan"></select>
+              </div>
+            </div>
+            <div style="margin-top:10px">
+              <label>President claims they drew (liberals of 3)</label>
+              <div class="cardpick" id="claimPick"></div>
+            </div>
+            <div style="margin-top:10px">
+              <label>Policy enacted</label>
+              <div class="cardpick" id="enactPick">
+                <button data-e="L">Liberal</button>
+                <button data-e="F">Fascist</button>
+              </div>
+            </div>
+            <div style="margin-top:10px" class="row">
+              <div>
+                <label>This government's lie modifier</label>
+                <div class="stepper">
+                  <button id="gMinus">−</button>
+                  <b id="gMod" style="min-width:20px;display:inline-block;text-align:center">0</b>
+                  <button id="gPlus">+</button>
+                </div>
+                <div class="muted" style="font-size:11px;max-width:220px">−1 = lied down (hid a liberal), +1 = lied up (hid a fascist)</div>
+              </div>
+            </div>
+            <div class="row" style="margin-top:12px">
+              <button id="btnRecord" class="primary">Record government</button>
+              <button id="btnEnd" class="ghost">End game</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- history -->
+      <div class="panel" style="margin-top:16px">
+        <h3 style="margin-top:0">Government history <span class="muted" style="font-size:13px">(retrospective odds update as the round unfolds)</span></h3>
+        <table class="hist" id="histTable">
+          <thead>
+            <tr><th>#</th><th>Round</th><th>President</th><th>Chancellor</th><th>Claimed hand</th><th>True hand</th><th>Enacted</th><th>Odds of hand</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== END GAME SCREEN ===================== -->
+    <section id="endScreen" class="panel hidden" style="margin-top:16px">
+      <h2>Game over — record the result</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+        <div>
+          <label>Winner</label>
+          <select id="selWinner"><option>Liberal</option><option>Fascist</option></select>
+        </div>
+        <div>
+          <label>Who was Hitler?</label>
+          <select id="selHitler"></select>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label>Who were the other Fascists? (click to toggle)</label>
+        <div id="fascistToggles" class="row"></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="btnSaveGame" class="primary">Save game to statistics</button>
+        <button id="btnCancelEnd" class="ghost">Back</button>
+      </div>
+    </section>
+
+    <!-- ===================== STATS SCREEN ===================== -->
+    <section id="statsScreen" class="hidden">
+      <div class="panel">
+        <h2 style="margin-top:0">Cross-game summary</h2>
+        <div class="statgrid" id="summaryGrid"></div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h2 style="margin-top:0">Player statistics</h2>
+        <table class="hist" id="playerStatsTable">
+          <thead>
+            <tr><th>Player</th><th>Games</th><th>Wins</th><th>Win %</th><th>Pres.</th><th>Chanc.</th><th>As Hitler</th><th>Avg lie (pres)</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="row" style="margin-top:12px">
+          <button id="btnBackFromStats" class="ghost">Back</button>
+          <button id="btnClearStats" class="ghost">Clear all statistics</button>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Companion &amp; analyzer for the board game Secret Hitler · randomization · probability · statistics
+    </footer>
+  </div>
+
+  <script src="js/probability.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
