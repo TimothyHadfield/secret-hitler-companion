@@ -64,11 +64,22 @@ h1, h2, h3 { font-family: "Georgia", serif; letter-spacing: 0.3px; }
 
 /* wide screens: controls stacked vertically on the right of the table */
 @media (min-width: 641px) {
-  .controls { width: 232px; overflow-y: auto; overflow-x: hidden; }
-  .controls .ratio-pick { grid-template-columns: 1fr; }
-  .ratio-btn { padding: 9px 6px; }
-  .control-row { flex-direction: column; }
-  .control-row button { width: 100%; }
+  /* right column: rounds (bounded, scrolls) on top, then the 4 ratios + actions —
+     all four policy options must stay on screen without scrolling the column */
+  .controls {
+    width: 232px; overflow-y: auto; overflow-x: hidden;
+    display: flex; flex-direction: column; gap: 8px; margin-top: 0;
+  }
+  /* .controls-prefixed so these win over the base ratio rules defined later in the file */
+  .controls .rounds-slot { flex: 0 0 auto; }
+  .controls .ratio-pick { grid-template-columns: 1fr; flex: 0 0 auto; gap: 6px; }
+  .controls .ratio-cell { gap: 1px; }
+  .controls .ratio-pct { font-size: 12px; }
+  .controls .ratio-btn { padding: 5px 6px; gap: 1px; }
+  .controls .ratio-btn .ratio-name { font-size: 14px; line-height: 1.15; }
+  .controls .ratio-btn .ratio-sub { font-size: 10px; line-height: 1.1; }
+  .controls .control-row { flex: 0 0 auto; flex-direction: column; margin-top: 0; gap: 5px; }
+  .controls .control-row button { width: 100%; padding: 6px 10px; }
 }
 
 .topbar {
@@ -167,7 +178,8 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .pres-detail.c-fac { color: var(--fac-2); }
 .pres-detail.c-lib { color: var(--lib-2); }
 .pres-detail.c-gold { color: var(--gold); }
-.seatNode .fail-x { color: var(--fac-2); font-weight: 800; font-size: 16px; letter-spacing: 1px; }
+.seatNode .fail-x { color: var(--fac-2); font-weight: 800; font-size: 16px; line-height: 1; }
+.pres-row.fail-row { gap: 3px; } /* consecutive fails: ✕✕ side by side */
 
 /* ---------- Secret-Hitler-style boards ---------- */
 .center-boards {
@@ -287,11 +299,14 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .rounds-slot { display: none; }
 @media (min-width: 641px) {
   .rounds-slot { display: block; }
+  /* bounded height so it never crowds out the policy options; newest round on top
+     (column-reverse) stays visible, older rounds scroll below */
   .controls .rounds-bar {
-    margin-bottom: 4px; flex-direction: column; gap: 6px;
-    overflow-x: visible; max-height: 34vh; overflow-y: auto;
+    margin: 0; flex-direction: column; gap: 5px;
+    overflow-x: visible; max-height: 116px; overflow-y: auto;
   }
-  .controls .round-block { width: 100%; }
+  .controls .round-block { width: 100%; padding: 3px 9px; }
+  .controls .round-mod button { padding: 1px 8px; }
 }
 
 /* ---------- Round / modifier bar ---------- */

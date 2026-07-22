@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-22 (after session 11)._
+_Last updated: 2026-07-22 (after session 12)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -131,11 +131,18 @@ table game, not a game engine. Feature pillars:
     presidency (or long detail text on a narrow phone seat) shrinks to fit rather than clipping.
     The board is shifted up and seats pulled clear (desktop TOPY 24% / BOTY 74%; phone bottom
     seats at BOTY 72%, **straddling the felt's bottom edge**) so a full slot always fits.
+  - **Consecutive failed presidencies** for a seat share one row of side-by-side ✕✕ (a passed
+    presidency between them splits the run onto separate rows above/below the cards). Built in
+    `renderTable` by coalescing runs of `fail` in `eventsByPlayer[i]`.
 - **Rounds bar placement is breakpoint-dependent** (`placeRoundsBar()` moves the single
   `#roundsBar` node): above the table on phones (short blocks → headroom for the top seats),
   and inside `#roundsSlot` in the **right control column above the ratio buttons** on desktop.
   Each round block is one compact row — `Round N` · inline finished-round bottom cards (no
-  "bottom" label) · `− mod +`.
+  "bottom" label) · `− mod +`. The strip auto-scrolls to the current round.
+- **Desktop right column is height-budgeted:** the control overrides are `.controls`-scoped (so
+  they beat the base `.ratio-*` rules that appear later in the CSS), the rounds strip is capped
+  (~116px, scrolls), and the ratio buttons are trimmed so **all four policy options + the round
+  boxes + Conflict/Failed/Undo fit without scrolling** at common laptop heights.
 - **President is fixed** each turn (gold **P** badge on the avatar). **Tap a player** to set/move
   the Chancellor (blue **C** badge). No dropdowns.
 - **Clicking a ratio auto-submits** the presidency; each ratio button shows the **draw

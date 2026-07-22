@@ -352,3 +352,31 @@ refreshes, closing/reopening, and redeploys.
   and phone **512×900**, plus a seeded game where the top seat holds **3 presidencies** (they
   grow up, scaled to fit) and a bottom seat holds 2 — nothing clipped, DOM + no-JS-error checks
   pass.
+
+---
+
+## Session 12 — 2026-07-22 — Grouped fail marks + fix the missing Bronze option
+
+**User asked for:**
+- Consecutive **failed presidencies** (no passed presidency between them) should render **✕✕
+  side by side** to save vertical space; a passed presidency between two fails splits them so the
+  ✕s sit **above/below** that presidency.
+- On the laptop the **Bronze policy option wasn't showing** (pushed off-screen). Make sure all
+  four options show and don't interfere with the round info / other options — resizing expected.
+
+**What I changed:**
+- **Fail-run grouping** in `renderTable`: instead of one row per fail, walk each seat's events and
+  coalesce a run of consecutive `fail`s into a single `.pres-row.fail-row` of side-by-side ✕s; a
+  `gov` breaks the run (so its ✕s land on separate rows above/below the cards).
+- **Fixed the clipped Bronze option.** Root cause: my desktop control-column overrides sat in a
+  media block *above* the base `.ratio-*` rules, so the base (same specificity, later in the file)
+  won — buttons stayed full-height (63px) and the 4th option overflowed. Re-scoped every override
+  with a `.controls` prefix (higher specificity) and trimmed heights: ratio buttons 63→42px, the
+  control row tighter, and the rounds strip capped at 116px with a natural (non-reversed) order.
+  Now all four ratios + the round boxes + Conflict/Failed/Undo fit without scrolling on common
+  laptop heights (measured: control content 508px vs a 561px column at ~800px window).
+- The rounds strip **auto-scrolls to the current round** (desktop: `scrollTop`; phone top strip:
+  `scrollLeft`) so the active round's modifier is always in view.
+- Verified with headless height-probes at windows 800/720/660 (Bronze + Undo in view) and
+  screenshots on desktop (**1280×800**) and phone (**512×900**) showing the grouped ✕✕ (Ben) and
+  the ✕ / cards / ✕ split (Gil).

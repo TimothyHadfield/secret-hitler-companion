@@ -445,8 +445,12 @@
     const desktop = window.innerWidth > 640;
     if (desktop) {
       if (bar.parentElement !== slot) slot.appendChild(bar);
-    } else if (bar.parentElement !== playTab || playTab.firstElementChild !== bar) {
-      playTab.insertBefore(bar, playTab.firstElementChild);
+      bar.scrollTop = bar.scrollHeight; // keep the current (last) round in view
+    } else {
+      if (bar.parentElement !== playTab || playTab.firstElementChild !== bar) {
+        playTab.insertBefore(bar, playTab.firstElementChild);
+      }
+      bar.scrollLeft = bar.scrollWidth; // current round in view on the phone's top strip
     }
   }
 
@@ -516,22 +520,30 @@
       node.style.top = y + "%";
       node.onclick = () => setChancellor(i);
 
-      // one row per presidency: [3 cards | odds + details]  (X for a failed election)
+      // one row per presidency: [3 cards | odds + details]. Consecutive failed
+      // elections (with no passed presidency between them) share a single row of
+      // side-by-side ✕✕ to save vertical space; a passed presidency splits the run,
+      // so its ✕s sit above/below that row.
       const evs = d.eventsByPlayer[i] || [];
-      const extra = evs
-        .map((ev) => {
-          if (ev.type === "fail") {
-            return `<div class="pres-row"><span class="fail-x">✕</span></div>`;
-          }
+      const rows = [];
+      let ei = 0;
+      while (ei < evs.length) {
+        if (evs[ei].type === "fail") {
+          let cnt = 0;
+          while (ei < evs.length && evs[ei].type === "fail") (cnt++, ei++);
+          const xs = Array.from({ length: cnt }, () => `<span class="fail-x">✕</span>`).join("");
+          rows.push(`<div class="pres-row fail-row">${xs}</div>`);
+        } else {
+          const ev = evs[ei++];
           const cards = [];
           for (let k = 0; k < 3; k++) cards.push(k < 3 - ev.libs ? "F" : "L");
           const hand =
             `<div class="miniHand">` + cards.map((c) => `<div class="miniCard ${c}"></div>`).join("") + `</div>`;
-          const side =
-            `<div class="odds">${Prob.fmtPct(ev.prob)}</div>` + presDetails(ev);
-          return `<div class="pres-row">${hand}<div class="pres-side">${side}</div></div>`;
-        })
-        .join("");
+          const side = `<div class="odds">${Prob.fmtPct(ev.prob)}</div>` + presDetails(ev);
+          rows.push(`<div class="pres-row">${hand}<div class="pres-side">${side}</div></div>`);
+        }
+      }
+      const extra = rows.join("");
 
       let badge = "";
       if (!roles) {
