@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-22 (after session 9)._
+_Last updated: 2026-07-22 (after session 10)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -62,7 +62,7 @@ table game, not a game engine. Feature pillars:
 | File | Purpose |
 |------|---------|
 | `index.html` | App shell. Screens: **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over. (No separate end screen — role recording is in-place.) |
-| `styles.css` | Theme + responsive no-scroll layout, boards, role/review panels, games list. |
+| `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
 | `js/stats.js` | localStorage read/write + per-player / cross-game aggregation. Reads the event model. |
 | `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring. |
@@ -112,6 +112,19 @@ table game, not a game engine. Feature pillars:
   No page title. Footer removed.
 - **Table dominates.** Wide screens: policy controls stacked **vertically on the right**; phones:
   controls **below** the table.
+- **Table is a rounded rectangle** (not a circle). Seats sit around its **edges**, placed by
+  `computeSeats(n)` in `app.js` (returns `{x,y,edge}` per seat; clockwise order top L→R, right
+  T→B, bottom R→L, left B→T so the ring order is preserved). A window `resize` listener re-lays
+  the seats when the phone/desktop breakpoint is crossed.
+  - **Phones (≤640px):** everyone on the **top & bottom edges only** (`ceil(n/2)` on top, rest on
+    bottom) — no side seats. The felt runs nearly full width so the **draw pile hugs the left
+    edge and the discard pile hugs the right** (`.center-boards` width 98%, full-size piles).
+  - **Wider screens:** `floor(n/4)` seats per edge with leftovers to top then bottom, spread so a
+    seat **never lands on a corner** (top/bottom x∈[26,74], side seats y∈[36,64]).
+  - **Top-edge seats grow their presidency rows UPWARD** (`edge-top` → `column-reverse` +
+    `translate(-50%,-100%)`), so a top player with 2+ presidencies never covers the board;
+    bottom/side seats grow downward. Avatar+name are in `.seat-head`, presidency rows in
+    `.seat-pres`.
 - **President is fixed** each turn (gold **P** badge on the avatar). **Tap a player** to set/move
   the Chancellor (blue **C** badge). No dropdowns.
 - **Clicking a ratio auto-submits** the presidency; each ratio button shows the **draw

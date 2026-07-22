@@ -282,3 +282,37 @@ refreshes, closing/reopening, and redeploys.
   fails, Hitler/Fascists) — with a Back button. Removed the old separate end screen.
 - Verified in headless Chrome (role panel shows over the live table, circles 1 H / 1 F / 3 L,
   save → stats, games list → review → back) and via mobile + laptop screenshots.
+
+---
+
+## Session 10 — 2026-07-22 — Rectangular table + edge-based seating
+
+**User asked for:**
+- Make the board a **square/rectangle** instead of a circle/oval (space + visuals).
+- **On a phone**: put all players **above or below** the board, and make the board **much
+  bigger** — draw pile almost touching the left edge, discard pile almost touching the right.
+- **On computer/laptop**: balance players around **all 4 sides**, but **never on a corner**.
+- If the **top player has 2+ presidencies**, their recorded presidencies must **not cover the
+  board**.
+
+**What I changed:**
+- `.felt` is now a **rounded rectangle** (was `border-radius:50%`), with per-breakpoint insets.
+- New `computeSeats(n)` in `js/app.js` replaces the old polar/ellipse placement. It assigns
+  seats to the table's **4 edges** and returns `{x, y, edge}` per seat, walking clockwise
+  (top L→R, right T→B, bottom R→L, left B→T) so seat order still reads as a ring:
+  - **Phones (≤640px):** everyone on **top & bottom only** (`ceil(n/2)` top, rest bottom); no
+    side seats. Felt runs nearly full width (`inset: 24% 1.5% 22% 1.5%`), `.center-boards`
+    width 98% + full-size piles → **draw hugs left, discard hugs right** (measured: at the
+    512px CSS viewport the piles sit 11px from each edge, no overflow).
+  - **Wider screens:** `floor(n/4)` per edge, leftovers to top then bottom; top/bottom seats
+    spread within x∈[26,74] and side seats within y∈[36,64] so **none land on a corner**.
+- Each seat gets an `edge-*` class. **Top-edge seats** use `flex-direction: column-reverse` +
+  `translate(-50%,-100%)` so their **presidency rows grow upward, away from the board** (the
+  requested fix); bottom/side seats grow downward as before. Wrapped the avatar+name in
+  `.seat-head` and the presidency rows in `.seat-pres` to control the growth direction.
+- Added a **window `resize` listener** that re-lays the seats when crossing the phone/desktop
+  breakpoint (re-renders the table live).
+- Verified in headless Chrome with screenshots at **n=5, 9, 10** on both desktop (1280) and the
+  512px mobile viewport, plus a **geometry probe** confirming the piles hug both edges with no
+  overflow, and a seeded game where the top seat has **2 presidencies** — they grow up and never
+  cover the board.

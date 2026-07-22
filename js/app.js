@@ -432,22 +432,55 @@
     });
   }
 
+  // Seat placement around a rectangular table.
+  // Phones (<=640px): everyone on the top & bottom edges only, so the board can
+  // run nearly the full width. Wider screens: spread across all 4 sides, never a
+  // corner. Indices run clockwise (top L→R, right T→B, bottom R→L, left B→T) so
+  // seat order still reads as a ring.
+  function computeSeats(n) {
+    const mobile = window.innerWidth <= 640;
+    const seats = new Array(n);
+    const along = (count, lo, hi) =>
+      Array.from({ length: count }, (_, k) =>
+        count === 1 ? (lo + hi) / 2 : lo + ((hi - lo) * k) / (count - 1));
+
+    let counts;
+    if (mobile) {
+      const topC = Math.ceil(n / 2);
+      counts = { top: topC, right: 0, bottom: n - topC, left: 0 };
+    } else {
+      const base = Math.floor(n / 4);
+      counts = { top: base, right: base, bottom: base, left: base };
+      // give the leftovers to the wider edges first (top, then bottom)
+      ["top", "bottom", "left", "right"].slice(0, n % 4).forEach((e) => counts[e]++);
+    }
+
+    const TOPY = mobile ? 21 : 19, BOTY = mobile ? 85 : 84;
+    const LEFTX = 8, RIGHTX = 92;
+    const xLo = mobile ? 11 : 26, xHi = mobile ? 89 : 74; // keep off the corners
+    const yLo = 36, yHi = 64; // side seats stay in the middle band
+
+    let i = 0;
+    along(counts.top, xLo, xHi).forEach((x) => (seats[i++] = { x, y: TOPY, edge: "top" }));
+    along(counts.right, yLo, yHi).forEach((y) => (seats[i++] = { x: RIGHTX, y, edge: "right" }));
+    along(counts.bottom, xHi, xLo).forEach((x) => (seats[i++] = { x, y: BOTY, edge: "bottom" }));
+    along(counts.left, yHi, yLo).forEach((y) => (seats[i++] = { x: LEFTX, y, edge: "left" }));
+    return seats;
+  }
+
   function renderTable(d) {
     const area = $("tableArea");
     area.querySelectorAll(".seatNode").forEach((el) => el.remove());
     const n = state.players.length;
-    const polar = (i, rx, ry) => {
-      const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-      return { x: 50 + rx * Math.cos(ang), y: 50 + ry * Math.sin(ang) };
-    };
+    const seats = computeSeats(n);
 
     const chanIdx = effChan(d);
     // known/assigned roles color the circles (recording, review, or saved game)
     const roles = state.result || (state.recordingRoles ? state.roleDraft : null);
     state.players.forEach((p, i) => {
-      const { x, y } = polar(i, 43, 40);
+      const { x, y, edge } = seats[i];
       const node = document.createElement("div");
-      node.className = "seatNode";
+      node.className = "seatNode edge-" + edge;
       node.dataset.seat = i;
       if (roles) {
         if (i === roles.hitlerIdx) node.classList.add("role-hitler");
@@ -486,11 +519,13 @@
       }
 
       node.innerHTML =
+        `<div class="seat-head">` +
         `<div class="avatar">${escapeHtml(initials(p.name))}${badge}${
           p.dead ? `<span class="skull">💀</span>` : ""
         }</div>` +
         `<div class="name">${escapeHtml(p.name)}${i === state.firstPres ? " ·①" : ""}</div>` +
-        extra;
+        `</div>` +
+        `<div class="seat-pres">${extra}</div>`;
       area.appendChild(node);
     });
   }
@@ -1185,6 +1220,13 @@
     state.roundMods[roundIdx] = clamp(r.mod + delta, r.modLo, r.modHi);
     renderGame();
   }
+
+  // re-lay the seats when the screen crosses the phone/desktop breakpoint
+  window.addEventListener("resize", () => {
+    if (state && Array.isArray(state.players) && !$("gameScreen").classList.contains("hidden")) {
+      renderTable(derive());
+    }
+  });
 
   // ------------------------------ boot ---------------------------------------
   wire();
