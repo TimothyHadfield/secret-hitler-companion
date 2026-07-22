@@ -234,3 +234,21 @@ around the table and the policy options so everything blends and nothing gets cl
   rendered `apple-touch-icon.png` (180) and `icon-512.png` via headless Chrome. Wired favicon,
   apple-touch-icon, theme-color, and apple-mobile-web-app meta tags. (Original art — not the
   board game's logo.)
+
+---
+
+## Session 8 — 2026-07-22 — Local persistence (resume games)
+
+**User asked for:** stop losing the in-progress game and re-typing names on every update —
+save data locally so an active game (players, events, everything) and past stats survive
+refreshes, closing/reopening, and redeploys.
+
+**What I changed:**
+- The active game auto-saves to `localStorage` (`secretHitler.activeGame.v1`) after every change
+  and is **restored on load** — the app boots straight back into the in-progress game.
+- The setup **roster** persists (`secretHitler.setupPlayers.v1`), so the player list is
+  remembered across games and sessions. Cleared on New Game / after saving a finished game.
+- Backfills missing fields when loading a game saved by an older app version (forward-compatible
+  across redeploys). Wrapped all `localStorage` access in try/catch.
+- Verified with a two-session headless test (start a game in session 1 → a fresh page load in
+  session 2 resumes it with all players/events intact and the roster saved).

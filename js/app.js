@@ -51,6 +51,35 @@
   let setupPlayers = [];
   let state = null;
 
+  // ------------------------------ persistence --------------------------------
+  // The active game and the setup roster are saved locally so a refresh, a
+  // browser close/reopen, or a redeploy never loses an in-progress game.
+  const ACTIVE_KEY = "secretHitler.activeGame.v1";
+  const SETUP_KEY = "secretHitler.setupPlayers.v1";
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+
+  function saveActive() { if (state) lsSet(ACTIVE_KEY, JSON.stringify(state)); }
+  function clearActive() { lsDel(ACTIVE_KEY); }
+  function saveSetup() { lsSet(SETUP_KEY, JSON.stringify(setupPlayers)); }
+
+  function loadActive() {
+    try {
+      const s = JSON.parse(lsGet(ACTIVE_KEY));
+      if (!s || !s.players || !Array.isArray(s.events)) return null;
+      // backfill fields that may be absent in a game saved by an older version
+      if (!Array.isArray(s.undoStack)) s.undoStack = [];
+      if (!s.form) s.form = { chanIdxOverride: null, conflictArmed: false };
+      if (!s.roundMods) s.roundMods = {};
+      if (!("gameOver" in s)) s.gameOver = null;
+      if (!("pendingPower" in s)) s.pendingPower = null;
+      return s;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function newGameState(players, firstPres) {
     return {
       date: null,
@@ -296,6 +325,7 @@
     const ok = n >= 5 && n <= 10;
     $("btnRandomize").disabled = !ok;
     $("setupHint").textContent = ok ? `${n} players ready.` : `${n} player(s) — need 5 to 10.`;
+    saveSetup(); // remember the roster across sessions/games
   }
 
   function addPlayer() {
@@ -340,6 +370,7 @@
     renderGameOver();
     renderHistory(d);
     $("chaosPrompt").classList.toggle("hidden", !(state.pendingChaos && !state.gameOver));
+    saveActive(); // persist the full game state after every change
   }
 
   function renderGameOver() {
@@ -930,6 +961,7 @@
   // ------------------------------ misc ---------------------------------------
   function resetToSetup() {
     state = null;
+    clearActive(); // the game is finished/abandoned; only the roster is kept
     show("setupScreen");
     renderSetup();
   }
@@ -992,5 +1024,20 @@
 
   // ------------------------------ boot ---------------------------------------
   wire();
-  renderSetup();
+  const resumed = loadActive();
+  if (resumed) {
+    // resume the in-progress game exactly where it left off
+    state = resumed;
+    setupPlayers = JSON.parse(lsGet(SETUP_KEY) || "[]");
+    show("gameScreen");
+    switchTab("play");
+    renderGame();
+  } else {
+    // no active game — restore any previously entered roster
+    try {
+      const saved = JSON.parse(lsGet(SETUP_KEY));
+      if (Array.isArray(saved)) setupPlayers = saved;
+    } catch (e) {}
+    renderSetup();
+  }
 })();

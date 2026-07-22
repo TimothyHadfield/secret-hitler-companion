@@ -59,7 +59,11 @@ later):
   updated, tracker reset).
 - **Round boundary = reshuffle** (draw pile < 3). Probability never crosses it. Each round
   starts from a known pool `17 − enacted`.
-- **Stats:** browser `localStorage` only for now (key `secretHitler.games.v1`).
+- **Persistence:** browser `localStorage`. Completed games → `secretHitler.games.v1` (stats).
+  The **in-progress game** auto-saves to `secretHitler.activeGame.v1` after every change and is
+  **resumed on load** (survives refresh, close/reopen, and redeploys). The setup **roster**
+  saves to `secretHitler.setupPlayers.v1` so player names persist across games/sessions.
+  Cleared only on New Game / after a game is saved.
 - **Repo:** public (needed for free GitHub Pages).
 
 ## Presidential powers (fascist track, by player count)
