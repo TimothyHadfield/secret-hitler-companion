@@ -22,15 +22,8 @@
     9: ["invest", "invest", "special", "kill", "kill", "win"],
     10: ["invest", "invest", "special", "kill", "kill", "win"],
   };
-  const POWER_ICON = { invest: "🔍", special: "⚡", peek: "👁", kill: "💀", win: "🏆", "": "" };
-  const POWER_TITLE = {
-    invest: "Investigate Loyalty",
-    special: "Special Election",
-    peek: "Policy Peek",
-    kill: "Execution",
-    win: "Fascists win",
-    "": "",
-  };
+  const POWER_LABEL = { invest: "Investigation", special: "Special Election", peek: "Policy Peek", kill: "Kill" };
+  const POWER_ICON = { invest: "🔍", special: "⚡", peek: "👁", kill: "💀" };
 
   // ---- Ratio metadata (claim = liberals drawn of 3) ----
   const RATIOS = [
@@ -65,9 +58,12 @@
       firstPres,
       events: [],
       roundMods: {},
-      lastChanIdx: null, // for chancellor auto-rotation
-      form: { presIdx: firstPres, chanIdx: null, conflictArmed: false },
+      // President, suggested Chancellor, and deaths are DERIVED from events.
+      // The form only holds the user's current Chancellor tap + conflict arm.
+      form: { chanIdxOverride: null, conflictArmed: false },
       pendingChaos: false,
+      pendingPower: null, // { type, govIndex, presidentIdx } while a power is unresolved
+      autoResult: null, // preset end result (e.g. Hitler executed → Liberal win)
       result: null,
     };
   }
@@ -92,10 +88,32 @@
     const evInfo = [];
     const lastGovByPlayer = {};
     const failsByPlayer = {};
+    const N = state.players.length;
 
-    // Reshuffle the moment the draw pile can't deal a full hand (< 3 cards): the
-    // discard pile is merged back immediately, so the new round's pool is shown
-    // before the next presidency is entered. (Only when it actually grows.)
+    // Turn order + deaths, walked alongside the pile bookkeeping.
+    const deadSet = new Set();
+    let pointer = state.firstPres; // the current presidential candidate
+    let pendingResume = null; // seat to resume at after a Special-Election detour
+    let lastChan = null;
+    const nextAlive = (idx) => {
+      for (let s = 1; s <= N; s++) {
+        const j = (idx + s) % N;
+        if (!deadSet.has(j)) return j;
+      }
+      return idx;
+    };
+    const advanceAfter = (presIdx, ev) => {
+      if (ev && ev.power && ev.power.type === "special" && ev.power.chosenIdx != null) {
+        pendingResume = nextAlive(presIdx); // normal order resumes here after the detour
+        pointer = ev.power.chosenIdx;
+      } else if (pendingResume !== null) {
+        pointer = pendingResume;
+        pendingResume = null;
+      } else {
+        pointer = nextAlive(presIdx);
+      }
+    };
+
     const reshuffleIfNeeded = () => {
       const pool = 17 - fac - lib;
       if (draw < 3 && pool > draw) {
@@ -110,6 +128,7 @@
         tracker++;
         failsByPlayer[ev.presidentIdx] = (failsByPlayer[ev.presidentIdx] || 0) + 1;
         evInfo.push({ type: "fail", presidentIdx: ev.presidentIdx, tracker });
+        advanceAfter(ev.presidentIdx, null);
         return;
       }
       if (ev.type === "chaos") {
@@ -119,11 +138,15 @@
         tracker = 0;
         evInfo.push({ type: "chaos", enacted: ev.enacted });
         reshuffleIfNeeded();
-        return;
+        return; // chaos does not change the presidential rotation
       }
       // gov
       reshuffleIfNeeded(); // safety (normally already reshuffled after prior event)
       const enacted = ev.enacted;
+      // apply a resolved Kill before advancing so the dead player is skipped
+      if (ev.power && ev.power.type === "kill" && ev.power.killedIdx != null && !ev.power.wasHitler) {
+        deadSet.add(ev.power.killedIdx);
+      }
       const info = {
         type: "gov",
         n,
@@ -133,6 +156,7 @@
         enacted,
         presidentIdx: ev.presidentIdx,
         chancellorIdx: ev.chancellorIdx,
+        power: ev.power || null,
         prob: null,
       };
       const giIdx = gi.push(info) - 1;
@@ -143,8 +167,21 @@
       if (enacted === "L") lib++;
       else fac++;
       tracker = 0;
+      lastChan = ev.chancellorIdx;
+      advanceAfter(ev.presidentIdx, ev);
       reshuffleIfNeeded();
     });
+
+    // reflect deaths on the player objects (used by tap/chancellor validation)
+    state.players.forEach((p, i) => (p.dead = deadSet.has(i)));
+
+    // suggested chancellor: one seat past the last elected chancellor
+    let suggestedChan = null;
+    if (lastChan !== null) {
+      let c = nextAlive(lastChan);
+      if (c === pointer) c = nextAlive(c);
+      suggestedChan = c;
+    }
 
     // retrospective probability + modifier bounds, per round
     rounds.forEach((r) => {
@@ -208,7 +245,17 @@
       drawFasc,
       discardLibs,
       discardFasc,
+      presIdx: pointer,
+      suggestedChan,
+      deadSet,
     };
+  }
+
+  // effective chancellor for the current turn: user's tap, else the suggestion
+  function effChan(d) {
+    const o = state.form.chanIdxOverride;
+    if (o != null && !state.players[o].dead && o !== d.presIdx) return o;
+    return d.suggestedChan;
   }
 
   // ------------------------------ screens ------------------------------------
@@ -265,27 +312,13 @@
     const firstPres = Math.floor(Math.random() * seated.length);
     state = newGameState(seated, firstPres);
     show("gameScreen");
+    switchTab("play");
     renderGame();
   }
 
   // ------------------------------ GAME ---------------------------------------
   function aliveIdxs() {
     return state.players.map((p, i) => i).filter((i) => !state.players[i].dead);
-  }
-  function nextAliveAfter(idx) {
-    const n = state.players.length;
-    for (let step = 1; step <= n; step++) {
-      const j = (idx + step) % n;
-      if (!state.players[j].dead) return j;
-    }
-    return idx;
-  }
-  // suggested chancellor: rotates one seat past the last elected chancellor
-  function defaultChancellor(presIdx) {
-    if (state.lastChanIdx === null) return null; // first government: user must choose
-    let c = nextAliveAfter(state.lastChanIdx);
-    if (c === presIdx) c = nextAliveAfter(c);
-    return c;
   }
 
   function renderGame() {
@@ -294,6 +327,7 @@
     renderTable(d);
     renderBoards(d);
     renderControls(d);
+    renderPower(d);
     renderHistory(d);
     $("chaosPrompt").classList.toggle("hidden", !state.pendingChaos);
   }
@@ -332,20 +366,21 @@
 
   function renderTable(d) {
     const area = $("tableArea");
-    area.querySelectorAll(".seatNode, .role-tile").forEach((el) => el.remove());
+    area.querySelectorAll(".seatNode").forEach((el) => el.remove());
     const n = state.players.length;
     const polar = (i, rx, ry) => {
       const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
       return { x: 50 + rx * Math.cos(ang), y: 50 + ry * Math.sin(ang) };
     };
 
+    const chanIdx = effChan(d);
     state.players.forEach((p, i) => {
       const { x, y } = polar(i, 43, 45);
       const node = document.createElement("div");
       node.className = "seatNode";
       node.dataset.seat = i;
-      if (i === state.form.presIdx) node.classList.add("pres");
-      if (i === state.form.chanIdx) node.classList.add("chan");
+      if (i === d.presIdx) node.classList.add("pres");
+      if (i === chanIdx) node.classList.add("chan");
       if (p.dead) node.classList.add("dead");
       node.style.left = x + "%";
       node.style.top = y + "%";
@@ -361,29 +396,30 @@
           cards.map((c) => `<div class="miniCard ${c}"></div>`).join("") +
           `</div><div class="odds">${Prob.fmtPct(info.prob)}</div>`;
         if (info.conflict) extra += `<div class="conflict-tag">⚔ conflict</div>`;
+        // investigation result recorded beside this president's recording
+        if (info.power && info.power.type === "invest" && info.power.party) {
+          const t = state.players[info.power.targetIdx];
+          const cls = info.power.party === "F" ? "p-fac" : "p-lib";
+          extra += `<div class="invest-tag">🔍 ${escapeHtml(t.name)}, <span class="${cls}">${
+            info.power.party === "F" ? "Fascist" : "Liberal"
+          }</span></div>`;
+        }
       }
       const fails = d.failsByPlayer[i] || 0;
       if (fails) extra += `<div class="fail-x">${"✕".repeat(Math.min(fails, 5))}</div>`;
 
+      let badge = "";
+      if (i === d.presIdx) badge = `<span class="role-badge p" title="President">P</span>`;
+      else if (i === chanIdx) badge = `<span class="role-badge c" title="Chancellor">C</span>`;
+
       node.innerHTML =
-        `<div class="avatar">${escapeHtml(initials(p.name))}</div>` +
+        `<div class="avatar">${escapeHtml(initials(p.name))}${badge}${
+          p.dead ? `<span class="skull">💀</span>` : ""
+        }</div>` +
         `<div class="name">${escapeHtml(p.name)}${i === state.firstPres ? " ·①" : ""}</div>` +
         extra;
       area.appendChild(node);
     });
-
-    // role tiles resting on the table, inward from the seat
-    const addTile = (i, cls, label) => {
-      const { x, y } = polar(i, 27, 30);
-      const t = document.createElement("div");
-      t.className = "role-tile " + cls;
-      t.textContent = label;
-      t.style.left = x + "%";
-      t.style.top = y + "%";
-      area.appendChild(t);
-    };
-    addTile(state.form.presIdx, "president", "President");
-    if (state.form.chanIdx !== null) addTile(state.form.chanIdx, "chancellor", "Chancellor");
   }
 
   function renderBoards(d) {
@@ -391,20 +427,21 @@
     const powers = FAC_POWERS[n] || FAC_POWERS[10];
 
     $("facPowers").innerHTML = powers
-      .map(
-        (p) =>
-          `<div class="sh-power ${p ? "" : "empty"}" title="${POWER_TITLE[p]}">${POWER_ICON[p] || "·"}</div>`
-      )
+      .map((p) => {
+        const has = p && p !== "win";
+        return `<div class="sh-power ${has ? "" : "empty"}">${has ? POWER_LABEL[p] : ""}</div>`;
+      })
       .join("");
 
     const fac = $("facTrack");
     fac.innerHTML = "";
     for (let i = 0; i < 6; i++) {
       const s = document.createElement("div");
-      s.className = "sh-slot" + (i === 5 ? " win" : "");
+      const empty = i >= d.fac;
+      // Hitler territory = the 4th+ fascist slots (electing Hitler wins from 3 policies on)
+      s.className = "sh-slot" + (i === 5 ? " win" : "") + (empty && i >= 3 ? " hitler" : "");
       if (i < d.fac) s.innerHTML = `<div class="policy-card F"><span class="glyph">✕</span></div>`;
       else if (i === 5) s.innerHTML = `<span class="win-x">WIN</span>`;
-      // veto sign lives on the 5th fascist slot (index 4)
       if (i === 4) {
         const v = document.createElement("div");
         v.className = "veto-sign" + (d.fac >= 5 ? " allowed" : "");
@@ -432,13 +469,14 @@
       et.appendChild(dot);
     }
 
-    $("drawPile").textContent = `${d.draw} (${d.drawFasc}F/${d.drawLibs}L)`;
-    $("discardPile").textContent = `${d.discardFasc + d.discardLibs} (${d.discardFasc}F/${d.discardLibs}L)`;
+    $("drawCounts").innerHTML = `<span class="cf">${d.drawFasc}F</span><span class="cl">${d.drawLibs}L</span>`;
+    $("discardCounts").innerHTML = `<span class="cf">${d.discardFasc}F</span><span class="cl">${d.discardLibs}L</span>`;
   }
 
   function renderControls(d) {
-    const pres = state.players[state.form.presIdx];
-    const chan = state.form.chanIdx !== null ? state.players[state.form.chanIdx] : null;
+    const pres = state.players[d.presIdx];
+    const chanIdx = effChan(d);
+    const chan = chanIdx != null ? state.players[chanIdx] : null;
     const ti = $("turnInfo");
     ti.classList.remove("flash");
     ti.innerHTML =
@@ -494,7 +532,7 @@
           `<td class="tag-round">${g.round + 1}</td>` +
           `<td><span class="ratio-name ${ratio.cls}">${ratio.name}</span>${
             g.conflict ? ` <span style="color:var(--fac-2)">⚔ conflict ${escapeHtml(state.players[g.chancellorIdx].name)}</span>` : ""
-          }</td>` +
+          }${powerAnnotation(g.power)}</td>` +
           `<td>${escapeHtml(state.players[g.presidentIdx].name)}</td>` +
           `<td>${escapeHtml(state.players[g.chancellorIdx].name)}</td>` +
           `<td>${ratio.sub}</td>` +
@@ -506,10 +544,12 @@
   }
 
   // ------------------------------ recording ----------------------------------
+  const busy = () => state.pendingChaos || state.pendingPower;
+
   // Tapping a player on the table sets the Chancellor (moves highlight + tile).
   function setChancellor(i) {
-    if (state.players[i].dead || i === state.form.presIdx) return;
-    state.form.chanIdx = i;
+    if (busy() || state.players[i].dead || i === derive().presIdx) return;
+    state.form.chanIdxOverride = i;
     renderGame();
   }
 
@@ -519,16 +559,25 @@
     ti.classList.add("flash");
   }
 
+  // Which power (if any) a fascist policy on the just-filled slot grants.
+  function powerForFascistCount(facCount) {
+    const powers = FAC_POWERS[state.players.length] || FAC_POWERS[10];
+    const key = powers[facCount - 1];
+    return key && key !== "win" ? key : null;
+  }
+
   // Clicking the claimed outcome auto-submits the presidency.
   function submitClaim(libs) {
-    if (state.form.chanIdx === null) {
+    if (busy()) return;
+    const d0 = derive();
+    const chanIdx = effChan(d0);
+    if (chanIdx == null) {
       flashTurn("Tap a player on the table to set the Chancellor first.");
       return;
     }
+    const presIdx = d0.presIdx;
     const conflict = !!state.form.conflictArmed && (libs === 1 || libs === 2);
     const enacted = inferEnacted(libs, conflict);
-    const presIdx = state.form.presIdx;
-    const chanIdx = state.form.chanIdx;
     state.events.push({
       type: "gov",
       presidentIdx: presIdx,
@@ -537,41 +586,31 @@
       conflict,
       enacted,
     });
-    state.lastChanIdx = chanIdx;
-    const nextPres = nextAliveAfter(presIdx);
-    state.form = { presIdx: nextPres, chanIdx: defaultChancellor(nextPres), conflictArmed: false };
+    state.form = { chanIdxOverride: null, conflictArmed: false };
+    // does this fascist policy trigger a presidential power?
+    const d1 = derive();
+    if (enacted === "F") {
+      const power = powerForFascistCount(d1.fac);
+      if (power) state.pendingPower = { type: power, govIndex: state.events.length - 1, presidentIdx: presIdx };
+    }
     renderGame();
     animateEnact(presIdx, enacted);
   }
 
   function recordFail() {
-    const presIdx = state.form.presIdx;
-    state.events.push({ type: "fail", presidentIdx: presIdx });
-    const nextPres = nextAliveAfter(presIdx);
-    state.form.presIdx = nextPres;
-    state.form.chanIdx = defaultChancellor(nextPres);
-    state.form.conflictArmed = false;
+    if (busy()) return;
+    state.events.push({ type: "fail", presidentIdx: derive().presIdx });
+    state.form = { chanIdxOverride: null, conflictArmed: false };
     if (derive().tracker >= 3) state.pendingChaos = true;
     renderGame();
   }
 
-  // Undo the most recent event (government, failed election, or chaos) and
-  // restore the president/chancellor turn state to just before it.
+  // Undo the most recent event (government, failed election, or chaos).
   function undoLast() {
     if (!state.events.length) return;
     state.events.pop();
-    let cand = state.firstPres;
-    let lastChan = null;
-    for (const ev of state.events) {
-      if (ev.type === "gov") {
-        cand = nextAliveAfter(ev.presidentIdx);
-        lastChan = ev.chancellorIdx;
-      } else if (ev.type === "fail") {
-        cand = nextAliveAfter(ev.presidentIdx);
-      }
-    }
-    state.lastChanIdx = lastChan;
-    state.form = { presIdx: cand, chanIdx: defaultChancellor(cand), conflictArmed: false };
+    state.form = { chanIdxOverride: null, conflictArmed: false };
+    state.pendingPower = null;
     state.pendingChaos = derive().tracker >= 3; // re-open chaos prompt if a chaos was undone
     renderGame();
   }
@@ -582,6 +621,120 @@
     // chaos resets term limits; keep suggested president/chancellor as-is
     renderGame();
     animateChaos(policy);
+  }
+
+  // ------------------------------ presidential powers ------------------------
+  function powerAnnotation(power) {
+    if (!power) return "";
+    if (power.type === "invest" && power.party) {
+      const t = state.players[power.targetIdx];
+      const c = power.party === "F" ? "var(--fac-2)" : "var(--lib-2)";
+      return ` <span style="color:${c}">🔍 ${escapeHtml(t.name)}, ${power.party === "F" ? "Fascist" : "Liberal"}</span>`;
+    }
+    if (power.type === "special" && power.chosenIdx != null) {
+      return ` <span style="color:var(--gold)">⚡→ ${escapeHtml(state.players[power.chosenIdx].name)}</span>`;
+    }
+    if (power.type === "peek" && power.order) {
+      return ` <span class="muted">👁 ${power.order.join("·")}</span>`;
+    }
+    if (power.type === "kill" && power.killedIdx != null) {
+      return ` <span style="color:var(--fac-2)">💀 ${escapeHtml(state.players[power.killedIdx].name)}${
+        power.wasHitler ? " (Hitler!)" : ""
+      }</span>`;
+    }
+    return "";
+  }
+
+  // draft answer for the pending power while the user fills the modal
+  let powerDraft = null;
+
+  function renderPower(d) {
+    const pm = $("powerModal");
+    if (!state.pendingPower) {
+      pm.classList.add("hidden");
+      powerDraft = null;
+      return;
+    }
+    pm.classList.remove("hidden");
+    const pp = state.pendingPower;
+    const pres = state.players[pp.presidentIdx];
+    const body = $("powerBody");
+    const aliveSel = (id, exclude) =>
+      `<select id="${id}">` +
+      state.players
+        .map((p, i) => (i === exclude || p.dead ? "" : `<option value="${i}">${escapeHtml(p.name)}</option>`))
+        .join("") +
+      `</select>`;
+
+    if (pp.type === "invest") {
+      if (!powerDraft) powerDraft = { targetIdx: null, party: null };
+      body.innerHTML =
+        `<div class="power-title">🔍 Investigation — <span class="who">${escapeHtml(pres.name)}</span> investigates a player</div>` +
+        `<div class="power-field"><label>Who was investigated?</label>${aliveSel("pwWho", pp.presidentIdx)}</div>` +
+        `<div class="power-field"><label>Their party membership</label> ` +
+        `<span class="seg"><button id="pwLib" class="${powerDraft.party === "L" ? "sel L" : ""}">Liberal</button>` +
+        `<button id="pwFac" class="${powerDraft.party === "F" ? "sel F" : ""}">Fascist</button></span></div>` +
+        `<div class="control-row"><button id="pwConfirm" class="primary" ${powerDraft.party ? "" : "disabled"}>Confirm</button></div>`;
+      $("pwLib").onclick = () => { powerDraft.party = "L"; renderGame(); };
+      $("pwFac").onclick = () => { powerDraft.party = "F"; renderGame(); };
+      $("pwConfirm").onclick = () => {
+        resolvePower({ targetIdx: +$("pwWho").value, party: powerDraft.party });
+      };
+    } else if (pp.type === "special") {
+      body.innerHTML =
+        `<div class="power-title">⚡ Special Election — <span class="who">${escapeHtml(pres.name)}</span> picks the next President</div>` +
+        `<div class="power-field"><label>Next President</label>${aliveSel("pwWho", pp.presidentIdx)}</div>` +
+        `<div class="muted" style="font-size:12px">After their turn, the normal order resumes.</div>` +
+        `<div class="control-row"><button id="pwConfirm" class="primary">Confirm</button></div>`;
+      $("pwConfirm").onclick = () => resolvePower({ chosenIdx: +$("pwWho").value });
+    } else if (pp.type === "peek") {
+      if (!powerDraft) powerDraft = { order: ["F", "F", "F"] };
+      const pos = ["Top", "Middle", "Bottom"];
+      body.innerHTML =
+        `<div class="power-title">👁 Policy Peek — set the top 3 as <span class="who">${escapeHtml(pres.name)}</span> claimed</div>` +
+        `<div class="peek-cards">` +
+        powerDraft.order
+          .map(
+            (c, k) =>
+              `<div class="peek-card"><div class="peek-pos">${pos[k]}</div>` +
+              `<div class="peek-face ${c}" data-k="${k}">${c === "F" ? "✕" : "★"}</div></div>`
+          )
+          .join("") +
+        `</div><div class="control-row"><button id="pwConfirm" class="primary">Confirm</button></div>`;
+      body.querySelectorAll(".peek-face").forEach((el) => {
+        el.onclick = () => {
+          const k = +el.dataset.k;
+          powerDraft.order[k] = powerDraft.order[k] === "F" ? "L" : "F";
+          renderGame();
+        };
+      });
+      $("pwConfirm").onclick = () => resolvePower({ order: powerDraft.order.slice() });
+    } else if (pp.type === "kill") {
+      body.innerHTML =
+        `<div class="power-title">💀 Kill — <span class="who">${escapeHtml(pres.name)}</span> executes a player</div>` +
+        `<div class="power-field"><label>Who was executed?</label>${aliveSel("pwWho", pp.presidentIdx)}</div>` +
+        `<div class="control-row"><button id="pwHitler" class="primary">They were Hitler</button>` +
+        `<button id="pwNot" class="warn">Not Hitler</button></div>`;
+      $("pwHitler").onclick = () => resolvePower({ killedIdx: +$("pwWho").value, wasHitler: true });
+      $("pwNot").onclick = () => resolvePower({ killedIdx: +$("pwWho").value, wasHitler: false });
+    }
+  }
+
+  function resolvePower(data) {
+    const pp = state.pendingPower;
+    if (!pp) return;
+    const ev = state.events[pp.govIndex];
+    ev.power = Object.assign({ type: pp.type }, data);
+    state.pendingPower = null;
+    powerDraft = null;
+    if (pp.type === "kill" && data.wasHitler) {
+      state.autoResult = { winner: "Liberal", hitlerIdx: data.killedIdx };
+      renderGame();
+      alert("Hitler was executed — Liberals win! Record the result to save.");
+      openEnd();
+      return;
+    }
+    renderGame();
   }
 
   // ------------------------------ animation ----------------------------------
@@ -627,7 +780,7 @@
     if (seat && slot) flyFromTo(seat.getBoundingClientRect(), slot.getBoundingClientRect(), type);
   }
   function animateChaos(type) {
-    const src = $("drawPile");
+    const src = document.querySelector("#drawCol .pile-card");
     const slot = slotForType(type);
     if (src && slot) flyFromTo(src.getBoundingClientRect(), slot.getBoundingClientRect(), type);
   }
@@ -651,6 +804,11 @@
       };
       wrap.appendChild(b);
     });
+    // preselect an auto-determined result (e.g. Hitler executed → Liberal win)
+    if (state.autoResult) {
+      $("selWinner").value = state.autoResult.winner;
+      if (state.autoResult.hitlerIdx != null) $("selHitler").value = state.autoResult.hitlerIdx;
+    }
     show("endScreen");
   }
 
@@ -667,18 +825,17 @@
   }
 
   // ------------------------------ STATS --------------------------------------
-  function renderStats() {
+  function fillStats(gridEl, tbodyEl) {
     const s = Stats.summary();
-    $("summaryGrid").innerHTML = [
+    gridEl.innerHTML = [
       tile(s.totalGames, "Games recorded"),
       tile(s.liberalWins, "Liberal wins"),
       tile(s.fascistWins, "Fascist wins"),
       tile((s.fascistWinRate * 100).toFixed(0) + "%", "Fascist win rate"),
       tile(s.avgGovernments.toFixed(1), "Avg governments / game"),
     ].join("");
-    const tb = $("playerStatsTable").querySelector("tbody");
     const rows = Stats.playerStats();
-    tb.innerHTML = rows.length
+    tbodyEl.innerHTML = rows.length
       ? rows
           .map(
             (p) =>
@@ -688,10 +845,24 @@
           )
           .join("")
       : `<tr><td colspan="8" class="muted">No games recorded yet.</td></tr>`;
+  }
+  function renderStats() {
+    fillStats($("summaryGrid"), $("playerStatsTable").querySelector("tbody"));
     show("statsScreen");
   }
   function tile(big, lbl) {
     return `<div class="stat-tile"><div class="big">${big}</div><div class="lbl">${lbl}</div></div>`;
+  }
+
+  // in-game tab switching (Play / History / Stats)
+  function switchTab(name) {
+    ["play", "history", "stats"].forEach((t) => {
+      $(t + "Tab").classList.toggle("hidden", t !== name);
+    });
+    document.querySelectorAll(".tabbar .tab").forEach((b) => {
+      b.classList.toggle("sel", b.dataset.tab === name);
+    });
+    if (name === "stats") fillStats($("summaryGridInline"), $("playerStatsTableInline").querySelector("tbody"));
   }
 
   // ------------------------------ misc ---------------------------------------
@@ -742,6 +913,10 @@
     $("btnEnd").onclick = openEnd;
     $("btnSaveGame").onclick = saveGame;
     $("btnCancelEnd").onclick = () => show("gameScreen");
+
+    document.querySelectorAll(".tabbar .tab").forEach((b) => {
+      b.onclick = () => switchTab(b.dataset.tab);
+    });
   }
 
   function adjustRoundModFor(roundIdx, delta) {

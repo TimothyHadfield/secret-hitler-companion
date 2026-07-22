@@ -62,6 +62,38 @@ later):
 - **Stats:** browser `localStorage` only for now (key `secretHitler.games.v1`).
 - **Repo:** public (needed for free GitHub Pages).
 
+## Presidential powers (fascist track, by player count)
+When a Fascist policy lands on a powered slot, the game **pauses with a full-screen box**:
+- **Investigation** — pick who was investigated + their party; recorded beside that president
+  as "🔍 name, Liberal/Fascist" (on their seat and in history).
+- **Policy Peek** — three tap-to-toggle cards (Top/Middle/Bottom) set to the claimed order.
+- **Kill** — pick who was executed + whether they were Hitler. Hitler ⇒ Liberals win
+  immediately (end screen preset). Otherwise the player gets a 💀, is skipped in all future
+  elections, and can't be Chancellor.
+- **Special Election** — pick the next President; normal rotation resumes after their turn.
+Turn order, deaths, and the special-election detour are **fully derived from the event log**
+(so Undo just works). President/suggested-Chancellor are derived; the form only holds the
+user's Chancellor tap + conflict arm.
+
+## Layout (responsive, no-scroll)
+- The Play screen fits the viewport with **no vertical or horizontal scrolling** on laptop and
+  phone (verified: page scrollWidth/Height == client on a 512-wide emulation). The table fills
+  the available height (absolute-positioned inside its panel); boards/piles/seats scale by %.
+- **Tabs**: Play / History / Stats keep the play screen uncluttered.
+- Double-tap-to-zoom disabled (`touch-action: manipulation` + `maximum-scale=1`).
+- Role indicators are **P/C badges on the avatar** (gold/blue) — no free-floating tiles that
+  could overlap names.
+- Chaos (3 failed elections) and every power use a **full-screen blocking overlay**; submitting
+  is disabled until resolved.
+
+## Board visuals
+- Draw pile (left) and Discard pile (right) are grey face-down **card rectangles** with F/L
+  counts beside them and labels above.
+- Enacted policies are **light grey tiles with a red (fascist) / blue (liberal) border**.
+- Empty fascist slots in **Hitler territory (4th+)** are dark red.
+- Power **names** ("Investigation", "Policy Peek", "Kill", "Special Election") label the slots.
+- "Veto begins/allowed" sign on the 5th fascist slot.
+
 ## Interaction model (current — mobile-first)
 - **President is fixed** each turn (highlighted + gold "President" tile on the table; no
   dropdown). **Tap a player** on the table to set/move the Chancellor (blue tile + highlight

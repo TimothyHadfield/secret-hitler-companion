@@ -26,11 +26,31 @@ body {
   background: radial-gradient(circle at 50% -10%, #241c16 0%, var(--bg) 60%);
   color: var(--ink);
   min-height: 100vh;
+  touch-action: manipulation; /* disable double-tap-to-zoom */
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+  overflow-x: hidden;
 }
 
 h1, h2, h3 { font-family: "Georgia", serif; letter-spacing: 0.3px; }
 
-.wrap { max-width: 1200px; margin: 0 auto; padding: 18px; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 12px; min-height: 100dvh; display: flex; flex-direction: column; }
+.topbar { flex: 0 0 auto; }
+
+/* the active game screen fills the viewport (no page scrolling) */
+#gameScreen:not(.hidden) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; gap: 8px; }
+#gameScreen, #playTab, .tab-panel, .table-panel, .controls, .rounds-bar { min-width: 0; max-width: 100%; }
+.controls, .ratio-pick { overflow: hidden; }
+.turn-info { overflow-wrap: anywhere; }
+.tabbar { display: flex; gap: 6px; flex: 0 0 auto; }
+.tab { padding: 7px 16px; border-radius: 8px 8px 0 0; background: var(--panel-2); font-weight: 600; }
+.tab.sel { background: var(--panel); border-color: var(--gold); color: var(--gold); }
+.tab-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.tab-panel.hidden { display: none; }
+#historyTab, #statsTab { overflow: auto; }
+#playTab .table-panel { flex: 1 1 auto; min-height: 0; padding: 4px; position: relative; overflow: hidden; }
+#playTab .table-area { position: absolute; inset: 4px; width: auto; height: auto; aspect-ratio: auto; max-height: none; margin: 0; }
+#playTab .rounds-bar, #playTab .controls { flex: 0 0 auto; margin: 0; }
 
 .topbar {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
@@ -89,7 +109,11 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 }
 .seatNode.pres .avatar { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(217,164,65,0.35); }
 .seatNode.chan .avatar { border-color: var(--lib-2); box-shadow: 0 0 0 3px rgba(69,184,214,0.35); }
-.seatNode.dead .avatar { opacity: 0.35; text-decoration: line-through; }
+.seatNode.dead .avatar { opacity: 0.4; }
+.seatNode.dead .skull { position: absolute; inset: 0; display: grid; place-items: center; font-size: 26px; z-index: 6; }
+.seatNode .invest-tag { font-size: 10px; color: var(--muted); margin-top: 1px; }
+.seatNode .invest-tag .p-fac { color: var(--fac-2); font-weight: 700; }
+.seatNode .invest-tag .p-lib { color: var(--lib-2); font-weight: 700; }
 .seatNode .badge { position: absolute; top: -6px; right: -6px; font-size: 13px; }
 .seatNode .name { font-size: 13px; font-weight: 600; }
 
@@ -105,9 +129,24 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 /* ---------- Secret-Hitler-style boards ---------- */
 .center-boards {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: 42%; min-width: 210px; max-width: 360px; display: grid; gap: 7px; z-index: 3;
+  width: 60%; min-width: 250px; max-width: 460px; display: flex; align-items: center;
+  justify-content: center; gap: 6px; z-index: 3;
 }
+.boards-col { flex: 1 1 auto; display: grid; gap: 7px; min-width: 0; }
 .sh-board { border-radius: 9px; padding: 6px 7px 7px; border: 2px solid rgba(0,0,0,0.5); box-shadow: var(--shadow); }
+
+/* draw / discard piles as face-down card rectangles */
+.pile-col { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.pile-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink); }
+.pile-body { display: flex; align-items: center; gap: 4px; }
+.pile-card {
+  width: 26px; height: 37px; border-radius: 4px;
+  background: repeating-linear-gradient(45deg, #8f8f8f, #8f8f8f 3px, #7c7c7c 3px, #7c7c7c 6px);
+  border: 1px solid #5a5a5a; box-shadow: 1px 1px 0 #6b6b6b, 2px 2px 0 #5c5c5c, 3px 3px 5px rgba(0,0,0,0.5);
+}
+.pile-counts { display: flex; flex-direction: column; gap: 1px; font-size: 11px; font-weight: 700; line-height: 1.1; }
+.pile-counts .cf { color: var(--fac-2); }
+.pile-counts .cl { color: var(--lib-2); }
 .sh-board.fascist { background: linear-gradient(150deg, #7c2417 0%, #b5321f 45%, #46201a 100%); }
 .sh-board.liberal { background: linear-gradient(150deg, #14607a 0%, #1f8fb0 45%, #123a49 100%); }
 .sh-board-head { font-family: Georgia, serif; font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #fff2e0; margin-bottom: 6px; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
@@ -115,37 +154,45 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .sh-emblem.fac { background: #1a1a1a; color: #e0553c; }
 .sh-emblem.lib { background: #fff; color: #14607a; }
 
-.sh-powers { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; margin-bottom: 3px; }
-.sh-power { text-align: center; font-size: 13px; height: 18px; line-height: 18px; color: #ffe9c2; opacity: 0.9; }
-.sh-power.empty { opacity: 0.15; }
+.sh-powers { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; margin-bottom: 3px; }
+.sh-power {
+  text-align: center; font-size: 7px; line-height: 1.05; min-height: 18px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.2px; color: #ffe9c2; display: flex;
+  align-items: flex-end; justify-content: center; padding: 0 1px;
+}
+.sh-power.empty { opacity: 0; }
 
-.sh-track { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; }
+.sh-track { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; }
 .sh-slot {
   aspect-ratio: 5 / 7; border-radius: 5px; border: 1px dashed rgba(255,255,255,0.35);
   background: rgba(0,0,0,0.22); display: grid; place-items: center;
   position: relative; overflow: hidden;
 }
+/* empty fascist slots inside "Hitler territory" (3+ fascist policies) */
+.sh-slot.hitler { background: #4a0d07; border-color: #7c1a10; }
 .sh-slot.win { border-style: solid; border-color: var(--gold); }
-.sh-slot .win-x { color: rgba(255,255,255,0.4); font-weight: 800; font-size: 12px; }
+.sh-slot .win-x { color: rgba(255,255,255,0.4); font-weight: 800; font-size: 10px; }
 
-/* policy cards on the tracks + fly card */
+/* enacted policy tiles: light grey with a coloured border */
 .policy-card {
   position: absolute; inset: 0; border-radius: 4px; display: grid; place-items: center;
-  font-weight: 800; font-family: Georgia, serif; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.6);
-  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.18), 0 2px 5px rgba(0,0,0,0.5);
+  font-weight: 800; font-family: Georgia, serif; background: #d9d6cf;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
 }
-.policy-card.F { background: linear-gradient(160deg, #e0553c, #a52a1c 70%, #6b1d13); }
-.policy-card.L { background: linear-gradient(160deg, #45b8d6, #1f8fb0 70%, #124d61); }
+.policy-card.F { border: 3px solid var(--fac); }
+.policy-card.L { border: 3px solid var(--lib); }
 .policy-card .glyph { font-size: 15px; }
+.policy-card.F .glyph { color: var(--fac); }
+.policy-card.L .glyph { color: var(--lib); }
 
 .fly-card {
-  position: fixed; width: 30px; height: 42px; border-radius: 5px; z-index: 999;
+  position: fixed; width: 28px; height: 39px; border-radius: 5px; z-index: 999; background: #d9d6cf;
   transition: transform 0.72s cubic-bezier(.5,-0.2,.3,1.2), opacity 0.72s ease;
-  pointer-events: none; display: grid; place-items: center; color: #fff; font-weight: 800;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.6), inset 0 0 0 2px rgba(255,255,255,0.2);
+  pointer-events: none; display: grid; place-items: center; font-weight: 800;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.6);
 }
-.fly-card.F { background: linear-gradient(160deg, #e0553c, #a52a1c); }
-.fly-card.L { background: linear-gradient(160deg, #45b8d6, #1f8fb0); }
+.fly-card.F { border: 3px solid var(--fac); color: var(--fac); }
+.fly-card.L { border: 3px solid var(--lib); color: var(--lib); }
 @keyframes slotpop { 0% { transform: scale(0.4); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
 .policy-card.pop { animation: slotpop 0.28s ease-out; }
 
@@ -227,16 +274,74 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .conflict-btn:hover:not(:disabled) { background: var(--fac); border-color: var(--fac-2); color: #fff; }
 .conflict-btn.on { background: var(--fac); border-color: #fff; color: #fff; font-weight: 700; }
 
+/* ---------- Full-screen blocking overlays (chaos / powers) ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 500; display: grid; place-items: center; padding: 16px;
+  background: rgba(6, 4, 3, 0.82); backdrop-filter: blur(2px);
+}
+.overlay.hidden { display: none; }
+.overlay-box {
+  background: var(--panel); border: 2px solid var(--gold); border-radius: 14px;
+  padding: 20px; max-width: 460px; width: 100%; box-shadow: var(--shadow); max-height: 90dvh; overflow: auto;
+}
+
+/* role badge on the avatar (replaces free-floating tiles; never overlaps names) */
+.seatNode .role-badge {
+  position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px; font-weight: 800; z-index: 7;
+  border: 2px solid var(--bg); box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+.seatNode .role-badge.p { background: var(--gold); color: #241a08; }
+.seatNode .role-badge.c { background: var(--lib-2); color: #06222b; }
+.seatNode .name {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------- Presidential power modal ---------- */
+.power-title { font-family: Georgia, serif; font-size: 17px; font-weight: 700; color: var(--gold); margin-bottom: 8px; }
+.power-title .who { color: var(--ink); }
+.power-field { margin: 10px 0; }
+.peek-cards { display: flex; gap: 12px; justify-content: center; margin: 12px 0; }
+.peek-card { text-align: center; }
+.peek-card .peek-pos { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 4px; }
+.peek-card .peek-face {
+  width: 52px; height: 74px; border-radius: 6px; background: #d9d6cf; display: grid; place-items: center;
+  font-size: 24px; font-weight: 800; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,0.5); user-select: none;
+}
+.peek-card .peek-face.F { border: 4px solid var(--fac); color: var(--fac); }
+.peek-card .peek-face.L { border: 4px solid var(--lib); color: var(--lib); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; }
+.seg button.sel.F { background: var(--fac); color: #fff; }
+.seg button.sel.L { background: var(--lib); color: #fff; }
+
 /* ---------- Mobile ---------- */
 @media (max-width: 640px) {
-  .wrap { padding: 10px; }
-  .table-area { aspect-ratio: 1 / 1; }
-  .center-boards { width: 48%; min-width: 150px; }
-  .seatNode { width: 74px; }
-  .seatNode .avatar { width: 38px; height: 38px; }
-  .ratio-btn .ratio-name { font-size: 13px; }
-  .ratio-btn .ratio-sub { font-size: 10px; }
-  .topbar h1 { font-size: 20px; }
+  .wrap { padding: 8px; }
+  .center-boards { width: 58%; min-width: 0; gap: 2px; }
+  .pile-card { width: 16px; height: 23px; }
+  .pile-counts { font-size: 9px; }
+  .pile-label { font-size: 8px; }
+  .sh-power { font-size: 6px; min-height: 14px; }
+  .seatNode { width: 58px; }
+  .seatNode .avatar { width: 34px; height: 34px; font-size: 12px; }
+  .seatNode .name { font-size: 11px; }
+  .seatNode .miniCard { width: 10px; height: 15px; }
+  .ratio-btn { padding: 9px 3px; }
+  .ratio-btn .ratio-name { font-size: 12px; }
+  .ratio-btn .ratio-sub { font-size: 9px; }
+  .ratio-pct { font-size: 13px; }
+  .control-row button { padding: 7px 10px; font-size: 13px; }
+  .topbar { padding-bottom: 8px; margin-bottom: 8px; gap: 8px; }
+  .topbar h1 { font-size: 17px; }
+  .topbar h1 span { display: none; } /* hide "companion" subtitle */
+  #btnStats { display: none; } /* Stats is a tab on mobile */
+  .round-block { min-width: 88px; padding: 6px 7px; }
+  .tab { padding: 6px 13px; }
+}
+@media (max-height: 560px) {
+  .center-boards { width: 46%; }
+  .seatNode { width: 66px; }
 }
 
 /* ---------- History table ---------- */

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Secret Hitler — Companion</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -35,6 +35,13 @@
 
     <!-- ===================== GAME SCREEN ===================== -->
     <section id="gameScreen" class="hidden">
+      <div class="tabbar">
+        <button class="tab sel" data-tab="play">Play</button>
+        <button class="tab" data-tab="history">History</button>
+        <button class="tab" data-tab="stats">Stats</button>
+      </div>
+
+     <div id="playTab" class="tab-panel">
       <!-- per-round blocks: Round N · modifier · bottom cards when the round ends -->
       <div id="roundsBar" class="rounds-bar"></div>
 
@@ -43,15 +50,30 @@
         <div class="table-area" id="tableArea">
           <div class="felt"></div>
           <div class="center-boards">
-            <div class="sh-board fascist" id="facBoard">
-              <div class="sh-powers" id="facPowers"></div>
-              <div class="sh-track" id="facTrack"></div>
+            <div class="pile-col" id="drawCol">
+              <div class="pile-label">Draw</div>
+              <div class="pile-body">
+                <div class="pile-card"></div>
+                <div class="pile-counts" id="drawCounts"></div>
+              </div>
             </div>
-            <div class="sh-board liberal" id="libBoard">
-              <div class="sh-track" id="libTrack"></div>
-              <div class="sh-tracker" id="electionTracker"></div>
+            <div class="boards-col">
+              <div class="sh-board fascist" id="facBoard">
+                <div class="sh-powers" id="facPowers"></div>
+                <div class="sh-track" id="facTrack"></div>
+              </div>
+              <div class="sh-board liberal" id="libBoard">
+                <div class="sh-track" id="libTrack"></div>
+                <div class="sh-tracker" id="electionTracker"></div>
+              </div>
             </div>
-            <div class="piles">Draw <b id="drawPile">—</b> · Discard <b id="discardPile">—</b></div>
+            <div class="pile-col" id="discardCol">
+              <div class="pile-label">Discard</div>
+              <div class="pile-body">
+                <div class="pile-counts" id="discardCounts"></div>
+                <div class="pile-card"></div>
+              </div>
+            </div>
           </div>
           <!-- seat nodes, role tiles + fly cards injected here -->
         </div>
@@ -68,19 +90,10 @@
           <button id="btnEnd" class="ghost">End game</button>
         </div>
       </div>
+     </div><!-- /playTab -->
 
-      <!-- chaos prompt (3 failed elections) -->
-      <div id="chaosPrompt" class="panel hidden" style="margin-top:12px;border-color:var(--gold)">
-        <b>⚠ Three failed elections — the top policy is enacted automatically (Chaos).</b>
-        <span class="muted">What was the top-decked policy?</span>
-        <div class="row" style="margin-top:8px">
-          <button id="chaosLib" class="primary" style="background:var(--lib);border-color:var(--lib-2)">Liberal</button>
-          <button id="chaosFac" class="primary">Fascist</button>
-        </div>
-      </div>
-
-      <!-- history -->
-      <div class="panel" style="margin-top:16px">
+     <div id="historyTab" class="tab-panel hidden">
+      <div class="panel">
         <h3 style="margin-top:0">History <span class="muted" style="font-size:13px">(retrospective odds update as the round unfolds)</span></h3>
         <div style="overflow-x:auto">
           <table class="hist" id="histTable">
@@ -90,6 +103,41 @@
             <tbody></tbody>
           </table>
         </div>
+      </div>
+     </div><!-- /historyTab -->
+
+     <div id="statsTab" class="tab-panel hidden">
+      <div class="panel">
+        <h3 style="margin-top:0">Cross-game summary</h3>
+        <div class="statgrid" id="summaryGridInline"></div>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <h3 style="margin-top:0">Player statistics</h3>
+        <div style="overflow-x:auto">
+          <table class="hist" id="playerStatsTableInline">
+            <thead>
+              <tr><th>Player</th><th>Games</th><th>Wins</th><th>Win %</th><th>Pres.</th><th>Chanc.</th><th>As Hitler</th><th>Conflicts</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+     </div><!-- /statsTab -->
+
+      <!-- full-screen blocking overlays -->
+      <div id="chaosPrompt" class="overlay hidden">
+        <div class="overlay-box">
+          <div class="power-title">⚠ Three failed elections</div>
+          <p>The top policy is enacted automatically (Chaos). What was the top-decked policy?</p>
+          <div class="control-row">
+            <button id="chaosLib" class="primary" style="background:var(--lib);border-color:var(--lib-2)">Liberal</button>
+            <button id="chaosFac" class="primary">Fascist</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="powerModal" class="overlay hidden">
+        <div class="overlay-box" id="powerBody"></div>
       </div>
     </section>
 

@@ -128,3 +128,36 @@ principle, not literal numbers.
   chaos, undo) — **passed, no runtime errors**.
 
 Board visuals remain original stylized CSS (colours/emoji/shapes), not the game's printed art.
+
+---
+
+## Session 4 — 2026-07-22 — Board visuals + presidential powers + responsive/no-scroll
+
+**User asked for (batch):**
+- Draw pile on the left / Discard on the right as grey face-down **card rectangles** with F/L
+  counts beside them and labels above.
+- Enacted policy positions **light grey with red/blue borders**; empty fascist **Hitler-
+  territory** slots dark red so it's clear when Hitler can win.
+- Label the powers ("Investigation", "Policy Peek", "Kill", "Special Election") on the slots.
+- **Automatically pause to fulfil each power** with a question box:
+  Kill (who + Hitler? → Liberal win or 💀 + skip), Investigation (who + party, recorded by the
+  presidency), Policy Peek (3 tap-toggle cards Top/Middle/Bottom), Special Election (pick next
+  president, then order resumes).
+- **Then, second batch:** fit the layout to laptop AND iPhone with **no scrolling**; add a
+  **tab** format for History/Stats; prevent iPhone **double-tap zoom**; make the 3-failed-
+  elections box **cover the screen** and block submitting; ensure **no label covers another**
+  (abbreviate to P/C or use a crown).
+
+**What I built:**
+- Restructured the centre area: grey draw/discard card piles (left/right) with counts + labels.
+- Restyled slots (light-grey + coloured border; dark-red Hitler territory) and put power
+  **names** above the fascist slots.
+- **Refactored turn state to be fully derived from the event log** — president, suggested
+  chancellor, deaths, and the special-election detour — so powers/undo stay consistent.
+- Added the four **power overlays** with full effects (kill → death/skip/skull or Liberal win;
+  investigation recorded by presidency; policy peek order; special election next-president).
+- Responsive **flex/vh no-scroll layout** with **Play/History/Stats tabs**; disabled double-tap
+  zoom; chaos + powers are **full-screen blocking overlays**; role indicators are **P/C avatar
+  badges** (no overlapping tiles).
+- Verified in headless Chrome: all powers/tabs/overlay flows pass; measured **no vertical or
+  horizontal overflow**; captured phone + laptop screenshots to confirm the layout.
