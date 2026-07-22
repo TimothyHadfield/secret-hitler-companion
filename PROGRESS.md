@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-22 (after session 10)._
+_Last updated: 2026-07-22 (after session 11)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -125,14 +125,26 @@ table game, not a game engine. Feature pillars:
     `translate(-50%,-100%)`), so a top player with 2+ presidencies never covers the board;
     bottom/side seats grow downward. Avatar+name are in `.seat-head`, presidency rows in
     `.seat-pres`.
+  - **Every seat reserves room for 3 presidencies.** `.seat-pres` has `max-height: var(--pres-slot)`
+    (82px desktop / 78px phone) wrapping a `.pres-stack`; `fitPresStacks()` measures each stack
+    after render and applies a `scale()` when it is taller **or wider** than the slot — so a 3rd
+    presidency (or long detail text on a narrow phone seat) shrinks to fit rather than clipping.
+    The board is shifted up and seats pulled clear (desktop TOPY 24% / BOTY 74%; phone bottom
+    seats at BOTY 72%, **straddling the felt's bottom edge**) so a full slot always fits.
+- **Rounds bar placement is breakpoint-dependent** (`placeRoundsBar()` moves the single
+  `#roundsBar` node): above the table on phones (short blocks → headroom for the top seats),
+  and inside `#roundsSlot` in the **right control column above the ratio buttons** on desktop.
+  Each round block is one compact row — `Round N` · inline finished-round bottom cards (no
+  "bottom" label) · `− mod +`.
 - **President is fixed** each turn (gold **P** badge on the avatar). **Tap a player** to set/move
   the Chancellor (blue **C** badge). No dropdowns.
 - **Clicking a ratio auto-submits** the presidency; each ratio button shows the **draw
   probability above it**. Ratios: **Coal (3F) / Golden (2F1L) / Silver (1F2L) / Bronze (3L)** on a
   red→blue scale. Button highlight is blurred after submit so it doesn't carry over.
 - **Conflict** is an arm toggle; **Failed presidency** and **Undo** sit with the controls.
-- **Per-round blocks** across the top: "Round N" + its modifier stepper; once a round ends, its
-  bottom cards show beneath it and the next round's block appears.
+- **Per-round blocks** (see rounds-bar placement above): "Round N" + its modifier stepper, with a
+  finished round's bottom cards shown inline to the right of the title; the next round's block
+  appears once a round ends.
 - **Page scroll/drag is locked** (`html,body{overflow:hidden}` + `body{position:fixed;inset:0}` +
   `overscroll-behavior:none`); double-tap-zoom disabled. Non-game screens scroll internally.
 

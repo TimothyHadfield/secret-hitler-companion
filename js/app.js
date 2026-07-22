@@ -400,7 +400,9 @@
     $("goBack").onclick = undoLast;
   }
 
-  // per-round blocks at the top: Round N + its modifier; bottom cards once ended
+  // per-round blocks: "Round N" + finished-round bottom cards inline to its right,
+  // with the modifier stepper below. (No "bottom" label — kept compact so it fits the
+  // desktop side column and leaves vertical room for the seats on phones.)
   function renderRounds(d) {
     const bar = $("roundsBar");
     bar.innerHTML = "";
@@ -413,23 +415,39 @@
         const cards = [];
         for (let k = 0; k < r.leftover; k++) cards.push(k < r.bottomLibs ? "L" : "F");
         bottom =
-          `<div class="round-bottom">` +
+          `<div class="round-bottom" title="bottom cards">` +
           cards.map((c) => `<span class="miniCard ${c}"></span>`).join("") +
-          `</div><div class="round-bottom-label">bottom</div>`;
+          `</div>`;
       }
       block.innerHTML =
-        `<div class="round-title">Round ${r.index + 1}</div>` +
+        `<div class="round-head"><div class="round-title">Round ${r.index + 1}</div>${bottom}</div>` +
         `<div class="round-mod">` +
         `<button data-r="${r.index}" data-d="-1" ${r.mod <= r.modLo ? "disabled" : ""}>−</button>` +
         `<b>${fmtSigned(r.mod)}</b>` +
         `<button data-r="${r.index}" data-d="1" ${r.mod >= r.modHi ? "disabled" : ""}>+</button>` +
-        `</div>` +
-        bottom;
+        `</div>`;
       bar.appendChild(block);
     });
     bar.querySelectorAll("button[data-r]").forEach((b) => {
       b.onclick = () => adjustRoundModFor(+b.dataset.r, +b.dataset.d);
     });
+    placeRoundsBar();
+  }
+
+  // The rounds bar lives above the table on phones (short blocks, more room for the
+  // top seats) but moves into the right-hand control column on wider screens (above
+  // the policy options), freeing the table's top band for seats + presidencies.
+  function placeRoundsBar() {
+    const bar = $("roundsBar");
+    const slot = $("roundsSlot");
+    const playTab = $("playTab");
+    if (!bar || !slot || !playTab) return;
+    const desktop = window.innerWidth > 640;
+    if (desktop) {
+      if (bar.parentElement !== slot) slot.appendChild(bar);
+    } else if (bar.parentElement !== playTab || playTab.firstElementChild !== bar) {
+      playTab.insertBefore(bar, playTab.firstElementChild);
+    }
   }
 
   // Seat placement around a rectangular table.
@@ -455,10 +473,13 @@
       ["top", "bottom", "left", "right"].slice(0, n % 4).forEach((e) => counts[e]++);
     }
 
-    const TOPY = mobile ? 21 : 19, BOTY = mobile ? 85 : 84;
-    const LEFTX = 8, RIGHTX = 92;
+    // Seats are pulled well clear of the board so each has room for a full
+    // 3-presidency stack (top seats grow up, everyone else grows down). On phones
+    // the bottom seats straddle the felt's bottom edge to free space beneath them.
+    const TOPY = mobile ? 25 : 24, BOTY = mobile ? 72 : 74;
+    const LEFTX = 9, RIGHTX = 91;
     const xLo = mobile ? 11 : 26, xHi = mobile ? 89 : 74; // keep off the corners
-    const yLo = 36, yHi = 64; // side seats stay in the middle band
+    const yLo = 40, yHi = 58; // side seats stay in the middle band
 
     let i = 0;
     along(counts.top, xLo, xHi).forEach((x) => (seats[i++] = { x, y: TOPY, edge: "top" }));
@@ -525,8 +546,27 @@
         }</div>` +
         `<div class="name">${escapeHtml(p.name)}${i === state.firstPres ? " ·①" : ""}</div>` +
         `</div>` +
-        `<div class="seat-pres">${extra}</div>`;
+        `<div class="seat-pres"><div class="pres-stack">${extra}</div></div>`;
       area.appendChild(node);
+    });
+    // Each seat reserves room for 3 presidencies; if a seat's stack is taller than
+    // that slot (a 3rd presidency, or tall detail chips), shrink it to fit so no
+    // presidency data is ever clipped or lost.
+    fitPresStacks(area);
+  }
+
+  function fitPresStacks(area) {
+    area.querySelectorAll(".seat-pres").forEach((box) => {
+      const stack = box.firstElementChild;
+      if (!stack) return;
+      stack.style.transform = "";
+      const slotH = box.clientHeight; // reserved (max) height, from CSS
+      const boxW = box.clientWidth; // = seat width
+      const natH = stack.scrollHeight, natW = stack.scrollWidth;
+      let k = 1;
+      if (natH > slotH + 0.5 && natH > 0) k = Math.min(k, slotH / natH);
+      if (natW > boxW + 0.5 && natW > 0) k = Math.min(k, boxW / natW);
+      if (k < 0.999) stack.style.transform = "scale(" + k + ")";
     });
   }
 
@@ -1221,10 +1261,11 @@
     renderGame();
   }
 
-  // re-lay the seats when the screen crosses the phone/desktop breakpoint
+  // re-lay the seats + relocate the rounds bar when crossing the phone/desktop breakpoint
   window.addEventListener("resize", () => {
     if (state && Array.isArray(state.players) && !$("gameScreen").classList.contains("hidden")) {
       renderTable(derive());
+      placeRoundsBar();
     }
   });
 

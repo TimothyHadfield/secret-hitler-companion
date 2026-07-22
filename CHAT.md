@@ -316,3 +316,39 @@ refreshes, closing/reopening, and redeploys.
   512px mobile viewport, plus a **geometry probe** confirming the piles hug both edges with no
   overflow, and a seeded game where the top seat has **2 presidencies** — they grow up and never
   cover the board.
+
+---
+
+## Session 11 — 2026-07-22 — Presidency spacing (room for 3 per seat)
+
+**User asked for:**
+- Desktop: **bottom-row players had no room** for presidency info; a single player's multiple
+  presidencies sometimes got covered/lost. Fix by moving/reshaping the round data + board.
+- iPhone: the finished-round **bottom cards** should lose the "bottom" label and sit **to the
+  right of the "Round #"** label (shorter blocks → more room above the top players). Also **shift
+  the bottom players up** so their circle cuts halfway through the felt's bottom edge, freeing
+  space below for their presidencies.
+- Laptop: move the **3 round boxes to the right column above the policy options**, and shift the
+  **board up** so bottom players have room.
+- **Every seat should always have space for 3 presidencies.** With 1–2 they use the space at full
+  size; a **3rd shrinks all of them to fit** the reserved slot (nothing lost).
+
+**What I changed:**
+- **Rounds bar relocated by breakpoint** (`placeRoundsBar()` moves the one `#roundsBar` node):
+  phones keep it above the table (shorter blocks = more headroom); desktop moves it into a new
+  `#roundsSlot` in the right control column, above the ratio buttons.
+- **Round blocks are now one compact row:** `Round N` · inline bottom cards (no "bottom" label) ·
+  `− mod +`. On desktop they stack full-width in the column (capped at 34vh, scrolls if a game
+  has many rounds); the control column can scroll on very short laptops so no button is clipped.
+- **Reserved 3-presidency slot per seat:** `.seat-pres` has `max-height: var(--pres-slot)` (82px
+  desktop / 78px phone) with the rows in a `.pres-stack`. New `fitPresStacks()` measures each
+  stack and applies a `scale()` when it's taller **or wider** than the slot, so a 3rd presidency
+  (or long detail text on a narrow phone seat) shrinks to fit instead of clipping.
+- **Board shifted up + seats pulled clear:** desktop felt inset `25% 15% 27% 15%`, seats at
+  TOPY 24% / BOTY 74% so top seats (grow up) and bottom seats (grow down) each get a full slot.
+  Phone felt inset `26% 1.5% 24% 1.5%` with bottom seats at BOTY 72% so they **straddle the felt's
+  bottom edge** with the slot below them.
+- Verified with headless screenshots at **n=5/9/10**, desktop **1280×760** and short **1366×640**,
+  and phone **512×900**, plus a seeded game where the top seat holds **3 presidencies** (they
+  grow up, scaled to fit) and a bottom seat holds 2 — nothing clipped, DOM + no-JS-error checks
+  pass.
