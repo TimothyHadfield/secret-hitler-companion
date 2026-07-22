@@ -46,3 +46,46 @@ and our collaboration evolved.
 - Flagged that per-government vs round-level modifiers overlap; kept both, documented it.
 - Flagged a future enhancement: a posterior on *whether* a claim is honest (prior over lies),
   vs the current P(hand | assumed lies).
+
+---
+
+## Session 2 — 2026-07-21 — Gameplay upgrades
+
+**User asked for (batch of changes):**
+1. Chancellor auto-rotates to the next person after the first is assigned.
+2. A **Failed presidency** button → election tracker +1; at 3, auto top-deck the top card
+   (chaos), recorded by the player with an ✕.
+3. Redesign the center boards/cards to look like the real game; **animate** the enacted policy
+   card flying from the President who played it.
+4. Don't let the user set an **impossible modifier** (bounded by #presidents in the round and
+   by confirmed liberal/fascist totals). *(User example cited "7 liberals total" — see note.)*
+5. Stop asking which policy was played — **infer** it (Coal→F, Bronze→L, Golden/Silver→L),
+   and add a **Conflict** button (Golden/Silver only) that forces a Fascist and labels it
+   "conflict (chancellor name)".
+6. Rename the ratios to **Golden (2F/1L), Silver (1F/2L), Bronze (3L), Coal (3F)** with metal
+   label colours, and a box background that scales full red → full blue by liberal ratio.
+7. Remove the per-presidency lie modifier (round-level only).
+- **Mid-batch additions:** (a) a **Back/Undo** button to reverse the last presidency; (b) if an
+  event is impossible at the current modifier (0% — e.g. drew 3 fascists when ≤2 were left),
+  **auto-adjust the modifier** to account for the discrepancy.
+
+**What I built/changed:**
+- Reworked state to an **event model** (`gov` / `fail` / `chaos`) in `js/app.js`.
+- Chancellor auto-rotation; Failed-presidency + election tracker + automatic chaos top-deck.
+- Redesigned boards (`styles.css`) in an original Secret-Hitler-inspired style + flying policy
+  card animation from the acting President (chaos flies from the draw pile).
+- Ratio buttons Golden/Silver/Bronze/Coal with metal colours + red→blue background scale;
+  removed the enacted-policy question; added the Conflict toggle + history/seat labels.
+- Removed the per-presidency modifier; the round modifier now shifts the pool's effective
+  liberal count. Bounded it to the physically-feasible window (never empty) intersected with a
+  ±(#presidents) plausibility cap; **auto-adjusts** into feasibility when a recorded claim
+  would otherwise be 0%.
+- Added the **Undo last** button (reverses any last event, restores turn state, re-opens the
+  chaos prompt if a chaos was undone).
+- Updated `js/stats.js` to read the event model; added a per-player **conflicts** stat.
+- Re-ran the headless-Chrome end-to-end smoke test (now covering conflict, auto-rotation,
+  fails→chaos, undo, bounds) — **passed, no runtime errors**.
+
+**Note / open question for the user:** the modifier-bounds example mentioned "7 liberals
+total," but the standard deck is **6 Liberal / 11 Fascist** (what the app uses). I implemented
+bounds against the 6-liberal deck. If a different count was intended, flag it and I'll adjust.

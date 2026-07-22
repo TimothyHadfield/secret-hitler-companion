@@ -48,8 +48,8 @@ const Stats = (() => {
         asHitler: 0,
         presidencies: 0,
         chancellorships: 0,
-        modifierSum: 0, // sum of liberal modifiers while President (lie tendency)
-        modifierCount: 0,
+        failedElections: 0,
+        conflicts: 0, // times blamed as Chancellor in a conflict
         libEnactedAsChancellor: 0,
         facEnactedAsChancellor: 0,
       });
@@ -70,32 +70,31 @@ const Stats = (() => {
           (g.result.winner === "Liberal" && !isFascist);
         if (won) s.wins++;
       });
-      for (const gov of g.governments || []) {
-        const pres = g.players[gov.presidentIdx];
-        if (pres) {
-          const s = ensure(pres.name);
-          s.presidencies++;
-          if (typeof gov.modifier === "number") {
-            s.modifierSum += gov.modifier;
-            s.modifierCount++;
-          }
+      // support both the current event model and the legacy `governments` array
+      const events = g.events || g.governments || [];
+      for (const ev of events) {
+        const type = ev.type || "gov";
+        if (type === "fail") {
+          const pres = g.players[ev.presidentIdx];
+          if (pres) ensure(pres.name).failedElections++;
+          continue;
         }
-        const chan = g.players[gov.chancellorIdx];
+        if (type === "chaos") continue;
+        const pres = g.players[ev.presidentIdx];
+        if (pres) ensure(pres.name).presidencies++;
+        const chan = g.players[ev.chancellorIdx];
         if (chan) {
           const s = ensure(chan.name);
           s.chancellorships++;
-          if (gov.enacted === "L") s.libEnactedAsChancellor++;
-          if (gov.enacted === "F") s.facEnactedAsChancellor++;
+          if (ev.conflict) s.conflicts++;
+          if (ev.enacted === "L") s.libEnactedAsChancellor++;
+          if (ev.enacted === "F") s.facEnactedAsChancellor++;
         }
       }
     }
 
     return Object.values(byName)
-      .map((s) => ({
-        ...s,
-        winRate: s.games ? s.wins / s.games : 0,
-        avgModifier: s.modifierCount ? s.modifierSum / s.modifierCount : 0,
-      }))
+      .map((s) => ({ ...s, winRate: s.games ? s.wins / s.games : 0 }))
       .sort((a, b) => b.games - a.games || b.winRate - a.winRate);
   }
 
@@ -105,9 +104,10 @@ const Stats = (() => {
     const finished = games.filter((g) => g.result);
     const fascistWins = finished.filter((g) => g.result.winner === "Fascist").length;
     const liberalWins = finished.filter((g) => g.result.winner === "Liberal").length;
+    const govCount = (g) =>
+      (g.events || g.governments || []).filter((e) => (e.type || "gov") === "gov").length;
     const avgGovs = finished.length
-      ? finished.reduce((a, g) => a + (g.governments ? g.governments.length : 0), 0) /
-        finished.length
+      ? finished.reduce((a, g) => a + govCount(g), 0) / finished.length
       : 0;
     return {
       totalGames: finished.length,

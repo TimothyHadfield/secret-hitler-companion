@@ -1,6 +1,11 @@
 /* ============================================================================
  * app.js — Secret Hitler companion: state, randomization, bookkeeping, UI.
  * Depends on Prob (probability.js) and Stats (stats.js).
+ *
+ * Event model: state.events is an ordered list of mixed events:
+ *   { type:'gov',   presidentIdx, chancellorIdx, claimLibs, conflict, enacted }
+ *   { type:'fail',  presidentIdx }                       // failed election → tracker +1
+ *   { type:'chaos', enacted }                            // top-deck after 3 fails
  * ==========================================================================*/
 
 (() => {
@@ -9,102 +14,195 @@
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
   // ---- Player counts → fascist track powers (see SECRET_HITLER_RULES.md) ----
-  // 6 slots; last is the win. Values are short power labels or "" for none.
   const FAC_POWERS = {
-    5: ["", "", "Peek", "Kill", "Kill", "WIN"],
-    6: ["", "", "Peek", "Kill", "Kill", "WIN"],
-    7: ["", "Invest.", "Sp.Elec", "Kill", "Kill", "WIN"],
-    8: ["", "Invest.", "Sp.Elec", "Kill", "Kill", "WIN"],
-    9: ["Invest.", "Invest.", "Sp.Elec", "Kill", "Kill", "WIN"],
-    10: ["Invest.", "Invest.", "Sp.Elec", "Kill", "Kill", "WIN"],
+    5: ["", "", "peek", "kill", "kill", "win"],
+    6: ["", "", "peek", "kill", "kill", "win"],
+    7: ["", "invest", "special", "kill", "kill", "win"],
+    8: ["", "invest", "special", "kill", "kill", "win"],
+    9: ["invest", "invest", "special", "kill", "kill", "win"],
+    10: ["invest", "invest", "special", "kill", "kill", "win"],
+  };
+  const POWER_ICON = { invest: "🔍", special: "⚡", peek: "👁", kill: "💀", win: "🏆", "": "" };
+  const POWER_TITLE = {
+    invest: "Investigate Loyalty",
+    special: "Special Election",
+    peek: "Policy Peek",
+    kill: "Execution",
+    win: "Fascists win",
+    "": "",
   };
 
+  // ---- Ratio metadata (claim = liberals drawn of 3) ----
+  const RATIOS = [
+    { libs: 0, name: "Coal", cls: "coal", sub: "3F" },
+    { libs: 1, name: "Golden", cls: "golden", sub: "2F / 1L" },
+    { libs: 2, name: "Silver", cls: "silver", sub: "1F / 2L" },
+    { libs: 3, name: "Bronze", cls: "bronze", sub: "3L" },
+  ];
+  // background colour scales full red (0 liberals) → full blue (3 liberals)
+  function ratioColor(libs) {
+    const t = libs / 3;
+    const r = Math.round(181 + (43 - 181) * t);
+    const g = Math.round(50 + (140 - 50) * t);
+    const b = Math.round(31 + (176 - 31) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function inferEnacted(claimLibs, conflict) {
+    if (claimLibs === 0) return "F"; // Coal — only fascists available
+    if (conflict) return "F"; // Chancellor enacted fascist despite a claimed liberal
+    return "L"; // a liberal was available and played
+  }
+
   // ------------------------------ state --------------------------------------
-  let setupPlayers = []; // names before start
-  let state = null; // active game
+  let setupPlayers = [];
+  let state = null;
 
   function newGameState(players, firstPres) {
     return {
-      date: null, // stamped at save time (Date.now unavailable mid-run here)
+      date: null,
       players: players.map((n) => ({ name: n, dead: false })),
       firstPres,
-      governments: [], // {presidentIdx, chancellorIdx, claimLibs, enacted, modifier}
-      roundMods: {}, // roundIndex -> speculative liberal correction
-      form: { presIdx: firstPres, chanIdx: null, claimLibs: 2, enacted: null, modifier: 0 },
+      events: [],
+      roundMods: {},
+      lastChanIdx: null, // for chancellor auto-rotation
+      form: { presIdx: firstPres, chanIdx: null, claimLibs: null, conflict: false },
+      pendingChaos: false,
       result: null,
     };
   }
 
   // ---------------------- derived bookkeeping --------------------------------
-  // Walks recorded governments, reconstructing pile flow, rounds, and per-gov
-  // true hands + retrospective probabilities.
   function derive() {
-    let facEnacted = 0,
-      libEnacted = 0,
+    let fac = 0,
+      lib = 0,
       draw = 17,
-      round = 0;
-    const rounds = [{ index: 0, startN: 17, startL: 6, govs: [] }];
+      round = 0,
+      tracker = 0;
+    const mkRound = (index, startN, startL) => ({
+      index,
+      startN,
+      startL,
+      govs: [],
+      chaosLib: 0,
+      chaosFac: 0,
+    });
+    const rounds = [mkRound(0, 17, 6)];
     const gi = [];
+    const evInfo = [];
+    const lastGovByPlayer = {};
+    const failsByPlayer = {};
 
-    state.governments.forEach((g, n) => {
-      if (draw < 3) {
-        // reshuffle: discard merges back; new pool = all non-enacted cards
-        round++;
-        draw = 17 - (facEnacted + libEnacted);
-        rounds.push({ index: round, startN: draw, startL: 6 - libEnacted, govs: [] });
+    state.events.forEach((ev, n) => {
+      if (ev.type === "fail") {
+        tracker++;
+        failsByPlayer[ev.presidentIdx] = (failsByPlayer[ev.presidentIdx] || 0) + 1;
+        evInfo.push({ type: "fail", presidentIdx: ev.presidentIdx, tracker });
+        return;
       }
-      const trueLibs = clamp(g.claimLibs - g.modifier, 0, 3);
+      if (ev.type === "chaos") {
+        if (draw < 1) {
+          round++;
+          draw = 17 - (fac + lib);
+          rounds.push(mkRound(round, draw, 6 - lib));
+        }
+        draw -= 1;
+        if (ev.enacted === "L") { lib++; rounds[round].chaosLib++; }
+        else { fac++; rounds[round].chaosFac++; }
+        tracker = 0;
+        evInfo.push({ type: "chaos", enacted: ev.enacted });
+        return;
+      }
+      // gov
+      if (draw < 3) {
+        round++;
+        draw = 17 - (fac + lib);
+        rounds.push(mkRound(round, draw, 6 - lib));
+      }
+      const enacted = ev.enacted;
       const info = {
+        type: "gov",
         n,
         round,
-        trueLibs,
-        drawBefore: draw,
+        libs: ev.claimLibs,
+        conflict: !!ev.conflict,
+        enacted,
+        presidentIdx: ev.presidentIdx,
+        chancellorIdx: ev.chancellorIdx,
         prob: null,
       };
-      gi.push(info);
-      rounds[round].govs.push(n);
+      const giIdx = gi.push(info) - 1;
+      rounds[round].govs.push(giIdx);
+      lastGovByPlayer[ev.presidentIdx] = info;
+      evInfo.push({ type: "gov", giIdx });
       draw -= 3;
-      if (g.enacted === "L") libEnacted++;
-      else if (g.enacted === "F") facEnacted++;
+      if (enacted === "L") lib++;
+      else fac++;
+      tracker = 0;
     });
 
-    // retrospective probability per government within its round
+    // retrospective probability + modifier bounds, per round
     rounds.forEach((r) => {
-      const mod = state.roundMods[r.index] || 0;
-      const effStartL = clamp(r.startL + mod, 0, r.startN);
-      const libsArr = r.govs.map((n) => gi[n].trueLibs);
-      r.govs.forEach((n, localIdx) => {
-        gi[n].prob = Prob.retrospectiveProb(r.startN, effStartL, libsArr, localIdx);
+      const g = r.govs.length;
+      const claims = r.govs.map((idx) => gi[idx].libs);
+      const claimSum = claims.reduce((a, b) => a + b, 0);
+      const R = r.startN - 3 * g;
+      r.leftover = R;
+      r.claimSum = claimSum;
+      // Physical feasibility window: keeps every claim in the round possible
+      // (0 <= liberals drawn <= pool liberals, and bottom cards in [0,R]).
+      // This window is never empty, so a feasible modifier always exists.
+      const physLo = g ? Math.max(claimSum - r.startL, -r.startL) : 0;
+      const physHi = g ? Math.min(claimSum - r.startL + R, r.startN - r.startL) : 0;
+      // Plausibility cap: each presidency can lie at most ±1 (# presidents so far).
+      const capLo = Math.max(physLo, -g);
+      const capHi = Math.min(physHi, g);
+      const raw = state.roundMods[r.index] || 0;
+      if (capLo <= capHi) {
+        r.modLo = capLo;
+        r.modHi = capHi;
+        r.forced = false;
+      } else {
+        // The ±(#presidents) cap can't reach a feasible value — an impossible
+        // claim was recorded, so we auto-adjust beyond the plausible cap.
+        r.modLo = physLo;
+        r.modHi = physHi;
+        r.forced = true;
+      }
+      r.mod = clamp(raw, r.modLo, r.modHi);
+      // Persist the auto-adjusted (feasible) value so the stepper reflects it
+      // and no government is ever shown at an impossible 0%.
+      state.roundMods[r.index] = r.mod;
+      r.effL = clamp(r.startL + r.mod, 0, r.startN);
+      r.govs.forEach((idx, localIdx) => {
+        gi[idx].prob = Prob.retrospectiveProb(r.startN, r.effL, claims, localIdx);
       });
-      // bottom (leftover) cards for a *completed* round
-      r.leftover = r.startN - 3 * r.govs.length;
-      const drawn = libsArr.reduce((a, b) => a + b, 0);
-      r.bottomLibs = clamp(effStartL - drawn, 0, r.leftover);
+      r.bottomLibs = clamp(r.effL - claimSum, 0, R);
     });
 
-    // current draw & discard composition (within the active round)
+    // current draw / discard composition
     const cur = rounds[round];
-    const curMod = state.roundMods[round] || 0;
-    const curStartL = clamp(cur.startL + curMod, 0, cur.startN);
-    const libsDrawn = cur.govs.reduce((a, n) => a + gi[n].trueLibs, 0);
-    const drawLibs = clamp(curStartL - libsDrawn, 0, draw);
+    const drawLibs = clamp(cur.effL - cur.claimSum - cur.chaosLib, 0, draw);
     const drawFasc = draw - drawLibs;
-    const libEnactedInRound = cur.govs.filter((n) => state.governments[n].enacted === "L").length;
-    const facEnactedInRound = cur.govs.filter((n) => state.governments[n].enacted === "F").length;
-    const discardLibs = libsDrawn - libEnactedInRound;
-    const discardFasc = cur.govs.length * 3 - libsDrawn - facEnactedInRound;
+    const libEnactedGov = cur.govs.filter((idx) => gi[idx].enacted === "L").length;
+    const discardLibs = Math.max(0, cur.claimSum - libEnactedGov);
+    const discardFasc = Math.max(0, cur.govs.length * 2 - discardLibs);
 
     return {
-      facEnacted,
-      libEnacted,
+      fac,
+      lib,
       draw,
       round,
+      tracker,
       rounds,
       gi,
+      evInfo,
+      lastGovByPlayer,
+      failsByPlayer,
       drawLibs,
       drawFasc,
-      discardLibs: Math.max(0, discardLibs),
-      discardFasc: Math.max(0, discardFasc),
+      discardLibs,
+      discardFasc,
     };
   }
 
@@ -136,15 +234,12 @@
     const n = setupPlayers.length;
     const ok = n >= 5 && n <= 10;
     $("btnRandomize").disabled = !ok;
-    $("setupHint").textContent = ok
-      ? `${n} players ready.`
-      : `${n} player(s) — need 5 to 10.`;
+    $("setupHint").textContent = ok ? `${n} players ready.` : `${n} player(s) — need 5 to 10.`;
   }
 
   function addPlayer() {
     const v = $("nameInput").value.trim();
-    if (!v) return;
-    if (setupPlayers.length >= 10) return;
+    if (!v || setupPlayers.length >= 10) return;
     setupPlayers.push(v);
     $("nameInput").value = "";
     $("nameInput").focus();
@@ -152,7 +247,6 @@
   }
 
   function shuffle(arr) {
-    // Fisher–Yates. (Math.random is available in the browser at runtime.)
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -173,14 +267,20 @@
   function aliveIdxs() {
     return state.players.map((p, i) => i).filter((i) => !state.players[i].dead);
   }
-
-  function nextPresidentAfter(idx) {
+  function nextAliveAfter(idx) {
     const n = state.players.length;
     for (let step = 1; step <= n; step++) {
       const j = (idx + step) % n;
       if (!state.players[j].dead) return j;
     }
     return idx;
+  }
+  // suggested chancellor: rotates one seat past the last elected chancellor
+  function defaultChancellor(presIdx) {
+    if (state.lastChanIdx === null) return null; // first government: user must choose
+    let c = nextAliveAfter(state.lastChanIdx);
+    if (c === presIdx) c = nextAliveAfter(c);
+    return c;
   }
 
   function renderGame() {
@@ -191,18 +291,13 @@
     renderNextDraw(d);
     renderForm(d);
     renderHistory(d);
+    $("chaosPrompt").classList.toggle("hidden", !state.pendingChaos);
   }
 
   function renderTable(d) {
     const area = $("tableArea");
-    // remove existing seat nodes (keep felt + center-boards)
     area.querySelectorAll(".seatNode").forEach((el) => el.remove());
     const n = state.players.length;
-    // most-recent presidency per player for the mini hand display
-    const lastGovByPlayer = {};
-    d.gi.forEach((info) => {
-      lastGovByPlayer[state.governments[info.n].presidentIdx] = info;
-    });
 
     state.players.forEach((p, i) => {
       const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
@@ -210,210 +305,320 @@
       const y = 50 + 45 * Math.sin(ang);
       const node = document.createElement("div");
       node.className = "seatNode";
-      if (i === d3state().curPres) node.classList.add("pres");
+      node.dataset.seat = i;
+      if (i === state.form.presIdx) node.classList.add("pres");
+      if (i === state.form.chanIdx) node.classList.add("chan");
       if (p.dead) node.classList.add("dead");
       node.style.left = x + "%";
       node.style.top = y + "%";
 
-      const info = lastGovByPlayer[i];
-      let handHtml = "";
+      let badge = "";
+      if (i === state.form.presIdx) badge = "🔨"; // president
+      else if (i === state.form.chanIdx) badge = "🎖";
+
+      const info = d.lastGovByPlayer[i];
+      let extra = "";
       if (info) {
-        const g = state.governments[info.n];
-        const libs = info.trueLibs;
         const cards = [];
-        for (let k = 0; k < 3; k++) cards.push(k < 3 - libs ? "F" : "L");
-        handHtml =
+        for (let k = 0; k < 3; k++) cards.push(k < 3 - info.libs ? "F" : "L");
+        extra +=
           `<div class="miniHand">` +
           cards.map((c) => `<div class="miniCard ${c}"></div>`).join("") +
-          `</div>` +
-          `<div class="odds">${Prob.fmtPct(info.prob)}</div>`;
+          `</div><div class="odds">${Prob.fmtPct(info.prob)}</div>`;
+        if (info.conflict)
+          extra += `<div class="conflict-tag">⚔ conflict</div>`;
       }
+      const fails = d.failsByPlayer[i] || 0;
+      if (fails) extra += `<div class="fail-x">${"✕".repeat(Math.min(fails, 5))}</div>`;
 
       node.innerHTML =
-        `<div class="avatar">${escapeHtml(initials(p.name))}</div>` +
-        `<div class="name">${escapeHtml(p.name)}${
-          i === state.firstPres ? " ·①" : ""
+        `<div class="avatar">${escapeHtml(initials(p.name))}${
+          badge ? `<span class="badge">${badge}</span>` : ""
         }</div>` +
-        handHtml;
+        `<div class="name">${escapeHtml(p.name)}${i === state.firstPres ? " ·①" : ""}</div>` +
+        extra;
       area.appendChild(node);
     });
-  }
-
-  // small helper so renderTable can know the current suggested president
-  function d3state() {
-    return { curPres: state.form.presIdx };
   }
 
   function renderBoards(d) {
     const n = state.players.length;
     const powers = FAC_POWERS[n] || FAC_POWERS[10];
+
+    const pw = $("facPowers");
+    pw.innerHTML = powers
+      .map(
+        (p) =>
+          `<div class="sh-power ${p ? "" : "empty"}" title="${POWER_TITLE[p]}">${
+            POWER_ICON[p] || "·"
+          }</div>`
+      )
+      .join("");
+
     const fac = $("facTrack");
     fac.innerHTML = "";
     for (let i = 0; i < 6; i++) {
       const s = document.createElement("div");
-      s.className = "slot" + (i < d.facEnacted ? " filled F" : "");
-      if (powers[i] && powers[i] !== "WIN") s.classList.add("power");
-      s.title = powers[i] || "";
+      s.className = "sh-slot" + (i === 5 ? " win" : "");
+      if (i < d.fac) s.innerHTML = `<div class="policy-card F"><span class="glyph">✕</span></div>`;
+      else if (i === 5) s.innerHTML = `<span class="win-x">WIN</span>`;
       fac.appendChild(s);
     }
+
     const lib = $("libTrack");
     lib.innerHTML = "";
     for (let i = 0; i < 5; i++) {
       const s = document.createElement("div");
-      s.className = "slot" + (i < d.libEnacted ? " filled L" : "");
+      s.className = "sh-slot" + (i === 4 ? " win" : "");
+      if (i < d.lib) s.innerHTML = `<div class="policy-card L"><span class="glyph">★</span></div>`;
+      else if (i === 4) s.innerHTML = `<span class="win-x">WIN</span>`;
       lib.appendChild(s);
     }
+
+    // election tracker (3 dots; 3rd = chaos)
+    const et = $("electionTracker");
+    et.innerHTML = "";
+    for (let i = 0; i < 3; i++) {
+      const dot = document.createElement("div");
+      dot.className = "sh-dot" + (i < d.tracker ? " on" : "") + (i === 2 && d.tracker >= 3 ? " chaos" : "");
+      et.appendChild(dot);
+    }
+
     $("drawPile").textContent = `${d.draw} (${d.drawFasc}F / ${d.drawLibs}L)`;
     $("discardPile").textContent = `${d.discardFasc + d.discardLibs} (${d.discardFasc}F / ${d.discardLibs}L)`;
-    $("deckReadout").textContent = `Enacted: ${d.facEnacted}F / ${d.libEnacted}L · Pool 17 = 11F/6L`;
+    $("deckReadout").textContent = `Enacted: ${d.fac}F / ${d.lib}L · Deck 17 = 11F/6L`;
   }
 
   function renderRoundBar(d) {
-    $("roundNum").textContent = d.round + 1;
-    $("roundMod").textContent = fmtSigned(state.roundMods[d.round] || 0);
-    // bottom cards: show for the current round only if it is complete (leftover known & <3 draw)
     const r = d.rounds[d.round];
+    $("roundNum").textContent = d.round + 1;
+    $("roundMod").textContent = fmtSigned(r.mod);
+    $("modBounds").textContent =
+      `(${fmtSigned(r.modLo)} … ${fmtSigned(r.modHi)})` + (r.forced ? " • auto-adjusted" : "");
+    $("modMinus").disabled = r.mod <= r.modLo;
+    $("modPlus").disabled = r.mod >= r.modHi;
+
     const wrap = $("bottomCards");
-    if (d.draw < 3 && d.draw >= 0 && r.govs.length > 0) {
+    if (d.draw < 3 && r.govs.length > 0 && r.leftover > 0) {
       const cards = [];
       for (let k = 0; k < r.leftover; k++) cards.push(k < r.bottomLibs ? "L" : "F");
-      wrap.innerHTML = cards.length
-        ? cards.map((c) => `<span class="miniCard ${c}"></span>`).join("")
-        : "none";
+      wrap.innerHTML = cards.map((c) => `<span class="miniCard ${c}"></span>`).join("");
     } else {
       wrap.textContent = "— (round in progress)";
     }
   }
 
   function renderNextDraw(d) {
-    // pool the next president will draw from (reshuffle first if <3 remain)
     let n = d.draw,
       l = d.drawLibs;
     if (n < 3) {
-      n = 17 - (d.facEnacted + d.libEnacted);
-      l = 6 - d.libEnacted;
+      n = 17 - (d.fac + d.lib);
+      l = 6 - d.lib;
     }
-    const dist = Prob.drawDistribution(n, l); // index = liberals: [3F,2F1L,1F2L,3L]
-    const labels = ["3F", "2F·1L", "1F·2L", "3L"]; // index = liberals
-    const wrap = $("nextDraw");
-    wrap.innerHTML = dist
+    const dist = Prob.drawDistribution(n, l); // index = liberals
+    const labels = ["3F", "2F·1L", "1F·2L", "3L"];
+    $("nextDraw").innerHTML = dist
       .map((p, libs) => ({ p, label: labels[libs] }))
-      .reverse() // show most-liberal (3L) first
+      .reverse()
       .map(
-        (o) =>
-          `<div class="nd-item"><div class="p">${Prob.fmtPct(o.p)}</div><div class="l">${o.label}</div></div>`
+        (o) => `<div class="nd-item"><div class="p">${Prob.fmtPct(o.p)}</div><div class="l">${o.label}</div></div>`
       )
       .join("");
   }
 
   function renderForm(d) {
     const alive = aliveIdxs();
-    const selP = $("selPres");
-    const selC = $("selChan");
     const optable = (idx) =>
       alive
         .map(
-          (i) =>
-            `<option value="${i}" ${i === idx ? "selected" : ""}>${escapeHtml(
-              state.players[i].name
-            )}</option>`
+          (i) => `<option value="${i}" ${i === idx ? "selected" : ""}>${escapeHtml(state.players[i].name)}</option>`
         )
         .join("");
-    // default suggested president = state.form.presIdx (auto-advanced)
-    selP.innerHTML = optable(state.form.presIdx);
-    selC.innerHTML =
+    $("selPres").innerHTML = optable(state.form.presIdx);
+    $("selChan").innerHTML =
       `<option value="">— select —</option>` +
       alive
         .filter((i) => i !== state.form.presIdx)
         .map(
-          (i) =>
-            `<option value="${i}" ${
-              i === state.form.chanIdx ? "selected" : ""
-            }>${escapeHtml(state.players[i].name)}</option>`
+          (i) => `<option value="${i}" ${i === state.form.chanIdx ? "selected" : ""}>${escapeHtml(state.players[i].name)}</option>`
         )
         .join("");
 
-    // claim buttons
+    // ratio pick buttons
     const cp = $("claimPick");
-    const handLabels = ["3F", "2F·1L", "1F·2L", "3L"]; // index = liberals
-    cp.innerHTML = handLabels
-      .map(
-        (lbl, libs) =>
-          `<button data-libs="${libs}" class="${
-            state.form.claimLibs === libs ? "sel " + (libs >= 2 ? "L" : "F") : ""
-          }">${lbl}</button>`
-      )
-      .join("");
+    cp.innerHTML = RATIOS.map(
+      (r) =>
+        `<button class="ratio-btn ${state.form.claimLibs === r.libs ? "sel" : ""}" data-libs="${r.libs}" style="background:${ratioColor(
+          r.libs
+        )}"><span class="ratio-name ${r.cls}">${r.name}</span><span class="ratio-sub">${r.sub}</span></button>`
+    ).join("");
     cp.querySelectorAll("button").forEach((b) => {
       b.onclick = () => {
         state.form.claimLibs = +b.dataset.libs;
-        renderForm(derive());
+        if (state.form.claimLibs === 0 || state.form.claimLibs === 3) state.form.conflict = false;
+        renderForm(d);
       };
     });
 
-    // enacted buttons
-    $("enactPick")
-      .querySelectorAll("button")
-      .forEach((b) => {
-        b.classList.toggle("sel", state.form.enacted === b.dataset.e);
-        b.classList.toggle(b.dataset.e, state.form.enacted === b.dataset.e);
-        b.onclick = () => {
-          state.form.enacted = b.dataset.e;
-          renderForm(derive());
-        };
-      });
+    // conflict button — only Golden (1L) / Silver (2L)
+    const cf = $("btnConflict");
+    const conflictable = state.form.claimLibs === 1 || state.form.claimLibs === 2;
+    cf.disabled = !conflictable;
+    cf.classList.toggle("on", conflictable && state.form.conflict);
 
-    $("gMod").textContent = fmtSigned(state.form.modifier);
-    $("btnRecord").disabled = !(state.form.enacted && state.form.chanIdx !== null);
+    $("btnRecord").disabled = !(state.form.chanIdx !== null && state.form.claimLibs !== null);
+    $("btnUndo").disabled = state.events.length === 0;
   }
 
   function renderHistory(d) {
     const tb = $("histTable").querySelector("tbody");
     tb.innerHTML = "";
-    d.gi.forEach((info) => {
-      const g = state.governments[info.n];
+    d.evInfo.forEach((ev, idx) => {
       const tr = document.createElement("tr");
-      tr.innerHTML =
-        `<td>${info.n + 1}</td>` +
-        `<td class="tag-round">${info.round + 1}</td>` +
-        `<td>${escapeHtml(state.players[g.presidentIdx].name)}</td>` +
-        `<td>${escapeHtml(state.players[g.chancellorIdx].name)}</td>` +
-        `<td>${Prob.handLabel(g.claimLibs)}</td>` +
-        `<td>${Prob.handLabel(info.trueLibs)}${
-          g.modifier ? ` <span class="muted">(${fmtSigned(g.modifier)})</span>` : ""
-        }</td>` +
-        `<td>${g.enacted === "L" ? "🟦 Lib" : "🟥 Fac"}</td>` +
-        `<td><b style="color:var(--gold)">${Prob.fmtPct(info.prob)}</b></td>`;
+      if (ev.type === "fail") {
+        const p = state.players[ev.presidentIdx];
+        tr.className = "ev-fail";
+        tr.innerHTML =
+          `<td>${idx + 1}</td><td class="tag-round">—</td><td>Failed election ✕</td>` +
+          `<td>${escapeHtml(p.name)}</td><td>—</td><td>—</td><td>tracker ${ev.tracker}</td><td>—</td>`;
+      } else if (ev.type === "chaos") {
+        tr.className = "ev-chaos";
+        tr.innerHTML =
+          `<td>${idx + 1}</td><td class="tag-round">—</td><td>⚠ Chaos top-deck</td><td>—</td><td>—</td><td>—</td>` +
+          `<td>${ev.enacted === "L" ? "🟦 Lib" : "🟥 Fac"}</td><td>—</td>`;
+      } else {
+        const g = d.gi[ev.giIdx];
+        const ratio = RATIOS[g.libs];
+        tr.innerHTML =
+          `<td>${idx + 1}</td>` +
+          `<td class="tag-round">${g.round + 1}</td>` +
+          `<td><span class="ratio-name ${ratio.cls}">${ratio.name}</span>${
+            g.conflict ? ` <span style="color:var(--fac-2)">⚔ conflict ${escapeHtml(state.players[g.chancellorIdx].name)}</span>` : ""
+          }</td>` +
+          `<td>${escapeHtml(state.players[g.presidentIdx].name)}</td>` +
+          `<td>${escapeHtml(state.players[g.chancellorIdx].name)}</td>` +
+          `<td>${ratio.sub}</td>` +
+          `<td>${g.enacted === "L" ? "🟦 Lib" : "🟥 Fac"}</td>` +
+          `<td><b style="color:var(--gold)">${Prob.fmtPct(g.prob)}</b></td>`;
+      }
       tb.appendChild(tr);
     });
   }
 
+  // ------------------------------ recording ----------------------------------
   function recordGovernment() {
     const presIdx = +$("selPres").value;
     const chanVal = $("selChan").value;
-    if (chanVal === "" || !state.form.enacted) return;
-    state.governments.push({
+    if (chanVal === "" || state.form.claimLibs === null) return;
+    const chanIdx = +chanVal;
+    const enacted = inferEnacted(state.form.claimLibs, state.form.conflict);
+    state.events.push({
+      type: "gov",
       presidentIdx: presIdx,
-      chancellorIdx: +chanVal,
+      chancellorIdx: chanIdx,
       claimLibs: state.form.claimLibs,
-      enacted: state.form.enacted,
-      modifier: state.form.modifier,
+      conflict: state.form.conflict && (state.form.claimLibs === 1 || state.form.claimLibs === 2),
+      enacted,
     });
-    // advance suggested president; reset per-gov form fields
-    state.form = {
-      presIdx: nextPresidentAfter(presIdx),
-      chanIdx: null,
-      claimLibs: 2,
-      enacted: null,
-      modifier: 0,
-    };
+    state.lastChanIdx = chanIdx;
+    const nextPres = nextAliveAfter(presIdx);
+    state.form = { presIdx: nextPres, chanIdx: defaultChancellor(nextPres), claimLibs: null, conflict: false };
     renderGame();
+    animateEnact(presIdx, enacted);
+  }
+
+  function recordFail() {
+    const presIdx = +$("selPres").value;
+    state.events.push({ type: "fail", presidentIdx: presIdx });
+    const nextPres = nextAliveAfter(presIdx);
+    state.form.presIdx = nextPres;
+    state.form.chanIdx = defaultChancellor(nextPres);
+    // has the tracker just hit 3?
+    const d = derive();
+    if (d.tracker >= 3) state.pendingChaos = true;
+    renderGame();
+  }
+
+  // Undo the most recent event (government, failed election, or chaos) and
+  // restore the president/chancellor turn state to just before it.
+  function undoLast() {
+    if (!state.events.length) return;
+    state.events.pop();
+    let cand = state.firstPres;
+    let lastChan = null;
+    for (const ev of state.events) {
+      if (ev.type === "gov") {
+        cand = nextAliveAfter(ev.presidentIdx);
+        lastChan = ev.chancellorIdx;
+      } else if (ev.type === "fail") {
+        cand = nextAliveAfter(ev.presidentIdx);
+      }
+    }
+    state.lastChanIdx = lastChan;
+    state.form = { presIdx: cand, chanIdx: defaultChancellor(cand), claimLibs: null, conflict: false };
+    state.pendingChaos = derive().tracker >= 3; // re-open chaos prompt if a chaos was undone
+    renderGame();
+  }
+
+  function resolveChaos(policy) {
+    state.pendingChaos = false;
+    state.events.push({ type: "chaos", enacted: policy });
+    // chaos resets term limits; keep suggested president/chancellor as-is
+    renderGame();
+    animateChaos(policy);
+  }
+
+  // ------------------------------ animation ----------------------------------
+  function slotForType(type) {
+    const d = derive();
+    if (type === "F") {
+      const track = $("facTrack");
+      return track.children[Math.max(0, d.fac - 1)];
+    }
+    const track = $("libTrack");
+    return track.children[Math.max(0, d.lib - 1)];
+  }
+
+  function flyFromTo(aRect, bRect, type) {
+    if (!aRect || !bRect) return;
+    const fly = document.createElement("div");
+    fly.className = "fly-card " + type;
+    fly.innerHTML = `<span>${type === "F" ? "✕" : "★"}</span>`;
+    document.body.appendChild(fly);
+    const sx = aRect.left + aRect.width / 2 - 15;
+    const sy = aRect.top + aRect.height / 2 - 21;
+    fly.style.left = sx + "px";
+    fly.style.top = sy + "px";
+    fly.style.transform = "translate(0,0) scale(1)";
+    fly.getBoundingClientRect(); // reflow
+    const dx = bRect.left + bRect.width / 2 - (sx + 15);
+    const dy = bRect.top + bRect.height / 2 - (sy + 21);
+    requestAnimationFrame(() => {
+      fly.style.transform = `translate(${dx}px,${dy}px) scale(0.85)`;
+    });
+    setTimeout(() => (fly.style.opacity = "0"), 620);
+    setTimeout(() => {
+      fly.remove();
+      const slot = slotForType(type);
+      const card = slot && slot.querySelector(".policy-card");
+      if (card) card.classList.add("pop");
+    }, 780);
+  }
+
+  function animateEnact(presidentIdx, type) {
+    const seat = document.querySelector(`.seatNode[data-seat="${presidentIdx}"] .avatar`);
+    const slot = slotForType(type);
+    if (seat && slot) flyFromTo(seat.getBoundingClientRect(), slot.getBoundingClientRect(), type);
+  }
+  function animateChaos(type) {
+    const src = $("drawPile");
+    const slot = slotForType(type);
+    if (src && slot) flyFromTo(src.getBoundingClientRect(), slot.getBoundingClientRect(), type);
   }
 
   // ------------------------------ END GAME -----------------------------------
   function openEnd() {
-    const selH = $("selHitler");
-    selH.innerHTML = state.players
+    $("selHitler").innerHTML = state.players
       .map((p, i) => `<option value="${i}">${escapeHtml(p.name)}</option>`)
       .join("");
     const wrap = $("fascistToggles");
@@ -435,14 +640,10 @@
 
   function saveGame() {
     const hitlerIdx = +$("selHitler").value;
-    const fascistIdxs = Array.from(
-      $("fascistToggles").querySelectorAll('button[data-on="1"]')
-    ).map((b) => +b.dataset.idx);
-    state.result = {
-      winner: $("selWinner").value,
-      hitlerIdx,
-      fascistIdxs,
-    };
+    const fascistIdxs = Array.from($("fascistToggles").querySelectorAll('button[data-on="1"]')).map(
+      (b) => +b.dataset.idx
+    );
+    state.result = { winner: $("selWinner").value, hitlerIdx, fascistIdxs };
     state.date = new Date().toISOString();
     Stats.recordGame(JSON.parse(JSON.stringify(state)));
     alert("Game saved to statistics.");
@@ -459,7 +660,6 @@
       tile((s.fascistWinRate * 100).toFixed(0) + "%", "Fascist win rate"),
       tile(s.avgGovernments.toFixed(1), "Avg governments / game"),
     ].join("");
-
     const tb = $("playerStatsTable").querySelector("tbody");
     const rows = Stats.playerStats();
     tb.innerHTML = rows.length
@@ -468,14 +668,12 @@
             (p) =>
               `<tr><td>${escapeHtml(p.name)}</td><td>${p.games}</td><td>${p.wins}</td>` +
               `<td>${(p.winRate * 100).toFixed(0)}%</td><td>${p.presidencies}</td>` +
-              `<td>${p.chancellorships}</td><td>${p.asHitler}</td>` +
-              `<td>${p.avgModifier.toFixed(2)}</td></tr>`
+              `<td>${p.chancellorships}</td><td>${p.asHitler}</td><td>${p.conflicts}</td></tr>`
           )
           .join("")
       : `<tr><td colspan="8" class="muted">No games recorded yet.</td></tr>`;
     show("statsScreen");
   }
-
   function tile(big, lbl) {
     return `<div class="stat-tile"><div class="big">${big}</div><div class="lbl">${lbl}</div></div>`;
   }
@@ -487,12 +685,7 @@
     renderSetup();
   }
   function initials(name) {
-    return name
-      .split(/\s+/)
-      .map((w) => w[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase();
+    return name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   }
   function fmtSigned(v) {
     return v > 0 ? "+" + v : "" + v;
@@ -522,25 +715,25 @@
     };
 
     $("btnRecord").onclick = recordGovernment;
+    $("btnFail").onclick = recordFail;
+    $("btnUndo").onclick = undoLast;
+    $("btnConflict").onclick = () => {
+      state.form.conflict = !state.form.conflict;
+      renderForm(derive());
+    };
     $("selPres").onchange = () => {
       state.form.presIdx = +$("selPres").value;
-      if (state.form.chanIdx === state.form.presIdx) state.form.chanIdx = null; // can't be both
+      if (state.form.chanIdx === state.form.presIdx) state.form.chanIdx = null;
       renderForm(derive());
     };
     $("selChan").onchange = () => {
       state.form.chanIdx = $("selChan").value === "" ? null : +$("selChan").value;
-      $("btnRecord").disabled = !(state.form.enacted && state.form.chanIdx !== null);
-    };
-    $("gMinus").onclick = () => {
-      state.form.modifier = clamp(state.form.modifier - 1, -3, 3);
-      renderForm(derive());
-    };
-    $("gPlus").onclick = () => {
-      state.form.modifier = clamp(state.form.modifier + 1, -3, 3);
-      renderForm(derive());
+      $("btnRecord").disabled = !(state.form.chanIdx !== null && state.form.claimLibs !== null);
     };
     $("modMinus").onclick = () => adjustRoundMod(-1);
     $("modPlus").onclick = () => adjustRoundMod(1);
+    $("chaosLib").onclick = () => resolveChaos("L");
+    $("chaosFac").onclick = () => resolveChaos("F");
 
     $("btnEnd").onclick = openEnd;
     $("btnSaveGame").onclick = saveGame;
@@ -549,8 +742,8 @@
 
   function adjustRoundMod(delta) {
     const d = derive();
-    const cur = state.roundMods[d.round] || 0;
-    state.roundMods[d.round] = clamp(cur + delta, -6, 6);
+    const r = d.rounds[d.round];
+    state.roundMods[d.round] = clamp(r.mod + delta, r.modLo, r.modHi);
     renderGame();
   }
 

@@ -41,8 +41,22 @@ later):
 - **Retrospective probability is the headline %** (user's choice): each government's odds are
   conditioned on all *other* observed governments in the same round, so they update live.
   Formula + worked example in `PROBABILITY_MODEL.md`.
-- **Liberal modifier sign:** `trueLiberalsDrawn = claimedLiberals − modifier`. `−1` = "lied
-  down" (hid a liberal, so truly drew one *more* liberal); `+1` = "lied up".
+- **Modifier is ROUND-LEVEL only** (per-presidency modifier removed, per user). Each
+  government's hand is taken at its *claimed* value; the single round modifier `m` shifts the
+  round pool's effective liberal count `effL = startL + m`, which reprices every hand in the
+  round and sets the inferred bottom cards. `m < 0` ⇒ liberals were hidden (fewer liberals
+  remain); `m > 0` ⇒ the rarer "lied up".
+- **Modifier is bounded to physically-possible values** and auto-clamped: feasible window is
+  `effL ∈ [claimSum, claimSum+R]` intersected with `[0,startN]` and the ±(#presidents) cap.
+  If a recorded claim is impossible at the current modifier (e.g. 3 fascists drawn when the
+  pool held ≤2), the modifier **auto-adjusts** into the feasible window (may exceed the
+  ±#presidents cap → shown as "auto-adjusted"). The physical window is provably non-empty.
+- **Enacted policy is inferred, not asked:** Coal(3F)→Fascist, Bronze(3L)→Liberal,
+  Golden/Silver default→Liberal. A **Conflict** toggle (Golden/Silver only) forces Fascist and
+  labels it "conflict (chancellor)".
+- **Event model:** `state.events` is ordered and mixed: `gov` / `fail` / `chaos`. Failed
+  elections advance the tracker; the 3rd triggers a chaos top-deck (1 card removed, board
+  updated, tracker reset).
 - **Round boundary = reshuffle** (draw pile < 3). Probability never crosses it. Each round
   starts from a known pool `17 − enacted`.
 - **Stats:** browser `localStorage` only for now (key `secretHitler.games.v1`).
@@ -51,17 +65,25 @@ later):
 ## Implemented features
 - Player entry (5–10), remove, validation.
 - Randomized seating + random first President (marked with ①).
-- Round-table view: players around an ellipse, President/Chancellor highlight, per-player
-  mini history hand + retrospective odds under their seat.
-- Center boards: Fascist track (6, with power markers by player count) + Liberal track (5),
-  live draw & discard pile composition.
+- Round-table view: players around an ellipse, President (🔨)/Chancellor (🎖) highlight,
+  per-player mini history hand + retrospective odds + conflict tag + failed-election ✕ marks.
+- **Redesigned Secret-Hitler-style boards** (original stylized CSS, not the printed art):
+  red Fascist board with power icons by player count, blue Liberal board, policy cards, and
+  the **election tracker** (3 dots). Live draw & discard pile composition.
+- **Policy-card animation:** the enacted card flies from the acting President's seat to the
+  track slot (chaos cards fly from the draw pile).
 - "Next hand odds" panel (hypergeometric distribution for the upcoming draw).
-- Record-government form: President/Chancellor selects, claimed hand, enacted policy,
-  per-government lie modifier.
-- Round-level liberal modifier + inferred bottom cards on round completion.
+- Record-government form: President/Chancellor selects, **Golden/Silver/Bronze/Coal** ratio
+  buttons on a red→blue colour scale, and a **Conflict** toggle. Enacted policy is inferred.
+- **Chancellor auto-rotates** to the next seat after the first is assigned manually.
+- **Failed presidency** button → election tracker +1; at 3 an automatic **chaos top-deck**
+  (asks only for the revealed policy). ✕ marks recorded by the player.
+- **Undo last** button reverses the most recent event and restores the turn state.
+- Round-level liberal modifier, bounded to feasible values with auto-adjust; inferred bottom
+  cards on round completion.
 - Automatic reshuffle detection and round advancement.
 - End-game: pick winner, Hitler, and other Fascists → saved to stats.
-- Statistics screen: cross-game summary + per-player table.
+- Statistics screen: cross-game summary + per-player table (incl. conflicts).
 
 ## Known limitations / not yet done
 - No online/multiplayer play (planned pillar; needs a backend).
