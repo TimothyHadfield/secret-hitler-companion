@@ -161,3 +161,26 @@ Board visuals remain original stylized CSS (colours/emoji/shapes), not the game'
   badges** (no overlapping tiles).
 - Verified in headless Chrome: all powers/tabs/overlay flows pass; measured **no vertical or
   horizontal overflow**; captured phone + laptop screenshots to confirm the layout.
+
+---
+
+## Session 5 — 2026-07-22 — Layout polish (space efficiency)
+
+**User feedback:** the first responsive pass over-shrank the table (90% covered on laptop) and
+the 4 policy boxes were huge. Wanted: on wide screens put the policy options on the **right,
+vertically stacked**; make the **table dominate**; strip chrome — remove the "President… tap a
+player" text, the footer tagline, and the "Secret Hitler" title; move **End game up beside New
+game**; put the **Play/History/Stats tabs to the left of those buttons**; and **remove the boxes**
+around the table and the policy options so everything blends and nothing gets clipped.
+
+**What I changed:**
+- New `#playMain` splits the table (fills all remaining space) from the controls; on wide
+  screens the controls sit on the **right as a vertical stack** (ratio buttons + Conflict/
+  Failed/Undo), on phones they drop **below** the table.
+- Single compact top row: **tabs on the left, End game + New game on the right**; removed the
+  page title, the turn-info sentence, and the footer. Global topbar hidden on the game screen.
+- Removed the panel boxes around the table and controls (borderless, blended).
+- Fixed a specificity bug where the base `.table-area { aspect-ratio:16/10 }` was shrinking the
+  table inside its panel (left a big gap on mobile) — the table now fills its container.
+- Re-verified: headless smoke test passes; phone + laptop screenshots confirm the table
+  dominates and nothing scrolls or clips.

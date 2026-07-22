@@ -263,6 +263,8 @@
     ["setupScreen", "gameScreen", "endScreen", "statsScreen"].forEach((s) =>
       $(s).classList.toggle("hidden", s !== id)
     );
+    // the game screen carries its own top row (tabs + New/End); hide the global topbar there
+    $("topbar").classList.toggle("hidden", id === "gameScreen");
   }
 
   // ------------------------------ SETUP --------------------------------------
@@ -474,14 +476,7 @@
   }
 
   function renderControls(d) {
-    const pres = state.players[d.presIdx];
-    const chanIdx = effChan(d);
-    const chan = chanIdx != null ? state.players[chanIdx] : null;
-    const ti = $("turnInfo");
-    ti.classList.remove("flash");
-    ti.innerHTML =
-      `President <b>${escapeHtml(pres.name)}</b> — tap a player to set the Chancellor` +
-      (chan ? `: <span class="chan-name">${escapeHtml(chan.name)}</span>` : "");
+    $("hint").textContent = "";
 
     // draw distribution from the current pool (post eager-reshuffle)
     let n = d.draw,
@@ -554,9 +549,7 @@
   }
 
   function flashTurn(msg) {
-    const ti = $("turnInfo");
-    ti.textContent = msg;
-    ti.classList.add("flash");
+    $("hint").textContent = msg;
   }
 
   // Which power (if any) a fascist policy on the just-filled slot grants.
@@ -888,10 +881,12 @@
       if (e.key === "Enter") addPlayer();
     });
     $("btnRandomize").onclick = startGame;
-    $("btnNew").onclick = () => {
+    const newGame = () => {
       if (!state || confirm("Start a new game? Current game is not saved unless you end & save it."))
         resetToSetup();
     };
+    $("btnNewTop").onclick = newGame;
+    $("btnEndTop").onclick = openEnd;
     $("btnStats").onclick = renderStats;
     $("btnBackFromStats").onclick = () => show(state ? "gameScreen" : "setupScreen");
     $("btnClearStats").onclick = () => {
@@ -910,7 +905,6 @@
     $("chaosLib").onclick = () => resolveChaos("L");
     $("chaosFac").onclick = () => resolveChaos("F");
 
-    $("btnEnd").onclick = openEnd;
     $("btnSaveGame").onclick = saveGame;
     $("btnCancelEnd").onclick = () => show("gameScreen");
 

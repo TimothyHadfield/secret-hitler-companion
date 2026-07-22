@@ -8,11 +8,10 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="topbar">
+    <div class="topbar" id="topbar">
       <h1>Secret&nbsp;Hitler <span class="muted" style="font-size:14px">companion</span></h1>
       <div class="spacer"></div>
       <button id="btnStats" class="ghost">Statistics</button>
-      <button id="btnNew" class="ghost">New Game</button>
     </div>
 
     <!-- ===================== SETUP SCREEN ===================== -->
@@ -39,14 +38,16 @@
         <button class="tab sel" data-tab="play">Play</button>
         <button class="tab" data-tab="history">History</button>
         <button class="tab" data-tab="stats">Stats</button>
+        <div class="spacer"></div>
+        <button id="btnEndTop" class="ghost">End game</button>
+        <button id="btnNewTop" class="ghost">New game</button>
       </div>
 
      <div id="playTab" class="tab-panel">
-      <!-- per-round blocks: Round N · modifier · bottom cards when the round ends -->
       <div id="roundsBar" class="rounds-bar"></div>
-
-      <!-- table -->
-      <div class="panel table-panel">
+      <div id="playMain">
+       <!-- table -->
+       <div class="table-panel">
         <div class="table-area" id="tableArea">
           <div class="felt"></div>
           <div class="center-boards">
@@ -79,17 +80,17 @@
         </div>
       </div>
 
-      <!-- controls below the table -->
-      <div class="panel controls">
-        <div id="turnInfo" class="turn-info"></div>
-        <div class="ratio-pick" id="claimPick"></div>
-        <div class="control-row">
-          <button id="btnConflict" class="conflict-btn">⚔ Conflict</button>
-          <button id="btnFail" class="warn">Failed presidency</button>
-          <button id="btnUndo" class="ghost">↶ Undo</button>
-          <button id="btnEnd" class="ghost">End game</button>
-        </div>
-      </div>
+       <!-- controls: right side on wide screens, below the table on phones -->
+       <div class="controls">
+         <div class="ratio-pick" id="claimPick"></div>
+         <div class="control-row">
+           <button id="btnConflict" class="conflict-btn">⚔ Conflict</button>
+           <button id="btnFail" class="warn">Failed presidency</button>
+           <button id="btnUndo" class="ghost">↶ Undo</button>
+         </div>
+         <div id="hint" class="hint"></div>
+       </div>
+      </div><!-- /playMain -->
      </div><!-- /playTab -->
 
      <div id="historyTab" class="tab-panel hidden">
@@ -184,10 +185,6 @@
         </div>
       </div>
     </section>
-
-    <footer>
-      Companion &amp; analyzer for the board game Secret Hitler · randomization · probability · statistics
-    </footer>
   </div>
 
   <script src="js/probability.js"></script>

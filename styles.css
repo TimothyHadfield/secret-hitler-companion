@@ -48,9 +48,22 @@ h1, h2, h3 { font-family: "Georgia", serif; letter-spacing: 0.3px; }
 .tab-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .tab-panel.hidden { display: none; }
 #historyTab, #statsTab { overflow: auto; }
-#playTab .table-panel { flex: 1 1 auto; min-height: 0; padding: 4px; position: relative; overflow: hidden; }
-#playTab .table-area { position: absolute; inset: 4px; width: auto; height: auto; aspect-ratio: auto; max-height: none; margin: 0; }
-#playTab .rounds-bar, #playTab .controls { flex: 0 0 auto; margin: 0; }
+#playTab { gap: 6px; }
+#playTab .rounds-bar { flex: 0 0 auto; margin: 0; }
+#playMain { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; gap: 8px; }
+#playMain .table-panel { flex: 1 1 auto; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+#playMain .table-area { position: absolute; inset: 0; width: auto; height: auto; aspect-ratio: auto !important; max-height: none; margin: 0; }
+.controls { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.hint { font-size: 12px; color: var(--fac-2); text-align: center; min-height: 0; }
+
+/* wide screens: controls stacked vertically on the right of the table */
+@media (min-width: 641px) {
+  .controls { width: 232px; }
+  .controls .ratio-pick { grid-template-columns: 1fr; }
+  .ratio-btn { padding: 9px 6px; }
+  .control-row { flex-direction: column; }
+  .control-row button { width: 100%; }
+}
 
 .topbar {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
@@ -317,7 +330,11 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 
 /* ---------- Mobile ---------- */
 @media (max-width: 640px) {
-  .wrap { padding: 8px; }
+  .wrap { padding: 6px; }
+  #playMain { flex-direction: column; }
+  .controls { width: auto; }
+  .tab { padding: 6px 11px; font-size: 13px; }
+  .tabbar button.ghost { padding: 6px 10px; font-size: 13px; }
   .center-boards { width: 58%; min-width: 0; gap: 2px; }
   .pile-card { width: 16px; height: 23px; }
   .pile-counts { font-size: 9px; }
