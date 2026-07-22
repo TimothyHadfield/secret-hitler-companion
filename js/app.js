@@ -88,6 +88,8 @@
     const evInfo = [];
     const lastGovByPlayer = {};
     const failsByPlayer = {};
+    const eventsByPlayer = {}; // player idx -> [gov info | {type:'fail'}] in order
+    const pushPlayerEvent = (idx, e) => (eventsByPlayer[idx] = eventsByPlayer[idx] || []).push(e);
     const N = state.players.length;
 
     // Turn order + deaths, walked alongside the pile bookkeeping.
@@ -127,6 +129,7 @@
       if (ev.type === "fail") {
         tracker++;
         failsByPlayer[ev.presidentIdx] = (failsByPlayer[ev.presidentIdx] || 0) + 1;
+        pushPlayerEvent(ev.presidentIdx, { type: "fail" });
         evInfo.push({ type: "fail", presidentIdx: ev.presidentIdx, tracker });
         advanceAfter(ev.presidentIdx, null);
         return;
@@ -162,6 +165,7 @@
       const giIdx = gi.push(info) - 1;
       rounds[round].govs.push(giIdx);
       lastGovByPlayer[ev.presidentIdx] = info;
+      pushPlayerEvent(ev.presidentIdx, info);
       evInfo.push({ type: "gov", giIdx });
       draw -= 3;
       if (enacted === "L") lib++;
@@ -241,6 +245,7 @@
       evInfo,
       lastGovByPlayer,
       failsByPlayer,
+      eventsByPlayer,
       drawLibs,
       drawFasc,
       discardLibs,
@@ -330,8 +335,26 @@
     renderBoards(d);
     renderControls(d);
     renderPower(d);
+    renderGameOver();
     renderHistory(d);
-    $("chaosPrompt").classList.toggle("hidden", !state.pendingChaos);
+    $("chaosPrompt").classList.toggle("hidden", !(state.pendingChaos && !state.gameOver));
+  }
+
+  function renderGameOver() {
+    const m = $("gameOverModal");
+    if (!state.gameOver) {
+      m.classList.add("hidden");
+      return;
+    }
+    m.classList.remove("hidden");
+    const g = state.gameOver;
+    const cls = g.winner === "Liberal" ? "c-lib" : "c-fac";
+    $("gameOverBody").innerHTML =
+      `<div class="power-title"><span class="${cls}">${g.winner}s win!</span></div>` +
+      `<p style="font-size:15px">${escapeHtml(g.reason)} The game is over.</p>` +
+      `<p class="muted" style="font-size:13px">Record who was Hitler and the Fascists to save this game to your statistics.</p>` +
+      `<div class="control-row"><button id="goEnd" class="primary">Record roles &amp; save →</button></div>`;
+    $("goEnd").onclick = openEnd;
   }
 
   // per-round blocks at the top: Round N + its modifier; bottom cards once ended
@@ -388,27 +411,22 @@
       node.style.top = y + "%";
       node.onclick = () => setChancellor(i);
 
-      const info = d.lastGovByPlayer[i];
-      let extra = "";
-      if (info) {
-        const cards = [];
-        for (let k = 0; k < 3; k++) cards.push(k < 3 - info.libs ? "F" : "L");
-        extra +=
-          `<div class="miniHand">` +
-          cards.map((c) => `<div class="miniCard ${c}"></div>`).join("") +
-          `</div><div class="odds">${Prob.fmtPct(info.prob)}</div>`;
-        if (info.conflict) extra += `<div class="conflict-tag">⚔ conflict</div>`;
-        // investigation result recorded beside this president's recording
-        if (info.power && info.power.type === "invest" && info.power.party) {
-          const t = state.players[info.power.targetIdx];
-          const cls = info.power.party === "F" ? "p-fac" : "p-lib";
-          extra += `<div class="invest-tag">🔍 ${escapeHtml(t.name)}, <span class="${cls}">${
-            info.power.party === "F" ? "Fascist" : "Liberal"
-          }</span></div>`;
-        }
-      }
-      const fails = d.failsByPlayer[i] || 0;
-      if (fails) extra += `<div class="fail-x">${"✕".repeat(Math.min(fails, 5))}</div>`;
+      // one row per presidency: [3 cards | odds + details]  (X for a failed election)
+      const evs = d.eventsByPlayer[i] || [];
+      const extra = evs
+        .map((ev) => {
+          if (ev.type === "fail") {
+            return `<div class="pres-row"><span class="fail-x">✕</span></div>`;
+          }
+          const cards = [];
+          for (let k = 0; k < 3; k++) cards.push(k < 3 - ev.libs ? "F" : "L");
+          const hand =
+            `<div class="miniHand">` + cards.map((c) => `<div class="miniCard ${c}"></div>`).join("") + `</div>`;
+          const side =
+            `<div class="odds">${Prob.fmtPct(ev.prob)}</div>` + presDetails(ev);
+          return `<div class="pres-row">${hand}<div class="pres-side">${side}</div></div>`;
+        })
+        .join("");
 
       let badge = "";
       if (i === d.presIdx) badge = `<span class="role-badge p" title="President">P</span>`;
@@ -539,7 +557,15 @@
   }
 
   // ------------------------------ recording ----------------------------------
-  const busy = () => state.pendingChaos || state.pendingPower;
+  const busy = () => state.pendingChaos || state.pendingPower || state.gameOver;
+
+  // Detect an automatic terminal outcome (policy-track wins).
+  function checkGameOver(d) {
+    if (state.gameOver) return;
+    if (d.lib >= 5) state.gameOver = { winner: "Liberal", reason: "Five Liberal policies were enacted." };
+    else if (d.fac >= 6) state.gameOver = { winner: "Fascist", reason: "Six Fascist policies were enacted." };
+    if (state.gameOver) state.autoResult = { winner: state.gameOver.winner };
+  }
 
   // Tapping a player on the table sets the Chancellor (moves highlight + tile).
   function setChancellor(i) {
@@ -580,12 +606,14 @@
       enacted,
     });
     state.form = { chanIdxOverride: null, conflictArmed: false };
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     // does this fascist policy trigger a presidential power?
     const d1 = derive();
     if (enacted === "F") {
       const power = powerForFascistCount(d1.fac);
       if (power) state.pendingPower = { type: power, govIndex: state.events.length - 1, presidentIdx: presIdx };
     }
+    checkGameOver(d1);
     renderGame();
     animateEnact(presIdx, enacted);
   }
@@ -612,8 +640,30 @@
     state.pendingChaos = false;
     state.events.push({ type: "chaos", enacted: policy });
     // chaos resets term limits; keep suggested president/chancellor as-is
+    checkGameOver(derive());
     renderGame();
     animateChaos(policy);
+  }
+
+  // Compact per-presidency detail chips (conflict / power) shown beside the cards.
+  function presDetails(ev) {
+    let s = "";
+    if (ev.conflict) s += `<div class="pres-detail c-fac">⚔ conflict</div>`;
+    const p = ev.power;
+    if (p) {
+      if (p.type === "invest" && p.party) {
+        s += `<div class="pres-detail ${p.party === "F" ? "c-fac" : "c-lib"}">🔍 ${escapeHtml(
+          state.players[p.targetIdx].name
+        )}, ${p.party === "F" ? "Fac" : "Lib"}</div>`;
+      } else if (p.type === "special" && p.chosenIdx != null) {
+        s += `<div class="pres-detail c-gold">⚡→ ${escapeHtml(state.players[p.chosenIdx].name)}</div>`;
+      } else if (p.type === "peek" && p.order) {
+        s += `<div class="pres-detail">👁 ${p.order.join("·")}</div>`;
+      } else if (p.type === "kill" && p.killedIdx != null) {
+        s += `<div class="pres-detail c-fac">💀 ${escapeHtml(state.players[p.killedIdx].name)}</div>`;
+      }
+    }
+    return s;
   }
 
   // ------------------------------ presidential powers ------------------------
@@ -721,11 +771,8 @@
     state.pendingPower = null;
     powerDraft = null;
     if (pp.type === "kill" && data.wasHitler) {
+      state.gameOver = { winner: "Liberal", reason: "Hitler was executed." };
       state.autoResult = { winner: "Liberal", hitlerIdx: data.killedIdx };
-      renderGame();
-      alert("Hitler was executed — Liberals win! Record the result to save.");
-      openEnd();
-      return;
     }
     renderGame();
   }

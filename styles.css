@@ -130,14 +130,19 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .seatNode .badge { position: absolute; top: -6px; right: -6px; font-size: 13px; }
 .seatNode .name { font-size: 13px; font-weight: 600; }
 
-/* mini history cards under a seat */
-.miniHand { display: flex; gap: 3px; justify-content: center; margin-top: 4px; }
-.miniCard { width: 14px; height: 20px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.5); }
+/* per-presidency rows under a seat: [3 cards | odds + details] */
+.pres-row { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 3px; }
+.miniHand { display: flex; gap: 2px; }
+.miniCard { width: 12px; height: 17px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.5); }
 .miniCard.L { background: linear-gradient(160deg, var(--lib-2), var(--lib)); }
 .miniCard.F { background: linear-gradient(160deg, var(--fac-2), var(--fac)); }
-.seatNode .odds { font-size: 11px; color: var(--gold); margin-top: 2px; }
-.seatNode .conflict-tag { font-size: 10px; color: var(--fac-2); margin-top: 1px; }
-.seatNode .fail-x { color: var(--fac-2); font-weight: 800; font-size: 18px; margin-top: 2px; letter-spacing: 2px; }
+.pres-side { text-align: left; line-height: 1.15; }
+.pres-side .odds { font-size: 10px; color: var(--gold); font-weight: 700; }
+.pres-detail { font-size: 9px; color: var(--muted); white-space: nowrap; }
+.pres-detail.c-fac { color: var(--fac-2); }
+.pres-detail.c-lib { color: var(--lib-2); }
+.pres-detail.c-gold { color: var(--gold); }
+.seatNode .fail-x { color: var(--fac-2); font-weight: 800; font-size: 16px; letter-spacing: 1px; }
 
 /* ---------- Secret-Hitler-style boards ---------- */
 .center-boards {
@@ -282,6 +287,10 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .ratio-name.silver { color: var(--silver); text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
 .ratio-name.bronze { color: var(--bronze); text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
 .ratio-name.coal   { color: #cfcfcf; text-shadow: 0 1px 2px rgba(0,0,0,0.9); }
+
+.ratio-btn:focus, .ratio-btn:focus-visible { outline: none; }
+.power-title .c-lib { color: var(--lib-2); }
+.power-title .c-fac { color: var(--fac-2); }
 
 .conflict-btn { background: #3a2320; border-color: #6b3a30; color: #f0c9c1; }
 .conflict-btn:hover:not(:disabled) { background: var(--fac); border-color: var(--fac-2); color: #fff; }

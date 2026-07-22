@@ -184,3 +184,28 @@ around the table and the policy options so everything blends and nothing gets cl
   table inside its panel (left a big gap on mobile) — the table now fills its container.
 - Re-verified: headless smoke test passes; phone + laptop screenshots confirm the table
   dominates and nothing scrolls or clips.
+
+---
+
+## Session 6 — 2026-07-22 — Reset, game-over box, all-presidencies display
+
+**User asked for:**
+- The clicked policy outcome stayed highlighted into the next presidency — **reset it** fully.
+- A **game-over box** on a terminal outcome: says who won and how, blocks further play, and
+  records the game to stats.
+- Show **all** of a player's presidencies under them (3 cards + probability each), with the
+  **probability and any details (conflict/power) to the SIDE** of the cards; an **X** instead of
+  cards for a failed presidency.
+
+**What I changed:**
+- Blur the active button after auto-submit + focus reset CSS, so no outcome stays highlighted.
+- Auto-detect terminal outcomes (**5 Liberal → Liberal win**, **6 Fascist → Fascist win**,
+  **Hitler executed → Liberal win**) → full-screen **game-over overlay** that blocks play; its
+  "Record roles & save" button opens the end screen (winner preset) to capture Hitler/Fascists
+  and save to stats. (The "Hitler elected Chancellor" win still needs the manual End-game
+  button, since the app doesn't know who Hitler is mid-game.)
+- `derive()` now returns `eventsByPlayer`; each seat renders **one row per presidency**
+  (`[3 cards | odds + detail chips]`), with an X row for failed elections. Removed the old
+  single-hand + separate tag/fail-count display.
+- Verified in headless Chrome (fail-X, 2-presidency rows, game-over blocking + save) and via a
+  screenshot of the multi-presidency layout.
