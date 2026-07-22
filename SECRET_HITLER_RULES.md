@@ -132,11 +132,17 @@ table and focuses on:
 
 - **Randomization:** seating order + first President.
 - **Bookkeeping:** enacted Liberal/Fascist counts, draw & discard pile composition, reshuffle
-  boundaries, current President/Chancellor.
+  boundaries, current President/Chancellor, the election tracker, and chaos top-decks.
 - **Probability:** for each government, the likelihood the President truly received the hand
-  they claim, given the known pile and (optionally) later observed governments — see
-  `PROBABILITY_MODEL.md`.
-- **Statistics:** per-player and cross-game data stored in the browser.
+  they claim, given the known pile and later observed governments — see `PROBABILITY_MODEL.md`.
+- **Powers:** when a Fascist policy triggers a power, the app pauses and records the outcome —
+  Investigation (target + party), Policy Peek (top-3 order), Kill (target; Hitler ⇒ Liberal win,
+  else the player is marked dead and skipped), Special Election (chosen next President, with the
+  normal order resuming afterward). Turn order and deaths are derived from these events.
+- **End game:** auto-detects policy-track wins and Hitler-execution, then records roles (Hitler
+  + the count-appropriate Fascists) in place on the table, colouring each player's circle.
+- **Statistics:** per-player + cross-game data, plus a reviewable per-game archive (browser).
 
-The app does not currently enforce term limits, votes, or power usage — the user drives those
-at the table. Those may become validation warnings in a later version.
+The app still does not enforce term limits, votes, or veto *usage*, and it can't auto-detect the
+"Hitler elected Chancellor" win (it doesn't know who Hitler is mid-game) — the user ends that
+game manually. These assume honest table play and could become validations later.

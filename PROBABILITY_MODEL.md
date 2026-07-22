@@ -4,6 +4,16 @@ This documents the math behind the probability display. It's kept separate from 
 the modeling assumptions (which involve some game theory / interpretation) are on the record
 and easy to revisit.
 
+> **Implementation note (current):** the hypergeometric core (§3) and the retrospective
+> conditional (§4) below are exactly what the app computes and remain correct. What changed
+> since the first draft: the **liberal modifier is now ROUND-LEVEL only** — the per-government
+> `±1` modifier described in §2/§5 was removed. Each government's hand is scored at its
+> **claimed** liberal count, and a single per-round modifier `m` shifts the round pool's
+> effective liberal count `effL = startL + m` (which reprices every hand and sets the inferred
+> bottom cards). `m` is clamped to a physically feasible window and auto-adjusts if a recorded
+> claim is otherwise impossible. Read §2/§5's "per-presidency modifier" as the round-level
+> `effL` shift; the distribution formulas are unchanged.
+
 ## 1. What we know for certain
 
 - The deck is **11 Fascist + 6 Liberal = 17** cards.

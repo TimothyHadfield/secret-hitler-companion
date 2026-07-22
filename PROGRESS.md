@@ -1,154 +1,157 @@
 # PROGRESS — Secret Hitler Companion
 
 > **Read this file first when resuming.** It is the single source of truth for where the
-> project stands. Update it whenever something meaningful changes.
+> project stands. Update it whenever something meaningful changes. `CHAT.md` has the
+> session-by-session history; `PROBABILITY_MODEL.md` and `SECRET_HITLER_RULES.md` are the
+> reference docs.
 
-_Last updated: 2026-07-21 (initial build)_
+_Last updated: 2026-07-22 (after session 9)._
 
 ## What this project is
-A website companion/analyzer for the board game **Secret Hitler**. Not the game engine —
-a tool used alongside a real table game. Three feature pillars for now (online play comes
-later):
+A website **companion/analyzer for the board game Secret Hitler** — used alongside a real
+table game, not a game engine. Feature pillars:
 1. **Randomization** — seat order + first President.
-2. **Probability** — for each government, the likelihood the President truly got the hand
-   they claim, using a *retrospective* hypergeometric model (updates as the round unfolds).
-3. **Game statistics** — per-player and cross-game data (stored in the browser).
+2. **Probability** — for each government, the likelihood the President truly got the hand they
+   claim, using a *retrospective* hypergeometric model (updates as the round unfolds).
+3. **Game statistics** — per-player + cross-game data, plus a reviewable per-game archive.
+4. **Online play** — planned, not started (needs a backend).
 
-## Current status: ✅ v1 built, tested, deployed
-- Static site (HTML/CSS/vanilla JS), hosted on **GitHub Pages**.
-- Passed a headless-Chrome end-to-end smoke test (add players → randomize → record
-  governments → end game → save → stats) with **no runtime errors**.
+## Current status: ✅ live and working
+- Static site (HTML/CSS/vanilla JS), auto-deployed via **GitHub Pages** on push to `main`.
+- All features below verified with headless-Chrome smoke tests + screenshots (no build step).
 
 ## Repository / hosting
-- GitHub repo: **https://github.com/TimothyHadfield/secret-hitler-companion** — public.
-- Live site: **https://timothyhadfield.github.io/secret-hitler-companion/** (may take 1–2 min to go live on first deploy).
-- Deploy model: push to `main` → GitHub Pages serves the root. No build step (plain static).
+- Repo: **https://github.com/TimothyHadfield/secret-hitler-companion** (public).
+- Live: **https://timothyhadfield.github.io/secret-hitler-companion/**.
+- Deploy: `git push origin main` → Pages rebuilds (~1 min). `gh` CLI is authenticated as
+  TimothyHadfield. Commit co-author line: `Claude Opus 4.8 (1M context)`.
+- Verification workflow used: copy files to a scratchpad, inject a driver script that drives
+  the real UI, serve over `http://localhost`, run headless Chrome (`--dump-dom` for assertions,
+  `--screenshot` for visuals). Chrome path: `/c/Program Files/Google/Chrome/Application/chrome.exe`.
 
 ## File map
 | File | Purpose |
 |------|---------|
-| `index.html` | App shell + all screens (setup / game / end / stats). |
-| `styles.css` | Theme + layout (round table, boards, forms). |
-| `js/probability.js` | Pure probability engine (hypergeometric + retrospective conditional). Tested. |
-| `js/stats.js` | localStorage persistence + per-player / cross-game aggregation. |
-| `js/app.js` | State, randomization, pile bookkeeping, rendering, event wiring. |
-| `SECRET_HITLER_RULES.md` | Canonical rules reference the app encodes. |
-| `PROBABILITY_MODEL.md` | Full math/game-theory derivation of the probability model. |
-| `CHAT.md` | Running log of user instructions + what changed each session. |
+| `index.html` | App shell. Screens: **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over. (No separate end screen — role recording is in-place.) |
+| `styles.css` | Theme + responsive no-scroll layout, boards, role/review panels, games list. |
+| `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
+| `js/stats.js` | localStorage read/write + per-player / cross-game aggregation. Reads the event model. |
+| `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring. |
+| `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
+| `SECRET_HITLER_RULES.md` | Rules the app encodes. |
+| `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
+| `CHAT.md` | Session-by-session log (sessions 1–9). |
 | `PROGRESS.md` | This file. |
 
+## Architecture notes (how app.js is organised)
+- **`state`** is the whole live game. **`derive(state)`** walks `state.events` once and returns
+  all bookkeeping: enacted counts, draw pile, rounds (+ per-round modifier bounds &
+  retrospective probs), current President (`presIdx`), suggested Chancellor, `deadSet`,
+  `eventsByPlayer`, draw/discard composition. President, deaths, and the special-election detour
+  are **derived from the event log** — nothing turn-related is stored, which is why Undo/resume
+  "just work".
+- **Event model:** `state.events` is ordered, mixed: `{type:'gov', presidentIdx, chancellorIdx,
+  claimLibs, conflict, enacted, power?}`, `{type:'fail', presidentIdx}`, `{type:'chaos', enacted}`.
+- **`state.form`** only holds transient UI: `{chanIdxOverride, conflictArmed}`.
+- **`renderGame()`** calls the sub-renderers and then `saveActive()`. Rendering is full-redraw.
+
 ## Key design decisions (locked)
-- **Retrospective probability is the headline %** (user's choice): each government's odds are
-  conditioned on all *other* observed governments in the same round, so they update live.
-  Formula + worked example in `PROBABILITY_MODEL.md`.
-- **Modifier is ROUND-LEVEL only** (per-presidency modifier removed, per user). Each
-  government's hand is taken at its *claimed* value; the single round modifier `m` shifts the
-  round pool's effective liberal count `effL = startL + m`, which reprices every hand in the
-  round and sets the inferred bottom cards. `m < 0` ⇒ liberals were hidden (fewer liberals
-  remain); `m > 0` ⇒ the rarer "lied up".
-- **Modifier is bounded to physically-possible values** and auto-clamped: feasible window is
-  `effL ∈ [claimSum, claimSum+R]` intersected with `[0,startN]` and the ±(#presidents) cap.
-  If a recorded claim is impossible at the current modifier (e.g. 3 fascists drawn when the
-  pool held ≤2), the modifier **auto-adjusts** into the feasible window (may exceed the
-  ±#presidents cap → shown as "auto-adjusted"). The physical window is provably non-empty.
+- **Retrospective probability is the headline %**: each government's odds are conditioned on all
+  *other* observed governments in the same round, so they update live. Formula + worked example
+  in `PROBABILITY_MODEL.md`.
+- **Modifier is ROUND-LEVEL only.** Each hand is taken at its *claimed* value; the round modifier
+  `m` shifts the round pool's effective liberal count `effL = startL + m`, repricing every hand
+  and setting the inferred bottom cards. `m < 0` = liberals hidden; `m > 0` = rarer "lied up".
+- **Modifier bounded + auto-clamped.** Feasible window `effL ∈ [claimSum, claimSum+R]` ∩
+  `[0,startN]` ∩ ±(#presidents) cap. If a recorded claim is impossible at the current modifier,
+  it **auto-adjusts** into feasibility (may exceed the ±#presidents cap → "auto-adjusted"). The
+  physical window is provably non-empty.
+- **Deck = 11 Fascist / 6 Liberal (17).** Always follow the real rules; user examples are
+  principle, not literal numbers.
 - **Enacted policy is inferred, not asked:** Coal(3F)→Fascist, Bronze(3L)→Liberal,
-  Golden/Silver default→Liberal. A **Conflict** toggle (Golden/Silver only) forces Fascist and
+  Golden/Silver default→Liberal. **Conflict** toggle (Golden/Silver only) forces Fascist and
   labels it "conflict (chancellor)".
-- **Event model:** `state.events` is ordered and mixed: `gov` / `fail` / `chaos`. Failed
-  elections advance the tracker; the 3rd triggers a chaos top-deck (1 card removed, board
-  updated, tracker reset).
-- **Round boundary = reshuffle** (draw pile < 3). Probability never crosses it. Each round
-  starts from a known pool `17 − enacted`.
-- **Persistence:** browser `localStorage`. Completed games → `secretHitler.games.v1` (stats).
-  The **in-progress game** auto-saves to `secretHitler.activeGame.v1` after every change and is
-  **resumed on load** (survives refresh, close/reopen, and redeploys). The setup **roster**
-  saves to `secretHitler.setupPlayers.v1` so player names persist across games/sessions.
-  Cleared only on New Game / after a game is saved.
-- **Repo:** public (needed for free GitHub Pages).
+- **Round boundary = reshuffle**, done **immediately** when draw pile < 3 (new round + pool shown
+  before the next presidency). Probability never crosses a reshuffle. Round pool = `17 − enacted`.
+- **Persistence (localStorage):** completed games → `secretHitler.games.v1`; the in-progress game
+  auto-saves to `secretHitler.activeGame.v1` and is **resumed on load** (survives refresh /
+  close-reopen / redeploy); the setup roster → `secretHitler.setupPlayers.v1`. Active game cleared
+  only on New Game / after saving. `loadActive()` backfills fields missing from older saves.
 
-## Presidential powers (fascist track, by player count)
-When a Fascist policy lands on a powered slot, the game **pauses with a full-screen box**:
-- **Investigation** — pick who was investigated + their party; recorded beside that president
-  as "🔍 name, Liberal/Fascist" (on their seat and in history).
-- **Policy Peek** — three tap-to-toggle cards (Top/Middle/Bottom) set to the claimed order.
-- **Kill** — pick who was executed + whether they were Hitler. Hitler ⇒ Liberals win
-  immediately (end screen preset). Otherwise the player gets a 💀, is skipped in all future
-  elections, and can't be Chancellor.
-- **Special Election** — pick the next President; normal rotation resumes after their turn.
-Turn order, deaths, and the special-election detour are **fully derived from the event log**
-(so Undo just works). President/suggested-Chancellor are derived; the form only holds the
-user's Chancellor tap + conflict arm.
+## Interaction model (mobile-first, no-scroll)
+- **Top row:** Play / History / Stats tabs on the left, **End game + New game** on the right.
+  No page title. Footer removed.
+- **Table dominates.** Wide screens: policy controls stacked **vertically on the right**; phones:
+  controls **below** the table.
+- **President is fixed** each turn (gold **P** badge on the avatar). **Tap a player** to set/move
+  the Chancellor (blue **C** badge). No dropdowns.
+- **Clicking a ratio auto-submits** the presidency; each ratio button shows the **draw
+  probability above it**. Ratios: **Coal (3F) / Golden (2F1L) / Silver (1F2L) / Bronze (3L)** on a
+  red→blue scale. Button highlight is blurred after submit so it doesn't carry over.
+- **Conflict** is an arm toggle; **Failed presidency** and **Undo** sit with the controls.
+- **Per-round blocks** across the top: "Round N" + its modifier stepper; once a round ends, its
+  bottom cards show beneath it and the next round's block appears.
+- **Page scroll/drag is locked** (`html,body{overflow:hidden}` + `body{position:fixed;inset:0}` +
+  `overscroll-behavior:none`); double-tap-zoom disabled. Non-game screens scroll internally.
 
-## Layout (responsive, no-scroll)
-- The Play screen fits the viewport with **no vertical or horizontal scrolling** on laptop and
-  phone (verified: page scrollWidth/Height == client on a 512-wide emulation). The table fills
-  the available height (absolute-positioned inside its panel); boards/piles/seats scale by %.
-- **Tabs**: Play / History / Stats keep the play screen uncluttered.
-- Double-tap-to-zoom disabled (`touch-action: manipulation` + `maximum-scale=1`).
-- Role indicators are **P/C badges on the avatar** (gold/blue) — no free-floating tiles that
-  could overlap names.
-- Chaos (3 failed elections) and every power use a **full-screen blocking overlay**; submitting
-  is disabled until resolved.
-
-## Board visuals
-- Draw pile (left) and Discard pile (right) are grey face-down **card rectangles** with F/L
-  counts beside them and labels above.
-- Enacted policies are **light grey tiles with a red (fascist) / blue (liberal) border**.
+## Board visuals (original stylised CSS — not the game's printed art)
+- **Draw pile (left)** / **Discard pile (right)** = grey face-down card rectangles with F/L counts
+  beside them, labels above.
+- Enacted policies = **light-grey tiles with a red (fascist) / blue (liberal) border**.
 - Empty fascist slots in **Hitler territory (4th+)** are dark red.
-- Power **names** ("Investigation", "Policy Peek", "Kill", "Special Election") label the slots.
-- "Veto begins/allowed" sign on the 5th fascist slot.
+- Power **names** ("Investigation / Policy Peek / Kill / Special Election") label the fascist slots.
+- **"Veto"** (horizontal, dark pill) on the 5th fascist slot — legible on light or dark.
+- Enacted policy **animates** from the acting President's seat to the slot (chaos from the pile).
+- Election tracker = 3 dots.
 
-## Interaction model (current — mobile-first)
-- **President is fixed** each turn (highlighted + gold "President" tile on the table; no
-  dropdown). **Tap a player** on the table to set/move the Chancellor (blue tile + highlight
-  follow the tap).
-- **Clicking the claimed ratio auto-submits** the presidency. The **draw probability of each
-  ratio is shown above its button** (replaces the separate next-hand panel).
-- **Conflict** is an arm toggle: arm it, then click Golden/Silver to submit as a conflict.
-- **Failed presidency** and **Undo** are always available below the table.
-- **Reshuffle is immediate**: the instant the draw pile drops below 3 cards the discard is
-  merged back, so the next round's pool/odds are shown before the next presidency.
-- **Top area** is one block per round: "Round N", its modifier stepper, and — once the round
-  ends — its bottom cards beneath it. The next round's block appears automatically.
+## Presidential powers (fascist track, by player count — see SECRET_HITLER_RULES.md)
+When a Fascist policy lands on a powered slot the game **pauses with a full-screen overlay**:
+- **Investigation** — pick who + party → recorded beside that president ("🔍 name, Fascist/Liberal").
+- **Policy Peek** — 3 tap-to-toggle cards (Top/Middle/Bottom) set to the claimed order.
+- **Kill** — pick who + whether Hitler. Hitler ⇒ **Liberals win** (game-over). Else the player gets
+  a 💀, is skipped in all future elections, and can't be Chancellor.
+- **Special Election** — pick the next President; normal rotation resumes after their turn.
+Every overlay (power / chaos / game-over) has a **↶ Back** button. Powers block play until resolved.
 
-## Implemented features
-- Player entry (5–10), remove, validation.
-- Randomized seating + random first President (marked with ①).
-- Round-table view: players around an ellipse, President (🔨)/Chancellor (🎖) highlight,
-  per-player mini history hand + retrospective odds + conflict tag + failed-election ✕ marks.
-- **Redesigned Secret-Hitler-style boards** (original stylized CSS, not the printed art):
-  red Fascist board with power icons by player count, blue Liberal board, policy cards, and
-  the **election tracker** (3 dots). Live draw & discard pile composition.
-- **Policy-card animation:** the enacted card flies from the acting President's seat to the
-  track slot (chaos cards fly from the draw pile).
-- "Next hand odds" panel (hypergeometric distribution for the upcoming draw).
-- Record-government form: President/Chancellor selects, **Golden/Silver/Bronze/Coal** ratio
-  buttons on a red→blue colour scale, and a **Conflict** toggle. Enacted policy is inferred.
-- **Chancellor auto-rotates** to the next seat after the first is assigned manually.
-- **Failed presidency** button → election tracker +1; at 3 an automatic **chaos top-deck**
-  (asks only for the revealed policy). ✕ marks recorded by the player.
-- **Undo last** button reverses the most recent event and restores the turn state.
-- Round-level liberal modifier, bounded to feasible values with auto-adjust; inferred bottom
-  cards on round completion.
-- Automatic reshuffle detection and round advancement.
-- End-game: pick winner, Hitler, and other Fascists → saved to stats.
-- Statistics screen: cross-game summary + per-player table (incl. conflicts).
+## Game end + role recording (in-place)
+- **Auto-detected wins:** 5 Liberal policies → Liberal; 6 Fascist policies → Fascist; Hitler
+  executed → Liberal. Each pops a **full-screen game-over box** (who won + how) that blocks play.
+- **"Record roles →"** (from the game-over box, or the manual **End game** button) switches the
+  controls area into a **role panel while the table stays visible**: pick **Hitler + the exact #
+  Fascists** (1 in 5–6, 2 in 7–8, 3 in 9–10); a player can't be both; **no "who won" question**
+  (shown when known; a Liberal/Fascist toggle appears only for a manual end with no auto-winner).
+  Selecting recolors the circles live: **black = Hitler, red = Fascist, blue = Liberal**. Save →
+  stats, then back to setup.
+
+## Statistics + game review
+- **Stats** (in-game tab and standalone screen): cross-game summary tiles, per-player table
+  (games/wins/win%/pres/chanc/as-Hitler/conflicts), and an **"All games" list**.
+- **All-games list:** each game is a **winner-coloured box** (Hitler on top, Fascists beside).
+  Clicking opens a **read-only review**: that game's coloured table + every presidency's
+  cards/odds/details, with a **stats panel** (policies, governments, fails, Hitler/Fascists) where
+  the policy options normally sit, and a Back button. Reviewing stashes the live game and restores
+  it on Back; review state never overwrites the saved active game.
+
+## Undo
+- **Full-state snapshots.** `pushUndo()` deep-copies the whole state before each gov / fail /
+  chaos; `undoLast()` restores it exactly (events, round modifiers, powers, deaths, game-over,
+  turn order). Fixes the old "modifier only reverts by 1" bug. Modifier stepper adjustments are
+  not separate undo steps (freely reversible with −/+).
 
 ## Known limitations / not yet done
-- No online/multiplayer play (planned pillar; needs a backend).
-- No enforcement of term limits, votes, veto, or power *usage* (companion assumes honest
-  table play). Powers are shown on the board but not triggered/tracked as actions.
-- Chaos policy (auto-enact on 3 failed elections) is not yet a distinct recordable event
-  (currently everything is modeled as 3-card governments).
-- Round-level modifier is a coarse speculative lever; per-government modifiers are the
-  precise ones. Overlap is intentional but could be unified later.
-- No prior/posterior on *whether* a President lied — the model computes P(hand | assumed
-  lies), not the likelihood the claim is honest. (Noted as a future enhancement.)
+- **No online/multiplayer.** Persistence is per-browser/device (localStorage); a game on the
+  laptop won't appear on the phone. Private/incognito or cleared data loses saves.
+- **"Hitler elected Chancellor" win is not auto-detected** (the app doesn't know who Hitler is
+  mid-game). Use the manual **End game** button — the role panel then shows a winner toggle.
+- No enforcement of term limits / votes / veto *usage* (companion assumes honest table play).
+- No history-row editing/deleting (Undo is the only correction tool; it steps back from the end).
+- No posterior on *whether* a claim was honest — the model computes P(hand | assumed lies).
 
 ## Next candidate steps (not started)
-- Persist an in-progress game to localStorage (resume after refresh).
-- Editable/deletable history rows (fix a misrecorded government).
-- Record chaos policies and power actions (investigations, executions → mark players dead).
-- Probability calculations pillar expansion: posterior "honesty" estimate.
-- Begin online-play architecture (backend, rooms).
-- Richer statistics (per-player liberal/fascist win rates, favorite chancellor pairings).
+- Online-play backend (rooms, shared state) — the big remaining pillar.
+- Optional "the elected Chancellor was Hitler" button once 3 fascist policies are down, so that
+  win auto-detects too.
+- Editable/deletable history entries.
+- Richer statistics (per-player liberal/fascist win rates, favourite chancellor pairings, lie
+  tendency).
+- Probability: optional posterior "how likely is this claim honest?" given a prior on lying.
