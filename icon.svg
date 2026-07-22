@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="36%" r="78%">
+      <stop offset="0%" stop-color="#2c211a"/>
+      <stop offset="100%" stop-color="#100b08"/>
+    </radialGradient>
+    <radialGradient id="felt" cx="50%" cy="42%" r="62%">
+      <stop offset="0%" stop-color="#315040"/>
+      <stop offset="100%" stop-color="#12241b"/>
+    </radialGradient>
+  </defs>
+
+  <!-- full-bleed background (iOS applies its own rounded mask) -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- round table -->
+  <circle cx="256" cy="256" r="150" fill="url(#felt)" stroke="#3b2a1c" stroke-width="16"/>
+
+  <!-- players seated around the table -->
+  <g stroke="#12100e" stroke-width="4">
+    <circle cx="256" cy="68"  r="26" fill="#c0392b"/>
+    <circle cx="389" cy="123" r="26" fill="#1f8fb0"/>
+    <circle cx="444" cy="256" r="26" fill="#c0392b"/>
+    <circle cx="389" cy="389" r="26" fill="#1f8fb0"/>
+    <circle cx="256" cy="444" r="26" fill="#1f8fb0"/>
+    <circle cx="123" cy="389" r="26" fill="#c0392b"/>
+    <circle cx="68"  cy="256" r="26" fill="#1f8fb0"/>
+    <circle cx="123" cy="123" r="26" fill="#d9a441"/>
+  </g>
+
+  <!-- central keyhole: the "secret" identity -->
+  <g fill="#e7c06a">
+    <circle cx="256" cy="228" r="40"/>
+    <path d="M232 250 L280 250 L268 322 L244 322 Z"/>
+  </g>
+</svg>

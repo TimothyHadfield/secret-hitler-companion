@@ -63,7 +63,9 @@
       form: { chanIdxOverride: null, conflictArmed: false },
       pendingChaos: false,
       pendingPower: null, // { type, govIndex, presidentIdx } while a power is unresolved
+      gameOver: null, // { winner, reason } once a terminal outcome occurs
       autoResult: null, // preset end result (e.g. Hitler executed → Liberal win)
+      undoStack: [], // full-state snapshots for exact revert
       result: null,
     };
   }
@@ -353,8 +355,10 @@
       `<div class="power-title"><span class="${cls}">${g.winner}s win!</span></div>` +
       `<p style="font-size:15px">${escapeHtml(g.reason)} The game is over.</p>` +
       `<p class="muted" style="font-size:13px">Record who was Hitler and the Fascists to save this game to your statistics.</p>` +
-      `<div class="control-row"><button id="goEnd" class="primary">Record roles &amp; save →</button></div>`;
+      `<div class="control-row"><button id="goEnd" class="primary">Record roles &amp; save →</button>` +
+      `<button id="goBack" class="ghost">↶ Back</button></div>`;
     $("goEnd").onclick = openEnd;
+    $("goBack").onclick = undoLast;
   }
 
   // per-round blocks at the top: Round N + its modifier; bottom cards once ended
@@ -518,7 +522,7 @@
     });
 
     $("btnConflict").classList.toggle("on", state.form.conflictArmed);
-    $("btnUndo").disabled = state.events.length === 0;
+    $("btnUndo").disabled = !state.undoStack || state.undoStack.length === 0;
   }
 
   function renderHistory(d) {
@@ -597,6 +601,7 @@
     const presIdx = d0.presIdx;
     const conflict = !!state.form.conflictArmed && (libs === 1 || libs === 2);
     const enacted = inferEnacted(libs, conflict);
+    pushUndo();
     state.events.push({
       type: "gov",
       presidentIdx: presIdx,
@@ -620,23 +625,34 @@
 
   function recordFail() {
     if (busy()) return;
+    pushUndo();
     state.events.push({ type: "fail", presidentIdx: derive().presIdx });
     state.form = { chanIdxOverride: null, conflictArmed: false };
     if (derive().tracker >= 3) state.pendingChaos = true;
     renderGame();
   }
 
-  // Undo the most recent event (government, failed election, or chaos).
+  // Snapshot the full game state before a state-changing action so Undo can
+  // restore EVERYTHING exactly (events, round modifiers, powers, deaths,
+  // game-over, conflicts, turn state) — not just pop one event.
+  function pushUndo() {
+    const snap = {};
+    for (const k in state) if (k !== "undoStack") snap[k] = state[k];
+    state.undoStack.push(JSON.stringify(snap));
+  }
+
+  // Revert to exactly the state before the most recent action.
   function undoLast() {
-    if (!state.events.length) return;
-    state.events.pop();
-    state.form = { chanIdxOverride: null, conflictArmed: false };
-    state.pendingPower = null;
-    state.pendingChaos = derive().tracker >= 3; // re-open chaos prompt if a chaos was undone
+    if (!state.undoStack || !state.undoStack.length) return;
+    const stack = state.undoStack;
+    const snap = JSON.parse(stack.pop());
+    snap.undoStack = stack;
+    state = snap;
     renderGame();
   }
 
   function resolveChaos(policy) {
+    pushUndo();
     state.pendingChaos = false;
     state.events.push({ type: "chaos", enacted: policy });
     // chaos resets term limits; keep suggested president/chancellor as-is
@@ -760,6 +776,12 @@
         `<button id="pwNot" class="warn">Not Hitler</button></div>`;
       $("pwHitler").onclick = () => resolvePower({ killedIdx: +$("pwWho").value, wasHitler: true });
       $("pwNot").onclick = () => resolvePower({ killedIdx: +$("pwWho").value, wasHitler: false });
+    }
+    // a Back button on every power prompt reverts the presidency that triggered it
+    const cr = body.querySelector(".control-row");
+    if (cr) {
+      cr.insertAdjacentHTML("beforeend", `<button id="pwBack" class="ghost">↶ Back</button>`);
+      $("pwBack").onclick = undoLast;
     }
   }
 
@@ -951,6 +973,7 @@
     };
     $("chaosLib").onclick = () => resolveChaos("L");
     $("chaosFac").onclick = () => resolveChaos("F");
+    $("chaosBack").onclick = undoLast;
 
     $("btnSaveGame").onclick = saveGame;
     $("btnCancelEnd").onclick = () => show("gameScreen");

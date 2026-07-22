@@ -209,3 +209,28 @@ around the table and the policy options so everything blends and nothing gets cl
   single-hand + separate tag/fail-count display.
 - Verified in headless Chrome (fail-X, 2-presidency rows, game-over blocking + save) and via a
   screenshot of the multi-presidency layout.
+
+---
+
+## Session 7 — 2026-07-22 — True undo, scroll-lock, logo
+
+**User asked for:**
+- Going **back** should revert ALL game data to exactly before that action (they hit a bug where
+  a round modifier bumped by 3 only reverted by 1 on undo; likely more such cases with powers,
+  kills, game-enders, conflicts, fails).
+- On iPhone, kill the **overscroll drag** (white borders above/below when dragging).
+- Create a **logo** (esp. for the iOS home-screen icon instead of a grey "S" box).
+
+**What I changed:**
+- **Snapshot-based Undo**: `pushUndo()` deep-copies the whole game state before each
+  government / failed election / chaos resolution; `undoLast()` restores that snapshot exactly.
+  This fixes the modifier-by-1 bug and reverts everything (powers, deaths, game-over, conflicts,
+  turn order, modifiers) in one step. Added **↶ Back** buttons to the power, chaos, and
+  game-over overlays so you can revert even while one is up. (Verified: +3 → undo → 0.)
+- **Scroll-lock**: `html,body { overflow:hidden }` + `body { position:fixed; inset:0 }` +
+  `overscroll-behavior:none` — the page never drags/bounces. Non-game screens scroll internally
+  if needed. (Verified: page scrollWidth/Height == client.)
+- **Logo**: original `icon.svg` (round table + gold keyhole + red/blue player dots on dark) →
+  rendered `apple-touch-icon.png` (180) and `icon-512.png` via headless Chrome. Wired favicon,
+  apple-touch-icon, theme-color, and apple-mobile-web-app meta tags. (Original art — not the
+  board game's logo.)

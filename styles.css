@@ -20,21 +20,27 @@
 
 * { box-sizing: border-box; }
 
+html, body {
+  height: 100%;
+  overflow: hidden; /* the whole page fits; never allow the document to scroll/drag */
+  overscroll-behavior: none;
+}
 body {
   margin: 0;
+  position: fixed; /* lock the viewport on iOS (no rubber-band drag / white borders) */
+  inset: 0;
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   background: radial-gradient(circle at 50% -10%, #241c16 0%, var(--bg) 60%);
   color: var(--ink);
-  min-height: 100vh;
   touch-action: manipulation; /* disable double-tap-to-zoom */
   -webkit-text-size-adjust: 100%;
-  overscroll-behavior: none;
-  overflow-x: hidden;
 }
 
 h1, h2, h3 { font-family: "Georgia", serif; letter-spacing: 0.3px; }
 
-.wrap { max-width: 1200px; margin: 0 auto; padding: 12px; min-height: 100dvh; display: flex; flex-direction: column; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 12px; height: 100%; display: flex; flex-direction: column; }
+/* non-game screens scroll internally if their content is taller than the viewport */
+#setupScreen:not(.hidden), #statsScreen:not(.hidden), #endScreen:not(.hidden) { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .topbar { flex: 0 0 auto; }
 
 /* the active game screen fills the viewport (no page scrolling) */
