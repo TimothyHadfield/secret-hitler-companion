@@ -66,7 +66,7 @@
       events: [],
       roundMods: {},
       lastChanIdx: null, // for chancellor auto-rotation
-      form: { presIdx: firstPres, chanIdx: null, claimLibs: null, conflict: false },
+      form: { presIdx: firstPres, chanIdx: null, conflictArmed: false },
       pendingChaos: false,
       result: null,
     };
@@ -93,6 +93,18 @@
     const lastGovByPlayer = {};
     const failsByPlayer = {};
 
+    // Reshuffle the moment the draw pile can't deal a full hand (< 3 cards): the
+    // discard pile is merged back immediately, so the new round's pool is shown
+    // before the next presidency is entered. (Only when it actually grows.)
+    const reshuffleIfNeeded = () => {
+      const pool = 17 - fac - lib;
+      if (draw < 3 && pool > draw) {
+        round++;
+        draw = pool;
+        rounds.push(mkRound(round, draw, 6 - lib));
+      }
+    };
+
     state.events.forEach((ev, n) => {
       if (ev.type === "fail") {
         tracker++;
@@ -101,24 +113,16 @@
         return;
       }
       if (ev.type === "chaos") {
-        if (draw < 1) {
-          round++;
-          draw = 17 - (fac + lib);
-          rounds.push(mkRound(round, draw, 6 - lib));
-        }
         draw -= 1;
         if (ev.enacted === "L") { lib++; rounds[round].chaosLib++; }
         else { fac++; rounds[round].chaosFac++; }
         tracker = 0;
         evInfo.push({ type: "chaos", enacted: ev.enacted });
+        reshuffleIfNeeded();
         return;
       }
       // gov
-      if (draw < 3) {
-        round++;
-        draw = 17 - (fac + lib);
-        rounds.push(mkRound(round, draw, 6 - lib));
-      }
+      reshuffleIfNeeded(); // safety (normally already reshuffled after prior event)
       const enacted = ev.enacted;
       const info = {
         type: "gov",
@@ -139,6 +143,7 @@
       if (enacted === "L") lib++;
       else fac++;
       tracker = 0;
+      reshuffleIfNeeded();
     });
 
     // retrospective probability + modifier bounds, per round
@@ -285,24 +290,57 @@
 
   function renderGame() {
     const d = derive();
+    renderRounds(d);
     renderTable(d);
     renderBoards(d);
-    renderRoundBar(d);
-    renderNextDraw(d);
-    renderForm(d);
+    renderControls(d);
     renderHistory(d);
     $("chaosPrompt").classList.toggle("hidden", !state.pendingChaos);
   }
 
+  // per-round blocks at the top: Round N + its modifier; bottom cards once ended
+  function renderRounds(d) {
+    const bar = $("roundsBar");
+    bar.innerHTML = "";
+    d.rounds.forEach((r) => {
+      const finished = r.index < d.round; // a later round exists ⇒ this one has ended
+      const block = document.createElement("div");
+      block.className = "round-block" + (r.index === d.round ? " current" : "");
+      let bottom = "";
+      if (finished && r.leftover > 0) {
+        const cards = [];
+        for (let k = 0; k < r.leftover; k++) cards.push(k < r.bottomLibs ? "L" : "F");
+        bottom =
+          `<div class="round-bottom">` +
+          cards.map((c) => `<span class="miniCard ${c}"></span>`).join("") +
+          `</div><div class="round-bottom-label">bottom</div>`;
+      }
+      block.innerHTML =
+        `<div class="round-title">Round ${r.index + 1}</div>` +
+        `<div class="round-mod">` +
+        `<button data-r="${r.index}" data-d="-1" ${r.mod <= r.modLo ? "disabled" : ""}>−</button>` +
+        `<b>${fmtSigned(r.mod)}</b>` +
+        `<button data-r="${r.index}" data-d="1" ${r.mod >= r.modHi ? "disabled" : ""}>+</button>` +
+        `</div>` +
+        bottom;
+      bar.appendChild(block);
+    });
+    bar.querySelectorAll("button[data-r]").forEach((b) => {
+      b.onclick = () => adjustRoundModFor(+b.dataset.r, +b.dataset.d);
+    });
+  }
+
   function renderTable(d) {
     const area = $("tableArea");
-    area.querySelectorAll(".seatNode").forEach((el) => el.remove());
+    area.querySelectorAll(".seatNode, .role-tile").forEach((el) => el.remove());
     const n = state.players.length;
+    const polar = (i, rx, ry) => {
+      const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      return { x: 50 + rx * Math.cos(ang), y: 50 + ry * Math.sin(ang) };
+    };
 
     state.players.forEach((p, i) => {
-      const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-      const x = 50 + 43 * Math.cos(ang);
-      const y = 50 + 45 * Math.sin(ang);
+      const { x, y } = polar(i, 43, 45);
       const node = document.createElement("div");
       node.className = "seatNode";
       node.dataset.seat = i;
@@ -311,10 +349,7 @@
       if (p.dead) node.classList.add("dead");
       node.style.left = x + "%";
       node.style.top = y + "%";
-
-      let badge = "";
-      if (i === state.form.presIdx) badge = "🔨"; // president
-      else if (i === state.form.chanIdx) badge = "🎖";
+      node.onclick = () => setChancellor(i);
 
       const info = d.lastGovByPlayer[i];
       let extra = "";
@@ -325,33 +360,40 @@
           `<div class="miniHand">` +
           cards.map((c) => `<div class="miniCard ${c}"></div>`).join("") +
           `</div><div class="odds">${Prob.fmtPct(info.prob)}</div>`;
-        if (info.conflict)
-          extra += `<div class="conflict-tag">⚔ conflict</div>`;
+        if (info.conflict) extra += `<div class="conflict-tag">⚔ conflict</div>`;
       }
       const fails = d.failsByPlayer[i] || 0;
       if (fails) extra += `<div class="fail-x">${"✕".repeat(Math.min(fails, 5))}</div>`;
 
       node.innerHTML =
-        `<div class="avatar">${escapeHtml(initials(p.name))}${
-          badge ? `<span class="badge">${badge}</span>` : ""
-        }</div>` +
+        `<div class="avatar">${escapeHtml(initials(p.name))}</div>` +
         `<div class="name">${escapeHtml(p.name)}${i === state.firstPres ? " ·①" : ""}</div>` +
         extra;
       area.appendChild(node);
     });
+
+    // role tiles resting on the table, inward from the seat
+    const addTile = (i, cls, label) => {
+      const { x, y } = polar(i, 27, 30);
+      const t = document.createElement("div");
+      t.className = "role-tile " + cls;
+      t.textContent = label;
+      t.style.left = x + "%";
+      t.style.top = y + "%";
+      area.appendChild(t);
+    };
+    addTile(state.form.presIdx, "president", "President");
+    if (state.form.chanIdx !== null) addTile(state.form.chanIdx, "chancellor", "Chancellor");
   }
 
   function renderBoards(d) {
     const n = state.players.length;
     const powers = FAC_POWERS[n] || FAC_POWERS[10];
 
-    const pw = $("facPowers");
-    pw.innerHTML = powers
+    $("facPowers").innerHTML = powers
       .map(
         (p) =>
-          `<div class="sh-power ${p ? "" : "empty"}" title="${POWER_TITLE[p]}">${
-            POWER_ICON[p] || "·"
-          }</div>`
+          `<div class="sh-power ${p ? "" : "empty"}" title="${POWER_TITLE[p]}">${POWER_ICON[p] || "·"}</div>`
       )
       .join("");
 
@@ -362,6 +404,13 @@
       s.className = "sh-slot" + (i === 5 ? " win" : "");
       if (i < d.fac) s.innerHTML = `<div class="policy-card F"><span class="glyph">✕</span></div>`;
       else if (i === 5) s.innerHTML = `<span class="win-x">WIN</span>`;
+      // veto sign lives on the 5th fascist slot (index 4)
+      if (i === 4) {
+        const v = document.createElement("div");
+        v.className = "veto-sign" + (d.fac >= 5 ? " allowed" : "");
+        v.textContent = d.fac >= 5 ? "Veto allowed" : "Veto begins";
+        s.appendChild(v);
+      }
       fac.appendChild(s);
     }
 
@@ -375,7 +424,6 @@
       lib.appendChild(s);
     }
 
-    // election tracker (3 dots; 3rd = chaos)
     const et = $("electionTracker");
     et.innerHTML = "";
     for (let i = 0; i < 3; i++) {
@@ -384,31 +432,20 @@
       et.appendChild(dot);
     }
 
-    $("drawPile").textContent = `${d.draw} (${d.drawFasc}F / ${d.drawLibs}L)`;
-    $("discardPile").textContent = `${d.discardFasc + d.discardLibs} (${d.discardFasc}F / ${d.discardLibs}L)`;
-    $("deckReadout").textContent = `Enacted: ${d.fac}F / ${d.lib}L · Deck 17 = 11F/6L`;
+    $("drawPile").textContent = `${d.draw} (${d.drawFasc}F/${d.drawLibs}L)`;
+    $("discardPile").textContent = `${d.discardFasc + d.discardLibs} (${d.discardFasc}F/${d.discardLibs}L)`;
   }
 
-  function renderRoundBar(d) {
-    const r = d.rounds[d.round];
-    $("roundNum").textContent = d.round + 1;
-    $("roundMod").textContent = fmtSigned(r.mod);
-    $("modBounds").textContent =
-      `(${fmtSigned(r.modLo)} … ${fmtSigned(r.modHi)})` + (r.forced ? " • auto-adjusted" : "");
-    $("modMinus").disabled = r.mod <= r.modLo;
-    $("modPlus").disabled = r.mod >= r.modHi;
+  function renderControls(d) {
+    const pres = state.players[state.form.presIdx];
+    const chan = state.form.chanIdx !== null ? state.players[state.form.chanIdx] : null;
+    const ti = $("turnInfo");
+    ti.classList.remove("flash");
+    ti.innerHTML =
+      `President <b>${escapeHtml(pres.name)}</b> — tap a player to set the Chancellor` +
+      (chan ? `: <span class="chan-name">${escapeHtml(chan.name)}</span>` : "");
 
-    const wrap = $("bottomCards");
-    if (d.draw < 3 && r.govs.length > 0 && r.leftover > 0) {
-      const cards = [];
-      for (let k = 0; k < r.leftover; k++) cards.push(k < r.bottomLibs ? "L" : "F");
-      wrap.innerHTML = cards.map((c) => `<span class="miniCard ${c}"></span>`).join("");
-    } else {
-      wrap.textContent = "— (round in progress)";
-    }
-  }
-
-  function renderNextDraw(d) {
+    // draw distribution from the current pool (post eager-reshuffle)
     let n = d.draw,
       l = d.drawLibs;
     if (n < 3) {
@@ -416,57 +453,20 @@
       l = 6 - d.lib;
     }
     const dist = Prob.drawDistribution(n, l); // index = liberals
-    const labels = ["3F", "2F·1L", "1F·2L", "3L"];
-    $("nextDraw").innerHTML = dist
-      .map((p, libs) => ({ p, label: labels[libs] }))
-      .reverse()
-      .map(
-        (o) => `<div class="nd-item"><div class="p">${Prob.fmtPct(o.p)}</div><div class="l">${o.label}</div></div>`
-      )
-      .join("");
-  }
-
-  function renderForm(d) {
-    const alive = aliveIdxs();
-    const optable = (idx) =>
-      alive
-        .map(
-          (i) => `<option value="${i}" ${i === idx ? "selected" : ""}>${escapeHtml(state.players[i].name)}</option>`
-        )
-        .join("");
-    $("selPres").innerHTML = optable(state.form.presIdx);
-    $("selChan").innerHTML =
-      `<option value="">— select —</option>` +
-      alive
-        .filter((i) => i !== state.form.presIdx)
-        .map(
-          (i) => `<option value="${i}" ${i === state.form.chanIdx ? "selected" : ""}>${escapeHtml(state.players[i].name)}</option>`
-        )
-        .join("");
-
-    // ratio pick buttons
     const cp = $("claimPick");
-    cp.innerHTML = RATIOS.map(
-      (r) =>
-        `<button class="ratio-btn ${state.form.claimLibs === r.libs ? "sel" : ""}" data-libs="${r.libs}" style="background:${ratioColor(
-          r.libs
-        )}"><span class="ratio-name ${r.cls}">${r.name}</span><span class="ratio-sub">${r.sub}</span></button>`
-    ).join("");
+    cp.innerHTML = RATIOS.map((r) => {
+      const armed = state.form.conflictArmed && (r.libs === 1 || r.libs === 2);
+      return (
+        `<div class="ratio-cell"><div class="ratio-pct">${Prob.fmtPct(dist[r.libs])}</div>` +
+        `<button class="ratio-btn ${armed ? "armed" : ""}" data-libs="${r.libs}" style="background:${ratioColor(r.libs)}">` +
+        `<span class="ratio-name ${r.cls}">${r.name}</span><span class="ratio-sub">${r.sub}</span></button></div>`
+      );
+    }).join("");
     cp.querySelectorAll("button").forEach((b) => {
-      b.onclick = () => {
-        state.form.claimLibs = +b.dataset.libs;
-        if (state.form.claimLibs === 0 || state.form.claimLibs === 3) state.form.conflict = false;
-        renderForm(d);
-      };
+      b.onclick = () => submitClaim(+b.dataset.libs);
     });
 
-    // conflict button — only Golden (1L) / Silver (2L)
-    const cf = $("btnConflict");
-    const conflictable = state.form.claimLibs === 1 || state.form.claimLibs === 2;
-    cf.disabled = !conflictable;
-    cf.classList.toggle("on", conflictable && state.form.conflict);
-
-    $("btnRecord").disabled = !(state.form.chanIdx !== null && state.form.claimLibs !== null);
+    $("btnConflict").classList.toggle("on", state.form.conflictArmed);
     $("btnUndo").disabled = state.events.length === 0;
   }
 
@@ -506,36 +506,52 @@
   }
 
   // ------------------------------ recording ----------------------------------
-  function recordGovernment() {
-    const presIdx = +$("selPres").value;
-    const chanVal = $("selChan").value;
-    if (chanVal === "" || state.form.claimLibs === null) return;
-    const chanIdx = +chanVal;
-    const enacted = inferEnacted(state.form.claimLibs, state.form.conflict);
+  // Tapping a player on the table sets the Chancellor (moves highlight + tile).
+  function setChancellor(i) {
+    if (state.players[i].dead || i === state.form.presIdx) return;
+    state.form.chanIdx = i;
+    renderGame();
+  }
+
+  function flashTurn(msg) {
+    const ti = $("turnInfo");
+    ti.textContent = msg;
+    ti.classList.add("flash");
+  }
+
+  // Clicking the claimed outcome auto-submits the presidency.
+  function submitClaim(libs) {
+    if (state.form.chanIdx === null) {
+      flashTurn("Tap a player on the table to set the Chancellor first.");
+      return;
+    }
+    const conflict = !!state.form.conflictArmed && (libs === 1 || libs === 2);
+    const enacted = inferEnacted(libs, conflict);
+    const presIdx = state.form.presIdx;
+    const chanIdx = state.form.chanIdx;
     state.events.push({
       type: "gov",
       presidentIdx: presIdx,
       chancellorIdx: chanIdx,
-      claimLibs: state.form.claimLibs,
-      conflict: state.form.conflict && (state.form.claimLibs === 1 || state.form.claimLibs === 2),
+      claimLibs: libs,
+      conflict,
       enacted,
     });
     state.lastChanIdx = chanIdx;
     const nextPres = nextAliveAfter(presIdx);
-    state.form = { presIdx: nextPres, chanIdx: defaultChancellor(nextPres), claimLibs: null, conflict: false };
+    state.form = { presIdx: nextPres, chanIdx: defaultChancellor(nextPres), conflictArmed: false };
     renderGame();
     animateEnact(presIdx, enacted);
   }
 
   function recordFail() {
-    const presIdx = +$("selPres").value;
+    const presIdx = state.form.presIdx;
     state.events.push({ type: "fail", presidentIdx: presIdx });
     const nextPres = nextAliveAfter(presIdx);
     state.form.presIdx = nextPres;
     state.form.chanIdx = defaultChancellor(nextPres);
-    // has the tracker just hit 3?
-    const d = derive();
-    if (d.tracker >= 3) state.pendingChaos = true;
+    state.form.conflictArmed = false;
+    if (derive().tracker >= 3) state.pendingChaos = true;
     renderGame();
   }
 
@@ -555,7 +571,7 @@
       }
     }
     state.lastChanIdx = lastChan;
-    state.form = { presIdx: cand, chanIdx: defaultChancellor(cand), claimLibs: null, conflict: false };
+    state.form = { presIdx: cand, chanIdx: defaultChancellor(cand), conflictArmed: false };
     state.pendingChaos = derive().tracker >= 3; // re-open chaos prompt if a chaos was undone
     renderGame();
   }
@@ -714,24 +730,12 @@
       }
     };
 
-    $("btnRecord").onclick = recordGovernment;
     $("btnFail").onclick = recordFail;
     $("btnUndo").onclick = undoLast;
     $("btnConflict").onclick = () => {
-      state.form.conflict = !state.form.conflict;
-      renderForm(derive());
+      state.form.conflictArmed = !state.form.conflictArmed;
+      renderControls(derive());
     };
-    $("selPres").onchange = () => {
-      state.form.presIdx = +$("selPres").value;
-      if (state.form.chanIdx === state.form.presIdx) state.form.chanIdx = null;
-      renderForm(derive());
-    };
-    $("selChan").onchange = () => {
-      state.form.chanIdx = $("selChan").value === "" ? null : +$("selChan").value;
-      $("btnRecord").disabled = !(state.form.chanIdx !== null && state.form.claimLibs !== null);
-    };
-    $("modMinus").onclick = () => adjustRoundMod(-1);
-    $("modPlus").onclick = () => adjustRoundMod(1);
     $("chaosLib").onclick = () => resolveChaos("L");
     $("chaosFac").onclick = () => resolveChaos("F");
 
@@ -740,10 +744,10 @@
     $("btnCancelEnd").onclick = () => show("gameScreen");
   }
 
-  function adjustRoundMod(delta) {
-    const d = derive();
-    const r = d.rounds[d.round];
-    state.roundMods[d.round] = clamp(r.mod + delta, r.modLo, r.modHi);
+  function adjustRoundModFor(roundIdx, delta) {
+    const r = derive().rounds[roundIdx];
+    if (!r) return;
+    state.roundMods[roundIdx] = clamp(r.mod + delta, r.modLo, r.modHi);
     renderGame();
   }
 

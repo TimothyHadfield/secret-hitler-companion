@@ -62,6 +62,19 @@ later):
 - **Stats:** browser `localStorage` only for now (key `secretHitler.games.v1`).
 - **Repo:** public (needed for free GitHub Pages).
 
+## Interaction model (current — mobile-first)
+- **President is fixed** each turn (highlighted + gold "President" tile on the table; no
+  dropdown). **Tap a player** on the table to set/move the Chancellor (blue tile + highlight
+  follow the tap).
+- **Clicking the claimed ratio auto-submits** the presidency. The **draw probability of each
+  ratio is shown above its button** (replaces the separate next-hand panel).
+- **Conflict** is an arm toggle: arm it, then click Golden/Silver to submit as a conflict.
+- **Failed presidency** and **Undo** are always available below the table.
+- **Reshuffle is immediate**: the instant the draw pile drops below 3 cards the discard is
+  merged back, so the next round's pool/odds are shown before the next presidency.
+- **Top area** is one block per round: "Round N", its modifier stepper, and — once the round
+  ends — its bottom cards beneath it. The next round's block appears automatically.
+
 ## Implemented features
 - Player entry (5–10), remove, validation.
 - Randomized seating + random first President (marked with ①).

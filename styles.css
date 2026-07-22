@@ -105,9 +105,9 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 /* ---------- Secret-Hitler-style boards ---------- */
 .center-boards {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: 52%; min-width: 300px; display: grid; gap: 10px; z-index: 3;
+  width: 42%; min-width: 210px; max-width: 360px; display: grid; gap: 7px; z-index: 3;
 }
-.sh-board { border-radius: 10px; padding: 8px 10px 10px; border: 2px solid rgba(0,0,0,0.5); box-shadow: var(--shadow); }
+.sh-board { border-radius: 9px; padding: 6px 7px 7px; border: 2px solid rgba(0,0,0,0.5); box-shadow: var(--shadow); }
 .sh-board.fascist { background: linear-gradient(150deg, #7c2417 0%, #b5321f 45%, #46201a 100%); }
 .sh-board.liberal { background: linear-gradient(150deg, #14607a 0%, #1f8fb0 45%, #123a49 100%); }
 .sh-board-head { font-family: Georgia, serif; font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #fff2e0; margin-bottom: 6px; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
@@ -150,15 +150,47 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .policy-card.pop { animation: slotpop 0.28s ease-out; }
 
 /* election tracker */
-.sh-tracker-wrap { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.sh-tracker-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #eaf6fb; opacity: 0.85; }
-.sh-tracker { display: flex; gap: 8px; }
-.sh-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.55); background: rgba(0,0,0,0.25); }
+.sh-tracker { display: flex; gap: 7px; justify-content: center; margin-top: 6px; }
+.sh-dot { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.55); background: rgba(0,0,0,0.25); }
 .sh-dot.on { background: #ffd98a; border-color: #ffd98a; box-shadow: 0 0 6px rgba(255,217,138,0.7); }
 .sh-dot.chaos { background: var(--fac-2); border-color: var(--fac-2); }
 
-.piles { display: flex; justify-content: space-around; margin-top: 4px; font-size: 12px; color: var(--ink); }
-.piles .pile b { color: var(--gold); }
+/* veto sign on the 5th fascist slot */
+.veto-sign {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-90deg);
+  font-size: 7px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
+  color: #ffe9c2; white-space: nowrap; text-align: center; line-height: 1.1; z-index: 2;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+.veto-sign.allowed { color: #fff; }
+
+.piles { text-align: center; margin-top: 4px; font-size: 11px; color: var(--ink); }
+.piles b { color: var(--gold); }
+
+/* role tiles resting on the table */
+.role-tile {
+  position: absolute; transform: translate(-50%, -50%); z-index: 5;
+  font-family: Georgia, serif; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;
+  padding: 3px 7px; border-radius: 5px; text-transform: uppercase; white-space: nowrap;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.55); border: 1px solid rgba(0,0,0,0.4);
+}
+.role-tile.president { background: linear-gradient(160deg, #f0c04a, #c8901f); color: #241a08; }
+.role-tile.chancellor { background: linear-gradient(160deg, #5fc7e2, #1f8fb0); color: #06222b; }
+
+/* ---------- per-round blocks (top) ---------- */
+.rounds-bar { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; }
+.round-block {
+  flex: 0 0 auto; min-width: 108px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 10px; text-align: center; box-shadow: var(--shadow);
+}
+.round-block.current { border-color: var(--gold); }
+.round-title { font-family: Georgia, serif; font-weight: 700; font-size: 14px; color: var(--gold); margin-bottom: 4px; }
+.round-mod { display: inline-flex; align-items: center; gap: 6px; }
+.round-mod button { padding: 2px 9px; }
+.round-mod b { min-width: 22px; display: inline-block; }
+.round-bottom { display: flex; gap: 4px; justify-content: center; margin-top: 6px; }
+.round-bottom .miniCard { width: 18px; height: 26px; }
+.round-bottom-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-top: 2px; }
 
 /* ---------- Round / modifier bar ---------- */
 .roundbar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
@@ -167,23 +199,45 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .bottomcards { display: flex; gap: 4px; align-items: center; }
 .bottomcards .miniCard { width: 18px; height: 26px; }
 
-/* ---------- Ratio pick buttons ---------- */
+/* ---------- Controls (below the table) ---------- */
+.controls { margin-top: 14px; }
+.turn-info { font-size: 15px; margin-bottom: 10px; text-align: center; }
+.turn-info b { color: var(--gold); }
+.turn-info .chan-name { color: var(--lib-2); }
+.turn-info.flash { color: var(--fac-2); font-weight: 700; }
+.control-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+
+/* ---------- Ratio pick buttons (with draw % above) ---------- */
 .ratio-pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ratio-cell { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
+.ratio-pct { text-align: center; font-size: 15px; font-weight: 700; color: var(--gold); }
 .ratio-btn {
-  padding: 10px 4px; border-radius: 9px; border: 2px solid transparent;
+  padding: 12px 4px; border-radius: 9px; border: 2px solid transparent; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 3px; color: #fff;
 }
-.ratio-btn .ratio-name { font-weight: 800; font-family: Georgia, serif; font-size: 14px; }
+.ratio-btn .ratio-name { font-weight: 800; font-family: Georgia, serif; font-size: 15px; }
 .ratio-btn .ratio-sub { font-size: 11px; opacity: 0.9; }
-.ratio-btn.sel { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,0.35); }
+.ratio-btn.armed { border-color: var(--fac-2); box-shadow: 0 0 0 2px rgba(224,85,60,0.5); }
 .ratio-name.golden { color: var(--gold); text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
 .ratio-name.silver { color: var(--silver); text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
 .ratio-name.bronze { color: var(--bronze); text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
 .ratio-name.coal   { color: #cfcfcf; text-shadow: 0 1px 2px rgba(0,0,0,0.9); }
 
-.conflict-btn { width: 100%; background: #3a2320; border-color: #6b3a30; color: #f0c9c1; }
+.conflict-btn { background: #3a2320; border-color: #6b3a30; color: #f0c9c1; }
 .conflict-btn:hover:not(:disabled) { background: var(--fac); border-color: var(--fac-2); color: #fff; }
 .conflict-btn.on { background: var(--fac); border-color: #fff; color: #fff; font-weight: 700; }
+
+/* ---------- Mobile ---------- */
+@media (max-width: 640px) {
+  .wrap { padding: 10px; }
+  .table-area { aspect-ratio: 1 / 1; }
+  .center-boards { width: 48%; min-width: 150px; }
+  .seatNode { width: 74px; }
+  .seatNode .avatar { width: 38px; height: 38px; }
+  .ratio-btn .ratio-name { font-size: 13px; }
+  .ratio-btn .ratio-sub { font-size: 10px; }
+  .topbar h1 { font-size: 20px; }
+}
 
 /* ---------- History table ---------- */
 table.hist { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }

@@ -89,3 +89,42 @@ and our collaboration evolved.
 **Note / open question for the user:** the modifier-bounds example mentioned "7 liberals
 total," but the standard deck is **6 Liberal / 11 Fascist** (what the app uses). I implemented
 bounds against the 6-liberal deck. If a different count was intended, flag it and I'll adjust.
+
+---
+
+## Session 3 — 2026-07-22 — Mobile-first simplification
+
+**User confirmed:** always follow the real rules (6 Liberal / 11 Fascist); treat examples as
+principle, not literal numbers.
+
+**User asked for:**
+1. **Immediate reshuffle** when the draw pile drops below 3 (show the new pool before the next
+   presidency is entered).
+2. **Top area = per-round blocks**: just "Round N" + its modifier; when a round ends, show its
+   bottom cards below it (adjusted by the modifier) and start the next round's block. Remove
+   stray text.
+3. **Condense for phones**: move the next-presidency controls *below* the table; merge the
+   "chance next president draws" odds into the ratio buttons (percent above each box); make
+   the President fixed/highlighted (no dropdown); **tap a player to set the Chancellor**;
+   keep Conflict + Failed-presidency; **clicking the claimed ratio auto-submits**.
+4. Resize the center boards so they don't overlap the table edges.
+5. **Veto signs** on the 5th fascist slot: "Veto begins" when uncovered, "Veto allowed" when a
+   policy covers it.
+6. **President/Chancellor tiles** resting on the table by each player; the chancellor tile +
+   highlight move as the user taps different players.
+
+**What I changed:**
+- `derive()` now reshuffles eagerly (the instant draw < 3), so the new round + odds show
+  immediately.
+- Rebuilt the top area as per-round blocks (`renderRounds`) with per-round modifier steppers
+  and bottom cards on round end.
+- Reworked the game screen for mobile: controls moved below the table; removed the
+  president/chancellor dropdowns, the separate next-hand panel, and the record button; draw %
+  now sits above each Golden/Silver/Bronze/Coal button; ratio click auto-submits; Conflict is
+  an arm toggle; tap-a-seat sets the Chancellor.
+- Added on-table **President/Chancellor role tiles** that follow the current roles.
+- Shrank the center boards; added **veto signs** on the 5th fascist slot.
+- Re-ran the headless-Chrome smoke test (new tap/click model, eager reshuffle, veto, tiles,
+  chaos, undo) — **passed, no runtime errors**.
+
+Board visuals remain original stylized CSS (colours/emoji/shapes), not the game's printed art.

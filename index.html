@@ -35,89 +35,37 @@
 
     <!-- ===================== GAME SCREEN ===================== -->
     <section id="gameScreen" class="hidden">
-      <!-- round / modifier bar -->
-      <div class="roundbar panel">
-        <div><span class="pill">Round <b id="roundNum">1</b></span></div>
-        <div class="stepper">
-          <label style="margin:0">Round liberal modifier</label>
-          <button id="modMinus">−</button>
-          <b id="roundMod" style="min-width:20px;display:inline-block;text-align:center">0</b>
-          <button id="modPlus">+</button>
-          <span class="muted" id="modBounds" style="font-size:11px"></span>
+      <!-- per-round blocks: Round N · modifier · bottom cards when the round ends -->
+      <div id="roundsBar" class="rounds-bar"></div>
+
+      <!-- table -->
+      <div class="panel table-panel">
+        <div class="table-area" id="tableArea">
+          <div class="felt"></div>
+          <div class="center-boards">
+            <div class="sh-board fascist" id="facBoard">
+              <div class="sh-powers" id="facPowers"></div>
+              <div class="sh-track" id="facTrack"></div>
+            </div>
+            <div class="sh-board liberal" id="libBoard">
+              <div class="sh-track" id="libTrack"></div>
+              <div class="sh-tracker" id="electionTracker"></div>
+            </div>
+            <div class="piles">Draw <b id="drawPile">—</b> · Discard <b id="discardPile">—</b></div>
+          </div>
+          <!-- seat nodes, role tiles + fly cards injected here -->
         </div>
-        <div class="bottomcards" id="bottomCardsWrap">
-          <span class="muted">Bottom cards:</span>
-          <span id="bottomCards" class="muted">—</span>
-        </div>
-        <div class="spacer"></div>
-        <div class="muted" id="deckReadout"></div>
       </div>
 
-      <div class="row" style="align-items:stretch; gap:16px;">
-        <!-- table -->
-        <div class="panel" style="flex:2; min-width:340px;">
-          <div class="table-area" id="tableArea">
-            <div class="felt"></div>
-            <div class="center-boards">
-              <!-- Fascist board -->
-              <div class="sh-board fascist" id="facBoard">
-                <div class="sh-board-head"><span class="sh-emblem fac">✕</span> Fascist Policies</div>
-                <div class="sh-powers" id="facPowers"></div>
-                <div class="sh-track" id="facTrack"></div>
-              </div>
-              <!-- Liberal board -->
-              <div class="sh-board liberal" id="libBoard">
-                <div class="sh-board-head"><span class="sh-emblem lib">★</span> Liberal Policies</div>
-                <div class="sh-track" id="libTrack"></div>
-                <div class="sh-tracker-wrap">
-                  <span class="sh-tracker-label">Election tracker</span>
-                  <div class="sh-tracker" id="electionTracker"></div>
-                </div>
-              </div>
-              <div class="piles">
-                <div class="pile">Draw: <b id="drawPile">—</b></div>
-                <div class="pile">Discard: <b id="discardPile">—</b></div>
-              </div>
-            </div>
-            <!-- seat nodes + fly cards injected here -->
-          </div>
-        </div>
-
-        <!-- side: next-draw odds + record form -->
-        <div class="panel" style="flex:1; min-width:280px;">
-          <h3 style="margin-top:0">Next hand odds</h3>
-          <p class="muted" style="margin:0 0 6px">Chance the next President draws…</p>
-          <div class="next-draw" id="nextDraw"></div>
-
-          <div class="gov-form">
-            <h3>Record government</h3>
-            <div class="grid">
-              <div>
-                <label>President</label>
-                <select id="selPres"></select>
-              </div>
-              <div>
-                <label>Chancellor</label>
-                <select id="selChan"></select>
-              </div>
-            </div>
-            <div style="margin-top:12px">
-              <label>President claims they drew</label>
-              <div class="ratio-pick" id="claimPick"></div>
-            </div>
-            <div style="margin-top:10px">
-              <button id="btnConflict" class="conflict-btn" disabled>⚔ Conflict — Chancellor played Fascist</button>
-              <div class="muted" style="font-size:11px;margin-top:4px">Enabled on Golden/Silver: the Chancellor enacted a Fascist despite a claimed Liberal.</div>
-            </div>
-            <div class="row" style="margin-top:14px">
-              <button id="btnRecord" class="primary">Record government</button>
-              <button id="btnFail" class="warn">Failed presidency</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <button id="btnUndo" class="ghost">↶ Undo last</button>
-              <button id="btnEnd" class="ghost">End game</button>
-            </div>
-          </div>
+      <!-- controls below the table -->
+      <div class="panel controls">
+        <div id="turnInfo" class="turn-info"></div>
+        <div class="ratio-pick" id="claimPick"></div>
+        <div class="control-row">
+          <button id="btnConflict" class="conflict-btn">⚔ Conflict</button>
+          <button id="btnFail" class="warn">Failed presidency</button>
+          <button id="btnUndo" class="ghost">↶ Undo</button>
+          <button id="btnEnd" class="ghost">End game</button>
         </div>
       </div>
 
@@ -134,12 +82,14 @@
       <!-- history -->
       <div class="panel" style="margin-top:16px">
         <h3 style="margin-top:0">History <span class="muted" style="font-size:13px">(retrospective odds update as the round unfolds)</span></h3>
-        <table class="hist" id="histTable">
-          <thead>
-            <tr><th>#</th><th>Round</th><th>Event</th><th>President</th><th>Chancellor</th><th>Hand</th><th>Enacted</th><th>Odds of hand</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+        <div style="overflow-x:auto">
+          <table class="hist" id="histTable">
+            <thead>
+              <tr><th>#</th><th>Rd</th><th>Event</th><th>Pres.</th><th>Chanc.</th><th>Hand</th><th>Enacted</th><th>Odds</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
