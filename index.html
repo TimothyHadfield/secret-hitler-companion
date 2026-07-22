@@ -130,6 +130,10 @@
           </table>
         </div>
       </div>
+      <div class="panel" style="margin-top:12px">
+        <h3 style="margin-top:0">All games <span class="muted" style="font-size:12px">(tap a game to review it)</span></h3>
+        <div class="games-list" id="gamesListInline"></div>
+      </div>
      </div><!-- /statsTab -->
 
       <!-- full-screen blocking overlays -->
@@ -154,29 +158,6 @@
       </div>
     </section>
 
-    <!-- ===================== END GAME SCREEN ===================== -->
-    <section id="endScreen" class="panel hidden" style="margin-top:16px">
-      <h2>Game over — record the result</h2>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
-        <div>
-          <label>Winner</label>
-          <select id="selWinner"><option>Liberal</option><option>Fascist</option></select>
-        </div>
-        <div>
-          <label>Who was Hitler?</label>
-          <select id="selHitler"></select>
-        </div>
-      </div>
-      <div style="margin-top:10px">
-        <label>Who were the other Fascists? (click to toggle)</label>
-        <div id="fascistToggles" class="row"></div>
-      </div>
-      <div class="row" style="margin-top:12px">
-        <button id="btnSaveGame" class="primary">Save game to statistics</button>
-        <button id="btnCancelEnd" class="ghost">Back</button>
-      </div>
-    </section>
-
     <!-- ===================== STATS SCREEN ===================== -->
     <section id="statsScreen" class="hidden">
       <div class="panel">
@@ -195,6 +176,10 @@
           <button id="btnBackFromStats" class="ghost">Back</button>
           <button id="btnClearStats" class="ghost">Clear all statistics</button>
         </div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h2 style="margin-top:0">All games <span class="muted" style="font-size:13px">(click a game to review it)</span></h2>
+        <div class="games-list" id="gamesList"></div>
       </div>
     </section>
   </div>

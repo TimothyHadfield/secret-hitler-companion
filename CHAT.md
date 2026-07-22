@@ -252,3 +252,33 @@ refreshes, closing/reopening, and redeploys.
   across redeploys). Wrapped all `localStorage` access in try/catch.
 - Verified with a two-session headless test (start a game in session 1 → a fresh page load in
   session 2 resumes it with all players/events intact and the roster saved).
+
+---
+
+## Session 9 — 2026-07-22 — Veto, top-seat clip, in-place role recording, games list
+
+**User asked for:**
+- Make the **veto sign horizontal** ("Veto") — vertical small letters were unreadable — and
+  legible on both the light card and the dark slot.
+- The **top player's circle** was clipped by the table's box — fix it.
+- Redesign **end-of-game role recording**: keep the table + all data up and only replace the
+  policy-options area with the role questions. Ask **Hitler + the exact number of Fascists**
+  (1 in 5–6, 2 in 7–8, 3 in 9–10); a player can't be both; drop the "who won" question (the game
+  knows); then **color each circle** red (Fascist) / black (Hitler) / blue (Liberal).
+- Add an **"all games" list** in Stats: a box colored by the winning team with Hitler on top and
+  the Fascists side-by-side; clicking it **reviews that game** (its table + key stats where the
+  policy options normally sit).
+
+**What I changed:**
+- Veto label is now horizontal "Veto" on a dark pill (readable on any slot). Pulled the seat
+  ellipse in vertically so the top seat is never clipped.
+- **In-place role recording**: the game-over box's button (and manual End game) now switch the
+  controls area to a role panel while the table stays visible. Winner shown (or asked only if
+  unknown for a manual end); tap-to-pick Hitler and N Fascists with mutual exclusion; circles
+  recolor live by role; Save writes to stats.
+- **All-games list** in both the in-game Stats tab and the Stats screen; each entry is a
+  winner-colored box (Hitler above, Fascists beside). Clicking opens a **read-only review** of
+  that game — colored table + presidency details + a stats panel (policies, governments,
+  fails, Hitler/Fascists) — with a Back button. Removed the old separate end screen.
+- Verified in headless Chrome (role panel shows over the live table, circles 1 H / 1 F / 3 L,
+  save → stats, games list → review → back) and via mobile + laptop screenshots.

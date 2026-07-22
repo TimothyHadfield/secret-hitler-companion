@@ -25,6 +25,9 @@
   const POWER_LABEL = { invest: "Investigation", special: "Special Election", peek: "Policy Peek", kill: "Kill" };
   const POWER_ICON = { invest: "🔍", special: "⚡", peek: "👁", kill: "💀" };
 
+  // number of Fascists to record (excluding Hitler), by player count
+  const FASCIST_COUNT = { 5: 1, 6: 1, 7: 2, 8: 2, 9: 3, 10: 3 };
+
   // ---- Ratio metadata (claim = liberals drawn of 3) ----
   const RATIOS = [
     { libs: 0, name: "Coal", cls: "coal", sub: "3F" },
@@ -50,6 +53,7 @@
   // ------------------------------ state --------------------------------------
   let setupPlayers = [];
   let state = null;
+  let stashedState = null; // holds the live game while reviewing a saved one
 
   // ------------------------------ persistence --------------------------------
   // The active game and the setup roster are saved locally so a refresh, a
@@ -60,7 +64,7 @@
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
   const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
 
-  function saveActive() { if (state) lsSet(ACTIVE_KEY, JSON.stringify(state)); }
+  function saveActive() { if (state && !state.review) lsSet(ACTIVE_KEY, JSON.stringify(state)); }
   function clearActive() { lsDel(ACTIVE_KEY); }
   function saveSetup() { lsSet(SETUP_KEY, JSON.stringify(setupPlayers)); }
 
@@ -93,7 +97,11 @@
       pendingChaos: false,
       pendingPower: null, // { type, govIndex, presidentIdx } while a power is unresolved
       gameOver: null, // { winner, reason } once a terminal outcome occurs
-      autoResult: null, // preset end result (e.g. Hitler executed → Liberal win)
+      recordingRoles: false, // showing the role-recording panel in place of controls
+      roleDraft: { hitlerIdx: null, fascistIdxs: [] },
+      winnerDraft: null, // manual winner when the game didn't auto-detect one
+      review: false, // read-only review of a saved game
+      autoResult: null,
       undoStack: [], // full-state snapshots for exact revert
       result: null,
     };
@@ -296,7 +304,7 @@
 
   // ------------------------------ screens ------------------------------------
   function show(id) {
-    ["setupScreen", "gameScreen", "endScreen", "statsScreen"].forEach((s) =>
+    ["setupScreen", "gameScreen", "statsScreen"].forEach((s) =>
       $(s).classList.toggle("hidden", s !== id)
     );
     // the game screen carries its own top row (tabs + New/End); hide the global topbar there
@@ -375,7 +383,7 @@
 
   function renderGameOver() {
     const m = $("gameOverModal");
-    if (!state.gameOver) {
+    if (!state.gameOver || state.recordingRoles) {
       m.classList.add("hidden");
       return;
     }
@@ -386,9 +394,9 @@
       `<div class="power-title"><span class="${cls}">${g.winner}s win!</span></div>` +
       `<p style="font-size:15px">${escapeHtml(g.reason)} The game is over.</p>` +
       `<p class="muted" style="font-size:13px">Record who was Hitler and the Fascists to save this game to your statistics.</p>` +
-      `<div class="control-row"><button id="goEnd" class="primary">Record roles &amp; save →</button>` +
+      `<div class="control-row"><button id="goEnd" class="primary">Record roles →</button>` +
       `<button id="goBack" class="ghost">↶ Back</button></div>`;
-    $("goEnd").onclick = openEnd;
+    $("goEnd").onclick = enterRoleRecording;
     $("goBack").onclick = undoLast;
   }
 
@@ -434,13 +442,21 @@
     };
 
     const chanIdx = effChan(d);
+    // known/assigned roles color the circles (recording, review, or saved game)
+    const roles = state.result || (state.recordingRoles ? state.roleDraft : null);
     state.players.forEach((p, i) => {
-      const { x, y } = polar(i, 43, 45);
+      const { x, y } = polar(i, 43, 40);
       const node = document.createElement("div");
       node.className = "seatNode";
       node.dataset.seat = i;
-      if (i === d.presIdx) node.classList.add("pres");
-      if (i === chanIdx) node.classList.add("chan");
+      if (roles) {
+        if (i === roles.hitlerIdx) node.classList.add("role-hitler");
+        else if ((roles.fascistIdxs || []).includes(i)) node.classList.add("role-fascist");
+        else node.classList.add("role-liberal");
+      } else {
+        if (i === d.presIdx) node.classList.add("pres");
+        if (i === chanIdx) node.classList.add("chan");
+      }
       if (p.dead) node.classList.add("dead");
       node.style.left = x + "%";
       node.style.top = y + "%";
@@ -464,8 +480,10 @@
         .join("");
 
       let badge = "";
-      if (i === d.presIdx) badge = `<span class="role-badge p" title="President">P</span>`;
-      else if (i === chanIdx) badge = `<span class="role-badge c" title="Chancellor">C</span>`;
+      if (!roles) {
+        if (i === d.presIdx) badge = `<span class="role-badge p" title="President">P</span>`;
+        else if (i === chanIdx) badge = `<span class="role-badge c" title="Chancellor">C</span>`;
+      }
 
       node.innerHTML =
         `<div class="avatar">${escapeHtml(initials(p.name))}${badge}${
@@ -499,8 +517,8 @@
       else if (i === 5) s.innerHTML = `<span class="win-x">WIN</span>`;
       if (i === 4) {
         const v = document.createElement("div");
-        v.className = "veto-sign" + (d.fac >= 5 ? " allowed" : "");
-        v.textContent = d.fac >= 5 ? "Veto allowed" : "Veto begins";
+        v.className = "veto-sign";
+        v.textContent = "Veto";
         s.appendChild(v);
       }
       fac.appendChild(s);
@@ -530,6 +548,20 @@
 
   function renderControls(d) {
     $("hint").textContent = "";
+    const cp = $("claimPick");
+    const cr = document.querySelector(".controls > .control-row");
+
+    if (state.review) {
+      if (cr) cr.style.display = "none";
+      renderReviewPanel(cp, d);
+      return;
+    }
+    if (state.recordingRoles) {
+      if (cr) cr.style.display = "none";
+      renderRolePanel(cp, d);
+      return;
+    }
+    if (cr) cr.style.display = "";
 
     // draw distribution from the current pool (post eager-reshuffle)
     let n = d.draw,
@@ -539,7 +571,6 @@
       l = 6 - d.lib;
     }
     const dist = Prob.drawDistribution(n, l); // index = liberals
-    const cp = $("claimPick");
     cp.innerHTML = RATIOS.map((r) => {
       const armed = state.form.conflictArmed && (r.libs === 1 || r.libs === 2);
       return (
@@ -554,6 +585,170 @@
 
     $("btnConflict").classList.toggle("on", state.form.conflictArmed);
     $("btnUndo").disabled = !state.undoStack || state.undoStack.length === 0;
+  }
+
+  // ------------------------------ role recording -----------------------------
+  const fascistNeed = () => FASCIST_COUNT[state.players.length] || 1;
+
+  function enterRoleRecording() {
+    if (state.review) return;
+    state.recordingRoles = true;
+    if (!state.roleDraft) state.roleDraft = { hitlerIdx: null, fascistIdxs: [] };
+    if (state.autoResult && state.autoResult.hitlerIdx != null && state.roleDraft.hitlerIdx == null)
+      state.roleDraft.hitlerIdx = state.autoResult.hitlerIdx;
+    renderGame();
+  }
+
+  function roleReady() {
+    const winnerOk = state.gameOver ? true : !!state.winnerDraft;
+    return winnerOk && state.roleDraft.hitlerIdx != null && state.roleDraft.fascistIdxs.length === fascistNeed();
+  }
+
+  function toggleRole(role, i) {
+    const draft = state.roleDraft;
+    if (role === "hitler") {
+      draft.hitlerIdx = draft.hitlerIdx === i ? null : i;
+      draft.fascistIdxs = draft.fascistIdxs.filter((x) => x !== draft.hitlerIdx); // can't be both
+    } else {
+      if (i === draft.hitlerIdx) return;
+      const at = draft.fascistIdxs.indexOf(i);
+      if (at >= 0) draft.fascistIdxs.splice(at, 1);
+      else if (draft.fascistIdxs.length < fascistNeed()) draft.fascistIdxs.push(i);
+    }
+    renderGame();
+  }
+
+  function renderRolePanel(cp, d) {
+    const players = state.players;
+    const need = fascistNeed();
+    const draft = state.roleDraft;
+    const winner = state.gameOver ? state.gameOver.winner : state.winnerDraft;
+    const winnerHtml = state.gameOver
+      ? `<div class="role-winner ${winner === "Fascist" ? "c-fac" : "c-lib"}">${winner}s win</div>`
+      : `<div class="role-field"><label>Who won?</label> <span class="seg">` +
+        `<button id="rwLib" class="${winner === "Liberal" ? "sel L" : ""}">Liberal</button>` +
+        `<button id="rwFac" class="${winner === "Fascist" ? "sel F" : ""}">Fascist</button></span></div>`;
+    const pbtns = (role) =>
+      players
+        .map((p, i) => {
+          const sel = role === "hitler" ? draft.hitlerIdx === i : draft.fascistIdxs.includes(i);
+          return `<button class="role-pick ${role} ${sel ? "sel" : ""}" data-role="${role}" data-i="${i}">${escapeHtml(p.name)}</button>`;
+        })
+        .join("");
+    cp.innerHTML =
+      `<div class="role-panel">` +
+      `<div class="role-title">Record roles</div>` +
+      winnerHtml +
+      `<div class="role-field"><label>Who was Hitler?</label><div class="role-btns">${pbtns("hitler")}</div></div>` +
+      `<div class="role-field"><label>${need > 1 ? "Who were the " + need + " Fascists" : "Who was the Fascist"}? (${draft.fascistIdxs.length}/${need})</label>` +
+      `<div class="role-btns">${pbtns("fascist")}</div></div>` +
+      `<div class="control-row"><button id="btnSaveRoles" class="primary" ${roleReady() ? "" : "disabled"}>Save game</button></div>` +
+      `</div>`;
+    cp.querySelectorAll(".role-pick").forEach((b) => {
+      b.onclick = () => toggleRole(b.dataset.role, +b.dataset.i);
+    });
+    if (!state.gameOver) {
+      $("rwLib").onclick = () => { state.winnerDraft = "Liberal"; renderGame(); };
+      $("rwFac").onclick = () => { state.winnerDraft = "Fascist"; renderGame(); };
+    }
+    $("btnSaveRoles").onclick = saveRoles;
+  }
+
+  function saveRoles() {
+    if (!roleReady()) return;
+    const winner = state.gameOver ? state.gameOver.winner : state.winnerDraft;
+    const record = {
+      players: state.players.map((p) => ({ name: p.name })),
+      playerCount: state.players.length,
+      firstPres: state.firstPres,
+      events: state.events,
+      roundMods: state.roundMods,
+      result: { winner, hitlerIdx: state.roleDraft.hitlerIdx, fascistIdxs: state.roleDraft.fascistIdxs.slice() },
+      date: new Date().toISOString(),
+    };
+    Stats.recordGame(record);
+    alert("Game saved to statistics.");
+    resetToSetup();
+  }
+
+  // ------------------------------ review a saved game ------------------------
+  function openReview(idx) {
+    const games = Stats.loadGames().filter((g) => g.result);
+    const g = games[idx];
+    if (!g) return;
+    if (state) stashedState = state;
+    state = {
+      players: g.players.map((p) => ({ name: p.name, dead: false })),
+      firstPres: g.firstPres || 0,
+      events: g.events || [],
+      roundMods: g.roundMods || {},
+      form: { chanIdxOverride: null, conflictArmed: false },
+      result: g.result,
+      review: true,
+      recordingRoles: false,
+      pendingChaos: false,
+      pendingPower: null,
+      gameOver: null,
+      roleDraft: { hitlerIdx: null, fascistIdxs: [] },
+      undoStack: [],
+      _reviewGame: g,
+    };
+    show("gameScreen");
+    switchTab("play");
+    renderGame();
+  }
+
+  function closeReview() {
+    state = stashedState;
+    stashedState = null;
+    renderStats();
+  }
+
+  function renderReviewPanel(cp, d) {
+    const g = state._reviewGame;
+    const r = g.result;
+    const events = g.events || [];
+    const govs = events.filter((e) => (e.type || "gov") === "gov").length;
+    const fails = events.filter((e) => e.type === "fail").length;
+    const facNames = (r.fascistIdxs || []).map((i) => (g.players[i] ? escapeHtml(g.players[i].name) : "?")).join(", ");
+    cp.innerHTML =
+      `<div class="review-panel">` +
+      `<div class="role-winner ${r.winner === "Fascist" ? "c-fac" : "c-lib"}">${r.winner}s won</div>` +
+      `<div class="review-stat"><b>${d.lib}</b> Liberal &middot; <b>${d.fac}</b> Fascist policies</div>` +
+      `<div class="review-stat">${govs} governments &middot; ${fails} failed elections</div>` +
+      `<div class="review-stat">Hitler: <b class="c-hit">${g.players[r.hitlerIdx] ? escapeHtml(g.players[r.hitlerIdx].name) : "?"}</b></div>` +
+      `<div class="review-stat">Fascists: <b class="c-fac">${facNames || "—"}</b></div>` +
+      `<div class="control-row"><button id="btnCloseReview" class="ghost">← Back to stats</button></div>` +
+      `</div>`;
+    $("btnCloseReview").onclick = closeReview;
+  }
+
+  function renderGamesList(container) {
+    if (!container) return;
+    const games = Stats.loadGames().filter((g) => g.result);
+    if (!games.length) {
+      container.innerHTML = `<span class="muted">No games recorded yet.</span>`;
+      return;
+    }
+    container.innerHTML = games
+      .map((g, idx) => {
+        const cls = g.result.winner === "Fascist" ? "gl-fac" : "gl-lib";
+        const hit = g.players[g.result.hitlerIdx] ? g.players[g.result.hitlerIdx].name : "?";
+        const facs = (g.result.fascistIdxs || [])
+          .map((i) => (g.players[i] ? g.players[i].name : ""))
+          .filter(Boolean);
+        return (
+          `<button class="game-box ${cls}" data-idx="${idx}">` +
+          `<div class="gl-win">${g.result.winner} win</div>` +
+          `<div class="gl-hitler">♛ ${escapeHtml(hit)}</div>` +
+          `<div class="gl-facs">${facs.map((f) => `<span>${escapeHtml(f)}</span>`).join("")}</div>` +
+          `</button>`
+        );
+      })
+      .join("");
+    container.querySelectorAll(".game-box").forEach((b) => {
+      b.onclick = () => openReview(+b.dataset.idx);
+    });
   }
 
   function renderHistory(d) {
@@ -592,7 +787,7 @@
   }
 
   // ------------------------------ recording ----------------------------------
-  const busy = () => state.pendingChaos || state.pendingPower || state.gameOver;
+  const busy = () => state.pendingChaos || state.pendingPower || state.gameOver || state.recordingRoles || state.review;
 
   // Detect an automatic terminal outcome (policy-track wins).
   function checkGameOver(d) {
@@ -878,44 +1073,6 @@
     if (src && slot) flyFromTo(src.getBoundingClientRect(), slot.getBoundingClientRect(), type);
   }
 
-  // ------------------------------ END GAME -----------------------------------
-  function openEnd() {
-    $("selHitler").innerHTML = state.players
-      .map((p, i) => `<option value="${i}">${escapeHtml(p.name)}</option>`)
-      .join("");
-    const wrap = $("fascistToggles");
-    wrap.innerHTML = "";
-    state.players.forEach((p, i) => {
-      const b = document.createElement("button");
-      b.textContent = p.name;
-      b.dataset.idx = i;
-      b.dataset.on = "0";
-      b.onclick = () => {
-        const on = b.dataset.on === "1";
-        b.dataset.on = on ? "0" : "1";
-        b.classList.toggle("primary", !on);
-      };
-      wrap.appendChild(b);
-    });
-    // preselect an auto-determined result (e.g. Hitler executed → Liberal win)
-    if (state.autoResult) {
-      $("selWinner").value = state.autoResult.winner;
-      if (state.autoResult.hitlerIdx != null) $("selHitler").value = state.autoResult.hitlerIdx;
-    }
-    show("endScreen");
-  }
-
-  function saveGame() {
-    const hitlerIdx = +$("selHitler").value;
-    const fascistIdxs = Array.from($("fascistToggles").querySelectorAll('button[data-on="1"]')).map(
-      (b) => +b.dataset.idx
-    );
-    state.result = { winner: $("selWinner").value, hitlerIdx, fascistIdxs };
-    state.date = new Date().toISOString();
-    Stats.recordGame(JSON.parse(JSON.stringify(state)));
-    alert("Game saved to statistics.");
-    resetToSetup();
-  }
 
   // ------------------------------ STATS --------------------------------------
   function fillStats(gridEl, tbodyEl) {
@@ -941,6 +1098,7 @@
   }
   function renderStats() {
     fillStats($("summaryGrid"), $("playerStatsTable").querySelector("tbody"));
+    renderGamesList($("gamesList"));
     show("statsScreen");
   }
   function tile(big, lbl) {
@@ -955,7 +1113,10 @@
     document.querySelectorAll(".tabbar .tab").forEach((b) => {
       b.classList.toggle("sel", b.dataset.tab === name);
     });
-    if (name === "stats") fillStats($("summaryGridInline"), $("playerStatsTableInline").querySelector("tbody"));
+    if (name === "stats") {
+      fillStats($("summaryGridInline"), $("playerStatsTableInline").querySelector("tbody"));
+      renderGamesList($("gamesListInline"));
+    }
   }
 
   // ------------------------------ misc ---------------------------------------
@@ -986,10 +1147,16 @@
       if (!state || confirm("Start a new game? Current game is not saved unless you end & save it."))
         resetToSetup();
     };
-    $("btnNewTop").onclick = newGame;
-    $("btnEndTop").onclick = openEnd;
+    $("btnNewTop").onclick = () => {
+      if (state && state.review) { closeReview(); return; }
+      newGame();
+    };
+    $("btnEndTop").onclick = () => {
+      if (state && state.review) { closeReview(); return; }
+      if (!state.recordingRoles) enterRoleRecording();
+    };
     $("btnStats").onclick = renderStats;
-    $("btnBackFromStats").onclick = () => show(state ? "gameScreen" : "setupScreen");
+    $("btnBackFromStats").onclick = () => show(state && !state.review ? "gameScreen" : "setupScreen");
     $("btnClearStats").onclick = () => {
       if (confirm("Delete ALL saved statistics? This cannot be undone.")) {
         Stats.clearAll();
@@ -1006,9 +1173,6 @@
     $("chaosLib").onclick = () => resolveChaos("L");
     $("chaosFac").onclick = () => resolveChaos("F");
     $("chaosBack").onclick = undoLast;
-
-    $("btnSaveGame").onclick = saveGame;
-    $("btnCancelEnd").onclick = () => show("gameScreen");
 
     document.querySelectorAll(".tabbar .tab").forEach((b) => {
       b.onclick = () => switchTab(b.dataset.tab);
