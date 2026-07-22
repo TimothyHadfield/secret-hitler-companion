@@ -1,11 +1,44 @@
 # PROGRESS — Secret Hitler Companion
 
-> **Read this file first when resuming.** It is the single source of truth for where the
-> project stands. Update it whenever something meaningful changes. `CHAT.md` has the
-> session-by-session history; `PROBABILITY_MODEL.md` and `SECRET_HITLER_RULES.md` are the
-> reference docs.
+> **This file is the complete brief — you need no other context to work on this project.**
+> The user will only say "catch up on PROGRESS.md". Read it top to bottom, then start.
+> `CHAT.md` = session-by-session history; `PROBABILITY_MODEL.md` + `SECRET_HITLER_RULES.md` =
+> reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
+> periodically deletes the chat and relies entirely on these docs).
 
 _Last updated: 2026-07-22 (after session 9)._
+
+## ⚙️ Working on this project (operational brief — read once)
+- **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
+  — its own git repo (separate from the surrounding `Estimator_Quiz` tree). Branch: `main`.
+- **Environment:** Windows. The Bash tool is **Git Bash**; PowerShell is also available. Notes:
+  - `gh api` calls with a leading-slash path get mangled by MSYS path conversion — prefix with
+    `export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'`.
+  - Git prints benign `LF will be replaced by CRLF` warnings — ignore them.
+  - `gh` CLI is authenticated as **TimothyHadfield** (repo scope). Chrome is at
+    `/c/Program Files/Google/Chrome/Application/chrome.exe`.
+- **Tech:** plain static site — HTML + CSS + vanilla JS, **no build step, no dependencies, no
+  framework**. Just edit the files. All data lives in the browser (`localStorage`).
+- **Deploy:** commit → `git push origin main` → GitHub Pages rebuilds (~1 min). End commit
+  messages with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. Commit
+  only when work is done/tested; don't force-push.
+- **The loop for every change:** implement → `node --check js/*.js` → **smoke-test in headless
+  Chrome** (recipe below) → commit + push → poll the Pages build until `built` and `curl` the
+  live URL for `200` → **update PROGRESS.md + CHAT.md**.
+- **Headless-Chrome verification recipe** (this is how everything here was validated — reproduce
+  it, don't ask the user to test): copy `index.html`/`styles.css`/`js/*` to the scratchpad dir,
+  inject a `<script src="driver.js">` before `</body>`, where `driver.js` drives the *real* UI
+  (`document.getElementById(...).click()`, dispatch `change` events) and writes results into a
+  `#__smoke` div + the page `<title>`. Serve the folder with a tiny Node `http` server (localhost,
+  so `localStorage` works — `file://` breaks on the space in "Code Projects"). Then run
+  `chrome --headless --disable-gpu --no-sandbox --virtual-time-budget=9000 --dump-dom <url>` and
+  grep the title/results. For visuals use `--screenshot=out.png --window-size=W,H`
+  (`--hide-scrollbars`); note headless uses a ~512px CSS viewport, so measure widths rather than
+  trusting the image size. To test persistence across "reloads", run two Chrome processes sharing
+  `--user-data-dir`. Working examples live in the session scratchpad but the pattern above is
+  enough to rebuild them.
+- **Style:** match the existing code (vanilla JS in one IIFE in `app.js`, full-redraw rendering,
+  original stylised CSS for the board — never reproduce the real game's printed artwork/logo).
 
 ## What this project is
 A website **companion/analyzer for the board game Secret Hitler** — used alongside a real
@@ -23,11 +56,7 @@ table game, not a game engine. Feature pillars:
 ## Repository / hosting
 - Repo: **https://github.com/TimothyHadfield/secret-hitler-companion** (public).
 - Live: **https://timothyhadfield.github.io/secret-hitler-companion/**.
-- Deploy: `git push origin main` → Pages rebuilds (~1 min). `gh` CLI is authenticated as
-  TimothyHadfield. Commit co-author line: `Claude Opus 4.8 (1M context)`.
-- Verification workflow used: copy files to a scratchpad, inject a driver script that drives
-  the real UI, serve over `http://localhost`, run headless Chrome (`--dump-dom` for assertions,
-  `--screenshot` for visuals). Chrome path: `/c/Program Files/Google/Chrome/Application/chrome.exe`.
+- (Deploy / verification / commit conventions are in the operational brief above.)
 
 ## File map
 | File | Purpose |
