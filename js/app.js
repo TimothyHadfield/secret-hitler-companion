@@ -136,6 +136,9 @@
     let pointer = state.firstPres; // the current presidential candidate
     let pendingResume = null; // seat to resume at after a Special-Election detour
     let lastChan = null;
+    // term limits: the last *elected* government (reset by a chaos top-deck)
+    let lastElectedPres = null,
+      lastElectedChan = null;
     const nextAlive = (idx) => {
       for (let s = 1; s <= N; s++) {
         const j = (idx + s) % N;
@@ -178,6 +181,8 @@
         if (ev.enacted === "L") { lib++; rounds[round].chaosLib++; }
         else { fac++; rounds[round].chaosFac++; }
         tracker = 0;
+        // a chaos policy resets term limits — everyone is eligible again
+        lastElectedPres = lastElectedChan = null;
         evInfo.push({ type: "chaos", enacted: ev.enacted });
         reshuffleIfNeeded();
         return; // chaos does not change the presidential rotation
@@ -211,6 +216,8 @@
       else fac++;
       tracker = 0;
       lastChan = ev.chancellorIdx;
+      lastElectedPres = ev.presidentIdx;
+      lastElectedChan = ev.chancellorIdx;
       advanceAfter(ev.presidentIdx, ev);
       reshuffleIfNeeded();
     });
@@ -218,12 +225,21 @@
     // reflect deaths on the player objects (used by tap/chancellor validation)
     state.players.forEach((p, i) => (p.dead = deadSet.has(i)));
 
-    // suggested chancellor: one seat past the last elected chancellor
+    // Term limits: the last elected Chancellor is always ineligible; the last elected
+    // President is too, UNLESS only 5 players are still alive (5-player game, or a
+    // bigger game reduced to 5 by executions). A chaos top-deck clears both (above).
+    const aliveCount = N - deadSet.size;
+    const termLimited = new Set();
+    if (lastElectedChan !== null && !deadSet.has(lastElectedChan)) termLimited.add(lastElectedChan);
+    if (aliveCount > 5 && lastElectedPres !== null && !deadSet.has(lastElectedPres))
+      termLimited.add(lastElectedPres);
+
+    // suggested chancellor: first eligible seat past the last elected chancellor
     let suggestedChan = null;
     if (lastChan !== null) {
       let c = nextAlive(lastChan);
-      if (c === pointer) c = nextAlive(c);
-      suggestedChan = c;
+      for (let s = 0; s < N && (c === pointer || termLimited.has(c)); s++) c = nextAlive(c);
+      if (c !== pointer && !termLimited.has(c)) suggestedChan = c;
     }
 
     // retrospective probability + modifier bounds, per round
@@ -292,13 +308,15 @@
       presIdx: pointer,
       suggestedChan,
       deadSet,
+      termLimited,
+      aliveCount,
     };
   }
 
   // effective chancellor for the current turn: user's tap, else the suggestion
   function effChan(d) {
     const o = state.form.chanIdxOverride;
-    if (o != null && !state.players[o].dead && o !== d.presIdx) return o;
+    if (o != null && !state.players[o].dead && o !== d.presIdx && !d.termLimited.has(o)) return o;
     return d.suggestedChan;
   }
 
@@ -377,6 +395,8 @@
     renderPower(d);
     renderGameOver();
     renderHistory(d);
+    renderBackTop();
+    fitCenterBoards();
     $("chaosPrompt").classList.toggle("hidden", !(state.pendingChaos && !state.gameOver));
     saveActive(); // persist the full game state after every change
   }
@@ -391,11 +411,11 @@
     const g = state.gameOver;
     const cls = g.winner === "Liberal" ? "c-lib" : "c-fac";
     $("gameOverBody").innerHTML =
+      backBtn("goBack") +
       `<div class="power-title"><span class="${cls}">${g.winner}s win!</span></div>` +
       `<p style="font-size:15px">${escapeHtml(g.reason)} The game is over.</p>` +
       `<p class="muted" style="font-size:13px">Record who was Hitler and the Fascists to save this game to your statistics.</p>` +
-      `<div class="control-row"><button id="goEnd" class="primary">Record roles →</button>` +
-      `<button id="goBack" class="ghost">↶ Back</button></div>`;
+      `<div class="control-row"><button id="goEnd" class="primary">Record roles →</button></div>`;
     $("goEnd").onclick = enterRoleRecording;
     $("goBack").onclick = undoLast;
   }
@@ -514,6 +534,9 @@
       } else {
         if (i === d.presIdx) node.classList.add("pres");
         if (i === chanIdx) node.classList.add("chan");
+        // ineligible as Chancellor this turn (term-limited by the last government).
+        // The sitting President is never marked — they can't be Chancellor regardless.
+        if (d.termLimited.has(i) && i !== d.presIdx) node.classList.add("termed");
       }
       if (p.dead) node.classList.add("dead");
       node.style.left = x + "%";
@@ -565,6 +588,28 @@
     // that slot (a 3rd presidency, or tall detail chips), shrink it to fit so no
     // presidency data is ever clipped or lost.
     fitPresStacks(area);
+  }
+
+  // Keep the centre boards clear of the felt's edges. The tracks are sized from
+  // their width (aspect-ratio slots), so on short/wide windows they can grow
+  // taller than the felt — scale them down to fit rather than overlapping it.
+  function fitCenterBoards() {
+    const cb = document.querySelector("#tableArea .center-boards");
+    const felt = document.querySelector("#tableArea .felt");
+    if (!cb || !felt) return;
+    cb.style.transform = "translate(-50%, -50%)"; // reset before measuring
+    // Phones deliberately run the board nearly edge-to-edge inside a shallow felt,
+    // so only the desktop layout is clamped.
+    if (window.innerWidth <= 640) return;
+    const fr = felt.getBoundingClientRect();
+    const cr = cb.getBoundingClientRect();
+    if (!fr.height || !cr.height) return;
+    // Height only: the phone layout deliberately runs the board nearly edge-to-edge
+    // (piles hugging the screen sides), so horizontal width is never clamped here.
+    const availH = fr.height - 22 * 2; // clearance inside the felt (incl. its border)
+    if (cr.height > availH && availH > 0) {
+      cb.style.transform = `translate(-50%, -50%) scale(${availH / cr.height})`;
+    }
   }
 
   function fitPresStacks(area) {
@@ -671,7 +716,6 @@
     });
 
     $("btnConflict").classList.toggle("on", state.form.conflictArmed);
-    $("btnUndo").disabled = !state.undoStack || state.undoStack.length === 0;
   }
 
   // ------------------------------ role recording -----------------------------
@@ -754,8 +798,8 @@
       date: new Date().toISOString(),
     };
     Stats.recordGame(record);
-    alert("Game saved to statistics.");
     resetToSetup();
+    showToast("Game saved to statistics.");
   }
 
   // ------------------------------ review a saved game ------------------------
@@ -805,9 +849,8 @@
       `<div class="review-stat">${govs} governments &middot; ${fails} failed elections</div>` +
       `<div class="review-stat">Hitler: <b class="c-hit">${g.players[r.hitlerIdx] ? escapeHtml(g.players[r.hitlerIdx].name) : "?"}</b></div>` +
       `<div class="review-stat">Fascists: <b class="c-fac">${facNames || "—"}</b></div>` +
-      `<div class="control-row"><button id="btnCloseReview" class="ghost">← Back to stats</button></div>` +
       `</div>`;
-    $("btnCloseReview").onclick = closeReview;
+    // (leaving a review uses the shared top-left back arrow)
   }
 
   function renderGamesList(container) {
@@ -886,7 +929,14 @@
 
   // Tapping a player on the table sets the Chancellor (moves highlight + tile).
   function setChancellor(i) {
-    if (busy() || state.players[i].dead || i === derive().presIdx) return;
+    if (busy() || state.players[i].dead) return;
+    const d = derive();
+    if (i === d.presIdx) return;
+    if (d.termLimited.has(i)) {
+      // term limits: last elected Chancellor (and President, unless only 5 are alive)
+      flashTurn(`${state.players[i].name} is term-limited from the last government.`);
+      return;
+    }
     state.form.chanIdxOverride = i;
     renderGame();
   }
@@ -1090,12 +1140,9 @@
       $("pwHitler").onclick = () => resolvePower({ killedIdx: +$("pwWho").value, wasHitler: true });
       $("pwNot").onclick = () => resolvePower({ killedIdx: +$("pwWho").value, wasHitler: false });
     }
-    // a Back button on every power prompt reverts the presidency that triggered it
-    const cr = body.querySelector(".control-row");
-    if (cr) {
-      cr.insertAdjacentHTML("beforeend", `<button id="pwBack" class="ghost">↶ Back</button>`);
-      $("pwBack").onclick = undoLast;
-    }
+    // top-left back arrow on every power prompt reverts the presidency that triggered it
+    body.insertAdjacentHTML("afterbegin", backBtn("pwBack"));
+    $("pwBack").onclick = undoLast;
   }
 
   function resolvePower(data) {
@@ -1223,6 +1270,49 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // ------------------------------ in-app dialogs -----------------------------
+  // The app never uses the browser's native alert/confirm (the ugly
+  // "<site> says…" bar) — everything is rendered in the app's own styling.
+  const backBtn = (id, title) =>
+    `<button id="${id}" class="backbtn ovl" title="${title || "Back"}"><span class="arw">←</span></button>`;
+
+  function askConfirm(opts, onYes) {
+    const m = $("confirmModal");
+    $("confirmBox").innerHTML =
+      backBtn("cfBack", "Cancel") +
+      `<div class="power-title">${escapeHtml(opts.title)}</div>` +
+      `<p class="confirm-body">${escapeHtml(opts.body)}</p>` +
+      `<div class="control-row">` +
+      `<button id="cfYes" class="${opts.danger ? "danger" : "primary"}">${escapeHtml(opts.confirm || "Confirm")}</button>` +
+      `<button id="cfNo" class="ghost">${escapeHtml(opts.cancel || "Cancel")}</button>` +
+      `</div>`;
+    m.classList.remove("hidden");
+    const close = () => m.classList.add("hidden");
+    $("cfYes").onclick = () => { close(); if (onYes) onYes(); };
+    $("cfNo").onclick = close;
+    $("cfBack").onclick = close;
+  }
+
+  let toastTimer = null;
+  function showToast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.remove("hidden");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.add("hidden"), 2400);
+  }
+
+  // The one back affordance: top-left arrow. It undoes during play (labelled
+  // "undo") and leaves a review otherwise.
+  function renderBackTop() {
+    const b = $("btnBackTop");
+    if (!b) return;
+    const review = !!(state && state.review);
+    b.classList.toggle("labeled", !review);
+    b.title = review ? "Back to statistics" : "Undo last action";
+    b.disabled = review ? false : !(state && state.undoStack && state.undoStack.length);
+  }
+
   // ------------------------------ wiring -------------------------------------
   function wire() {
     $("btnAddPlayer").onclick = addPlayer;
@@ -1230,29 +1320,57 @@
       if (e.key === "Enter") addPlayer();
     });
     $("btnRandomize").onclick = startGame;
-    const newGame = () => {
-      if (!state || confirm("Start a new game? Current game is not saved unless you end & save it."))
-        resetToSetup();
-    };
     $("btnNewTop").onclick = () => {
       if (state && state.review) { closeReview(); return; }
-      newGame();
+      if (!state) { resetToSetup(); return; }
+      askConfirm(
+        {
+          title: "Start a new game?",
+          body: "This game will be erased. It is only kept in your statistics if you finish it and record the roles.",
+          confirm: "New game",
+          cancel: "Keep playing",
+          danger: true,
+        },
+        resetToSetup
+      );
     };
-    $("btnEndTop").onclick = () => {
+    $("btnQuitTop").onclick = () => {
       if (state && state.review) { closeReview(); return; }
-      if (!state.recordingRoles) enterRoleRecording();
+      askConfirm(
+        {
+          title: "Quit game?",
+          body: "All data for this game will be erased. Are you sure?",
+          confirm: "Quit game",
+          cancel: "Keep playing",
+          danger: true,
+        },
+        resetToSetup
+      );
+    };
+    $("btnBackTop").onclick = () => {
+      if (state && state.review) { closeReview(); return; }
+      undoLast();
     };
     $("btnStats").onclick = renderStats;
     $("btnBackFromStats").onclick = () => show(state && !state.review ? "gameScreen" : "setupScreen");
     $("btnClearStats").onclick = () => {
-      if (confirm("Delete ALL saved statistics? This cannot be undone.")) {
-        Stats.clearAll();
-        renderStats();
-      }
+      askConfirm(
+        {
+          title: "Delete all statistics?",
+          body: "Every saved game and all player statistics will be permanently erased. This cannot be undone.",
+          confirm: "Delete everything",
+          cancel: "Cancel",
+          danger: true,
+        },
+        () => {
+          Stats.clearAll();
+          renderStats();
+          showToast("All statistics deleted.");
+        }
+      );
     };
 
     $("btnFail").onclick = recordFail;
-    $("btnUndo").onclick = undoLast;
     $("btnConflict").onclick = () => {
       state.form.conflictArmed = !state.form.conflictArmed;
       renderControls(derive());

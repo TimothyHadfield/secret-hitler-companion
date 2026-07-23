@@ -380,3 +380,41 @@ refreshes, closing/reopening, and redeploys.
 - Verified with headless height-probes at windows 800/720/660 (Bronze + Undo in view) and
   screenshots on desktop (**1280×800**) and phone (**512×900**) showing the grouped ✕✕ (Ben) and
   the ✕ / cards / ✕ split (Gil).
+
+---
+
+## Session 13 — 2026-07-22 — Term limits + design pass (back arrow, quit, in-app dialogs)
+
+**User asked for:**
+- **Term limits:** the last President *or* Chancellor can't be the next Chancellor — but in a
+  **5-player game (or 5 left alive after a kill)** the last President *is* eligible.
+- An in-depth rules audit of anything else the app might be missing (report only, to confirm).
+- Design: the board **overlaps the table's top/bottom edges on laptop** — shrink it.
+- **Never** show the browser's "site says…" bar; confirmations must be designed in-app.
+- Replace **"End game"** with **"Quit game"** + an "all data will be erased" confirm, and drop the
+  end-of-game questions that used to follow it.
+- **One back affordance:** a left arrow, upper-left, no words — plus "undo" beside it during play.
+- **Power labels and policy-option labels in black.**
+
+**What I changed:**
+- **Term limits enforced.** `derive()` now tracks the last *elected* government and returns a
+  `termLimited` set: the last Chancellor always, the last President only when `aliveCount > 5`.
+  A **chaos** top-deck clears both (official rule). `setChancellor()` refuses a termed seat with
+  an explanation, `effChan()` ignores a stale pick, the suggested Chancellor skips termed seats,
+  and termed seats render dashed/dimmed (never the sitting President).
+- **In-app dialogs.** Added `askConfirm()` (`#confirmModal`, styled like the other overlays) and
+  `showToast()`; removed every `alert`/`confirm` (new game, quit, clear statistics, game saved).
+- **Quit game** replaces End game: confirms, then erases the game. Role recording is now reachable
+  **only** from an auto-detected game-over. *Consequence flagged to the user:* a "Hitler elected
+  Chancellor" win can no longer be recorded to statistics.
+- **Unified back arrow** (`.backbtn`, `renderBackTop()`): upper-left everywhere — game top row,
+  overlay boxes (absolutely pinned), stats screen, review. Labelled "undo" only during play;
+  closes a review otherwise. Removed the old Undo button and the review's own back button.
+- **Board no longer overlaps the felt:** base size trimmed (55% / max 418px) plus
+  `fitCenterBoards()`, which scales the boards to the felt's inner **height**. Phones are exempt
+  so the piles keep hugging the screen edges.
+- **Black labels** on `.sh-power` and the ratio buttons (metal-coloured names → black, shadows off).
+- Verified in headless Chrome: term limits at 5p (`termed=[1]`), 6p (`[0,1]`), post-chaos (`[]`),
+  and 6p→5-alive-by-execution (`[3]` only); tapping a termed seat is blocked with a hint; board
+  inside the felt at 1280×800 and 1366×640 while the phone keeps piles at 11/501px; quit opens the
+  app modal with `nativeDialogUsed=false`; review opens and the top-left arrow returns to stats.

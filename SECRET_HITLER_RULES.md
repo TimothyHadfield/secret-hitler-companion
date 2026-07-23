@@ -143,6 +143,11 @@ table and focuses on:
   + the count-appropriate Fascists) in place on the table, colouring each player's circle.
 - **Statistics:** per-player + cross-game data, plus a reviewable per-game archive (browser).
 
-The app still does not enforce term limits, votes, or veto *usage*, and it can't auto-detect the
-"Hitler elected Chancellor" win (it doesn't know who Hitler is mid-game) — the user ends that
-game manually. These assume honest table play and could become validations later.
+- **Term limits (enforced):** the last *elected* Chancellor can never be tapped as the next
+  Chancellor; the last *elected* President is also blocked **unless only 5 players are alive**
+  (a 5-player game, or a larger game reduced to 5 by executions). A **chaos** top-deck clears
+  both. Ineligible seats are drawn dashed/dimmed and tapping one explains why.
+
+The app still does not enforce votes or veto *usage*, and it can't auto-detect the
+"Hitler elected Chancellor" win (it doesn't know who Hitler is mid-game). These assume honest
+table play and could become validations later.

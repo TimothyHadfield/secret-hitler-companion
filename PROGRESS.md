@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-22 (after session 12)._
+_Last updated: 2026-07-22 (after session 13)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -97,6 +97,13 @@ table game, not a game engine. Feature pillars:
   physical window is provably non-empty.
 - **Deck = 11 Fascist / 6 Liberal (17).** Always follow the real rules; user examples are
   principle, not literal numbers.
+- **Term limits are ENFORCED** (the app's first real rule validation). `derive()` returns
+  `termLimited`: the last *elected* Chancellor always, plus the last *elected* President **unless
+  only 5 players are alive** (`aliveCount > 5` guard — covers a 5-player game and a bigger game
+  cut to 5 by executions). A **chaos** top-deck clears both. Termed seats render dashed/dimmed
+  (never the sitting President) and tapping one explains why instead of selecting them.
+- **No native browser dialogs, ever.** `alert`/`confirm` are replaced by `askConfirm()`
+  (in-app `#confirmModal`) and `showToast()`; the ugly "site says…" bar must never appear.
 - **Enacted policy is inferred, not asked:** Coal(3F)→Fascist, Bronze(3L)→Liberal,
   Golden/Silver default→Liberal. **Conflict** toggle (Golden/Silver only) forces Fascist and
   labels it "conflict (chancellor)".
@@ -108,7 +115,8 @@ table game, not a game engine. Feature pillars:
   only on New Game / after saving. `loadActive()` backfills fields missing from older saves.
 
 ## Interaction model (mobile-first, no-scroll)
-- **Top row:** Play / History / Stats tabs on the left, **End game + New game** on the right.
+- **Top row:** a **back arrow (←)** at the far upper-left, then Play / History / Stats tabs;
+  **Quit game + New game** on the right (short "Quit"/"New" labels on phones).
   No page title. Footer removed.
 - **Table dominates.** Wide screens: policy controls stacked **vertically on the right**; phones:
   controls **below** the table.
@@ -152,6 +160,13 @@ table game, not a game engine. Feature pillars:
 - **Per-round blocks** (see rounds-bar placement above): "Round N" + its modifier stepper, with a
   finished round's bottom cards shown inline to the right of the title; the next round's block
   appears once a round ends.
+- **One back affordance:** a left arrow **`←` in the upper-left, no words**, everywhere — game
+  screen (top row), overlay boxes (pinned to the box's top-left), stats screen, and review.
+  **Only during play** it also shows the word "undo" (`.backbtn.labeled`) and undoes; in a review
+  it closes the review. Managed by `renderBackTop()`; there is no separate Undo/Back button.
+- **"Quit game"** (was "End game") asks for confirmation in-app ("All data for this game will be
+  erased") and abandons the game — it no longer opens the role questions. Role recording is
+  reached **only** from an auto-detected game-over.
 - **Page scroll/drag is locked** (`html,body{overflow:hidden}` + `body{position:fixed;inset:0}` +
   `overscroll-behavior:none`); double-tap-zoom disabled. Non-game screens scroll internally.
 
@@ -160,7 +175,10 @@ table game, not a game engine. Feature pillars:
   beside them, labels above.
 - Enacted policies = **light-grey tiles with a red (fascist) / blue (liberal) border**.
 - Empty fascist slots in **Hitler territory (4th+)** are dark red.
-- Power **names** ("Investigation / Policy Peek / Kill / Special Election") label the fascist slots.
+- Power **names** ("Investigation / Policy Peek / Kill / Special Election") label the fascist slots,
+  in **black** (as are the policy-option button labels) to read against the light fills.
+- The centre boards are clamped by `fitCenterBoards()` so they never overlap the felt's top/bottom
+  edges on desktop; **phones are exempt** (the board deliberately runs edge-to-edge there).
 - **"Veto"** (horizontal, dark pill) on the 5th fascist slot — legible on light or dark.
 - Enacted policy **animates** from the acting President's seat to the slot (chaos from the pile).
 - Election tracker = 3 dots.
@@ -177,7 +195,7 @@ Every overlay (power / chaos / game-over) has a **↶ Back** button. Powers bloc
 ## Game end + role recording (in-place)
 - **Auto-detected wins:** 5 Liberal policies → Liberal; 6 Fascist policies → Fascist; Hitler
   executed → Liberal. Each pops a **full-screen game-over box** (who won + how) that blocks play.
-- **"Record roles →"** (from the game-over box, or the manual **End game** button) switches the
+- **"Record roles →"** (from the auto-detected game-over box) switches the
   controls area into a **role panel while the table stays visible**: pick **Hitler + the exact #
   Fascists** (1 in 5–6, 2 in 7–8, 3 in 9–10); a player can't be both; **no "who won" question**
   (shown when known; a Liberal/Fascist toggle appears only for a manual end with no auto-winner).
@@ -203,7 +221,9 @@ Every overlay (power / chaos / game-over) has a **↶ Back** button. Powers bloc
 - **No online/multiplayer.** Persistence is per-browser/device (localStorage); a game on the
   laptop won't appear on the phone. Private/incognito or cleared data loses saves.
 - **"Hitler elected Chancellor" win is not auto-detected** (the app doesn't know who Hitler is
-  mid-game). Use the manual **End game** button — the role panel then shows a winner toggle.
+  mid-game), and since **Quit game** replaced the old manual "End game", such a game **cannot be
+  saved to statistics** — only auto-detected endings reach the role-recording panel. A
+  "the elected Chancellor was Hitler" button (once 3 Fascist policies are down) would close this.
 - No enforcement of term limits / votes / veto *usage* (companion assumes honest table play).
 - No history-row editing/deleting (Undo is the only correction tool; it steps back from the end).
 - No posterior on *whether* a claim was honest — the model computes P(hand | assumed lies).

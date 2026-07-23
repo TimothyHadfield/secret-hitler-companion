@@ -42,12 +42,15 @@
     <!-- ===================== GAME SCREEN ===================== -->
     <section id="gameScreen" class="hidden">
       <div class="tabbar">
+        <button id="btnBackTop" class="backbtn" title="Undo last action">
+          <span class="arw">←</span><span class="backlbl">undo</span>
+        </button>
         <button class="tab sel" data-tab="play">Play</button>
         <button class="tab" data-tab="history">History</button>
         <button class="tab" data-tab="stats">Stats</button>
         <div class="spacer"></div>
-        <button id="btnEndTop" class="ghost">End game</button>
-        <button id="btnNewTop" class="ghost">New game</button>
+        <button id="btnQuitTop" class="ghost"><span class="t-full">Quit game</span><span class="t-short">Quit</span></button>
+        <button id="btnNewTop" class="ghost"><span class="t-full">New game</span><span class="t-short">New</span></button>
       </div>
 
      <div id="playTab" class="tab-panel">
@@ -94,7 +97,6 @@
          <div class="control-row">
            <button id="btnConflict" class="conflict-btn">⚔ Conflict</button>
            <button id="btnFail" class="warn">Failed presidency</button>
-           <button id="btnUndo" class="ghost">↶ Undo</button>
          </div>
          <div id="hint" class="hint"></div>
        </div>
@@ -140,12 +142,12 @@
       <!-- full-screen blocking overlays -->
       <div id="chaosPrompt" class="overlay hidden">
         <div class="overlay-box">
+          <button id="chaosBack" class="backbtn ovl" title="Back"><span class="arw">←</span></button>
           <div class="power-title">⚠ Three failed elections</div>
           <p>The top policy is enacted automatically (Chaos). What was the top-decked policy?</p>
           <div class="control-row">
             <button id="chaosLib" class="primary" style="background:var(--lib);border-color:var(--lib-2)">Liberal</button>
             <button id="chaosFac" class="primary">Fascist</button>
-            <button id="chaosBack" class="ghost">↶ Back</button>
           </div>
         </div>
       </div>
@@ -161,6 +163,9 @@
 
     <!-- ===================== STATS SCREEN ===================== -->
     <section id="statsScreen" class="hidden">
+      <div class="screen-head">
+        <button id="btnBackFromStats" class="backbtn" title="Back"><span class="arw">←</span></button>
+      </div>
       <div class="panel">
         <h2 style="margin-top:0">Cross-game summary</h2>
         <div class="statgrid" id="summaryGrid"></div>
@@ -174,7 +179,6 @@
           <tbody></tbody>
         </table>
         <div class="row" style="margin-top:12px">
-          <button id="btnBackFromStats" class="ghost">Back</button>
           <button id="btnClearStats" class="ghost">Clear all statistics</button>
         </div>
       </div>
@@ -183,7 +187,13 @@
         <div class="games-list" id="gamesList"></div>
       </div>
     </section>
+    <!-- in-app confirm dialog (replaces the browser's native confirm/alert) -->
+    <div id="confirmModal" class="overlay hidden">
+      <div class="overlay-box" id="confirmBox"></div>
+    </div>
   </div>
+
+  <div id="toast" class="toast hidden"></div>
 
   <script src="js/probability.js"></script>
   <script src="js/stats.js"></script>
