@@ -19,7 +19,10 @@ _Last updated: 2026-07-23 (after session 16)._
     `/c/Program Files/Google/Chrome/Application/chrome.exe`.
 - **Tech:** plain static site — HTML + CSS + vanilla JS, **no build step, no dependencies, no
   framework**. Just edit the files. All data lives in the browser (`localStorage`).
-- **Deploy:** commit → `git push origin main` → GitHub Pages rebuilds (~1 min). End commit
+- **Deploy:** commit → `git push origin main` → GitHub Pages rebuilds (~1 min). If no build is
+  triggered within a few minutes (it happened in session 16 — the push landed but Pages never
+  queued a run), force one:
+  `gh api -X POST /repos/TimothyHadfield/secret-hitler-companion/pages/builds`. End commit
   messages with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. Commit
   only when work is done/tested; don't force-push.
 - **The loop for every change:** implement → `node --check js/*.js` → **smoke-test in headless
