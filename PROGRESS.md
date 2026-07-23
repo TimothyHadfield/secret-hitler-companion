@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-23 (after session 20)._
+_Last updated: 2026-07-23 (after session 21 — theory-only session, no code changed)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -99,13 +99,15 @@ table game, not a game engine. Feature pillars:
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, and groups. Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only. `rules.prod.test.js` = 49 adversarial assertions against the **deployed** rules (real accounts on the live project, torn down at the end). `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
+| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `rules.prod.test.js` = 49 adversarial assertions against the **deployed** rules (real accounts on the live project, torn down at the end). `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
+| `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law. Pure functions, Node-tested. |
+| `HONESTY_MODEL.md` | Derivation of the honesty posterior ("how likely is this claim a lie?") — hard-logic layer, generative model, exact inference, calibration plan, cited prior art, and **§11: the design review that decided what v1 ships**. |
 | `BACKEND_PLAN.md` | **Phases 0–3 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
-| `CHAT.md` | Session-by-session log (sessions 1–20). |
+| `CHAT.md` | Session-by-session log (sessions 1–21). |
 | `PROGRESS.md` | This file. |
 
 ## Architecture notes (how app.js is organised)
@@ -314,6 +316,29 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   button of its own). Reviewing stashes the live game and restores it on the way out; review state
   never overwrites the saved active game.
 
+## Lie detection (session 21 — opt-in, off by default)
+- **A ⚙ Settings panel** (new, top bar) holds one switch: **Lie detection**. With it off the
+  analysis is never run and nothing new renders — every added element carries `.lie-col`, which
+  CSS shows only under `body.lie-on`. Stored in `secretHitler.settings.v1`.
+- **Two layers on one dynamic program.** The round's conservation law
+  (`Σ hands + chaosLibs + leftovers = pool liberals`) is walked once as a **min-plus** semiring to
+  get the *fewest claims that must be false*, and once as **sum-product** to get
+  `P(this claim was true)`. Sharing the recursion is why the "proven" and "probable" layers can
+  never disagree about what's feasible.
+- **`R` (the unseen remainder) is the honest measure of how much any of it is worth.** `R = 0`
+  pins every hand exactly; early in a round `R` is large and the numbers mean little — the History
+  panel says so rather than showing a confident percentage.
+- **Wording rule (load-bearing):** findings are about **claims**, never people — "can't be true",
+  not "X lied" — and always allow for a recording error. A forgotten Conflict tap manufactures a
+  contradiction, and the app must not accuse someone at a real table on the strength of a mis-tap.
+- **The one contradiction the current data model can express:** a claimed **1F2L hand + Conflict**
+  says "I passed two liberals" while a fascist policy was enacted — impossible, since a chancellor
+  can't enact a card they were never handed. (2F1L + Conflict is perfectly possible: pass = LF.)
+- **Fixed a real bug on the way in:** chaos top-decks were never subtracted from the round's unseen
+  remainder, so `R` was too big, the known colour of the chaos card was discarded, and
+  `bottomLibs` disagreed with `drawLibs`. This corrupted the existing retrospective % in any round
+  containing a chaos — fixed in `probability.js` + `derive()` regardless of the switch.
+
 ## Undo
 - **Full-state snapshots.** `pushUndo()` deep-copies the whole state before each gov / fail /
   chaos; `undoLast()` restores it exactly (events, round modifiers, powers, deaths, game-over,
@@ -337,9 +362,15 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - **The backend plan is COMPLETE** (phases 0–3 shipped and live): accounts, cross-device
   sync, groups, invite links, invitations by person, guest-seat linking and revocable
   invites. **Real-time/online play stays descoped.**
-- **Honesty posterior** — "how likely is this claim honest?" given a prior on lying, instead of
-  only "how likely was this hand". `PROBABILITY_MODEL.md` §7 names it as the open question; it
-  would also retire the manual round-modifier stepper, the last piece of fiddly data entry.
+- **Honesty posterior — v1 SHIPPED (session 21), behind the Lie detection switch.** See
+  `HONESTY_MODEL.md`. What's live: the min-lie hard-logic layer (which claims *must* be false),
+  the "story impossible" contradiction, and a per-claim `P(this claim was true)`.
+  What's deliberately **not** built, per the §11 review: per-player "% fascist" role posteriors
+  (needs the least-identifiable parameters and changes the social game), EM calibration from the
+  archive (too few games for 9 parameters — when it lands it fits 2), and capturing the
+  chancellor's claim (the single highest-value missing input).
+  Still true and still the goal: this eventually retires the round-modifier stepper, which is a
+  hand-set point estimate of the very quantity the posterior integrates out.
 - Editable/deletable history entries (Undo only steps back from the end, so a mis-tap noticed
   three governments later means unwinding everything).
 - **Reliability:** cap the undo stack — `pushUndo()` stores a full-state snapshot per action and

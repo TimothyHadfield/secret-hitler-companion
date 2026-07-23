@@ -709,3 +709,32 @@ button.primary.on { outline: 2px solid var(--gold); outline-offset: 1px; font-we
 .inv-people { display: flex; flex-wrap: wrap; gap: 6px; }
 .person-chip { padding: 5px 12px; font-size: 13px; border-radius: 999px; }
 .person-chip:disabled { opacity: 0.5; }
+
+/* ===================== lie detection (opt-in) =============================
+   Every element the honesty model adds carries `.lie-col`. It is hidden unless
+   the body has `.lie-on`, so with the setting off the feature leaves no trace.
+   See HONESTY_MODEL.md.                                                     */
+.lie-col { display: none; }
+body.lie-on th.lie-col, body.lie-on td.lie-col { display: table-cell; }
+body.lie-on div.lie-col:not(.hidden) { display: block; }
+
+.lie-summary {
+  margin: 0 0 8px; padding: 8px 10px; border-radius: 8px;
+  background: #241d16; border: 1px solid #3a3129;
+  font-size: 12.5px; line-height: 1.5;
+}
+.lie-summary div + div { margin-top: 3px; }
+
+.lie-bad  { color: var(--fac-2); font-weight: 700; }
+.lie-warn { color: var(--gold); font-weight: 700; }
+.lie-good { color: var(--lib-2); font-weight: 700; }
+/* these carry an explanatory title — hint that they are hoverable */
+.hist .lie-col span[title] { cursor: help; border-bottom: 1px dotted currentColor; }
+
+/* settings panel */
+.set-row { display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; text-align: left; }
+.set-text { flex: 1; min-width: 0; }
+.set-name { font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.set-desc { font-size: 12.5px; line-height: 1.5; color: #c3b6a6; }
+.toggle-btn { min-width: 62px; flex: 0 0 auto; }
+.toggle-btn.on { background: var(--gold); border-color: var(--gold); color: #241a08; font-weight: 700; }

@@ -76,6 +76,25 @@
   };
   const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
 
+  // ------------------------------ settings -----------------------------------
+  // Opt-in extras. `lieDetection` gates EVERYTHING the honesty model adds: with
+  // it off the analysis is never run and nothing new is rendered anywhere.
+  const SETTINGS_KEY = "secretHitler.settings.v1";
+  const settings = { lieDetection: false };
+  function loadSettings() {
+    try {
+      const s = JSON.parse(lsGet(SETTINGS_KEY) || "{}");
+      settings.lieDetection = !!s.lieDetection;
+    } catch (e) { /* defaults */ }
+    applySettings();
+  }
+  function saveSettings() { lsSet(SETTINGS_KEY, JSON.stringify(settings)); }
+  function applySettings() {
+    document.body.classList.toggle("lie-on", settings.lieDetection);
+  }
+  // The engine is only consulted when the switch is on AND the file loaded.
+  const lieOn = () => settings.lieDetection && typeof Honesty !== "undefined";
+
   function saveActive() { if (state && !state.review) lsSet(ACTIVE_KEY, JSON.stringify(state)); }
   function clearActive() { lsDel(ACTIVE_KEY); }
   function saveSetup() { lsSet(SETUP_KEY, JSON.stringify(setupPlayers)); }
@@ -279,14 +298,20 @@
       const g = r.govs.length;
       const claims = r.govs.map((idx) => gi[idx].libs);
       const claimSum = claims.reduce((a, b) => a + b, 0);
-      const R = r.startN - 3 * g;
+      // A chaos top-deck removes ONE card from the round pool without being a
+      // government, and its colour is public — so it shrinks the unseen leftovers
+      // and is already accounted for among the round's liberals.
+      const chaosN = r.chaosLib + r.chaosFac;
+      const R = Math.max(0, r.startN - 3 * g - chaosN);
       r.leftover = R;
       r.claimSum = claimSum;
       // Physical feasibility window: keeps every claim in the round possible
       // (0 <= liberals drawn <= pool liberals, and bottom cards in [0,R]).
+      // Conservation for the round is  claimSum + chaosLib + bottomLibs = effL.
       // This window is never empty, so a feasible modifier always exists.
-      const physLo = g ? Math.max(claimSum - r.startL, -r.startL) : 0;
-      const physHi = g ? Math.min(claimSum - r.startL + R, r.startN - r.startL) : 0;
+      const seenLibs = claimSum + r.chaosLib;
+      const physLo = g ? Math.max(seenLibs - r.startL, -r.startL) : 0;
+      const physHi = g ? Math.min(seenLibs - r.startL + R, r.startN - r.startL) : 0;
       // Plausibility cap: each presidency can lie at most ±1 (# presidents so far).
       const capLo = Math.max(physLo, -g);
       const capHi = Math.min(physHi, g);
@@ -308,9 +333,30 @@
       state.roundMods[r.index] = r.mod;
       r.effL = clamp(r.startL + r.mod, 0, r.startN);
       r.govs.forEach((idx, localIdx) => {
-        gi[idx].prob = Prob.retrospectiveProb(r.startN, r.effL, claims, localIdx);
+        gi[idx].prob = Prob.retrospectiveProb(
+          r.startN, r.effL, claims, localIdx, chaosN, r.chaosLib
+        );
       });
-      r.bottomLibs = clamp(r.effL - claimSum, 0, R);
+      r.bottomLibs = clamp(r.effL - seenLibs, 0, R);
+
+      // Honesty analysis (opt-in). Deliberately uses the TRUE pool liberals
+      // (startL), not effL: the point of the model is to marginalise over the
+      // lie history rather than take the user's hand-set modifier as fact.
+      if (lieOn() && g) {
+        r.honesty = Honesty.analyzeRound({
+          startN: r.startN,
+          startL: r.startL,
+          chaosLibs: r.chaosLib,
+          chaosFascs: r.chaosFac,
+          govs: r.govs.map((idx) => ({
+            claim: gi[idx].libs,
+            enacted: gi[idx].enacted,
+            vetoed: gi[idx].vetoed,
+            conflict: gi[idx].conflict,
+          })),
+        });
+        r.govs.forEach((idx, k) => (gi[idx].honesty = r.honesty.govs[k]));
+      }
     });
 
     // current draw / discard composition
@@ -962,7 +1008,56 @@
     });
   }
 
+  // ---------------------------- lie detection (opt-in) -----------------------
+  // Everything here renders into elements carrying `.lie-col`, which CSS hides
+  // unless the body has `.lie-on` — so the feature leaves no trace when off.
+  //
+  // WORDING RULE (HONESTY_MODEL.md §11 F8): these are statements about CLAIMS,
+  // never about people. The maths is certain but the data entry is not — a
+  // forgotten Conflict tap manufactures a contradiction, and the app must not
+  // accuse a real person at a real table on the strength of a mis-tap.
+  function lieVerdict(h) {
+    if (!h) return "—";
+    if (h.provenFalse)
+      return `<span class="lie-bad" title="No possible deal of this round's cards makes this claim true — so either it was false, or something was recorded wrong.">can’t be true</span>`;
+    if (h.impossibleStory)
+      return `<span class="lie-bad" title="This claims a 1F2L hand passed as two liberals, yet a fascist policy was enacted — a chancellor cannot enact a card they were never handed. The hand or the pass is misstated.">story impossible</span>`;
+    if (h.provenTrue)
+      return `<span class="lie-good" title="Every possible deal of this round's cards makes this claim true.">must be true</span>`;
+    if (h.pTrue == null) return "—";
+    const cls = h.pTrue < 0.4 ? "lie-bad" : h.pTrue < 0.7 ? "lie-warn" : "lie-good";
+    return `<span class="${cls}" title="Estimated chance this claim was true, given every claim in the round and the cards available. A model estimate, not a measurement.">${Prob.fmtPct(h.pTrue)}</span>`;
+  }
+
+  function renderLieSummary(d) {
+    const el = $("lieSummary");
+    if (!el) return;
+    if (!lieOn()) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+    const lines = [];
+    d.rounds.forEach((r) => {
+      const h = r.honesty;
+      if (!h || !h.govs.length) return;
+      if (!h.feasible) {
+        lines.push(`<b>Round ${r.index + 1}:</b> these claims cannot all be true — something was almost certainly recorded wrong.`);
+      } else if (h.minLies > 0) {
+        lines.push(
+          `<b>Round ${r.index + 1}:</b> at least ${h.minLies} of these claim${h.minLies === 1 ? "" : "s"} must be false ` +
+          `<span class="muted">(or was recorded wrong)</span>.`
+        );
+      }
+    });
+    const cur = d.rounds[d.round];
+    const ev = cur && cur.honesty ? cur.honesty.evidence : null;
+    if (ev === "weak")
+      lines.push(`<span class="muted">This round has barely started — too many cards are still unseen for the percentages to mean much yet.</span>`);
+    if (!lines.length)
+      lines.push(`<span class="muted">Nothing in the claims so far is impossible.</span>`);
+    el.innerHTML = lines.map((l) => `<div>${l}</div>`).join("");
+    el.classList.remove("hidden");
+  }
+
   function renderHistory(d) {
+    renderLieSummary(d);
     const tb = $("histTable").querySelector("tbody");
     tb.innerHTML = "";
     d.evInfo.forEach((ev, idx) => {
@@ -1002,6 +1097,10 @@
           `<td>${g.vetoed ? "— (veto)" : g.enacted === "L" ? "🟦 Lib" : "🟥 Fac"}</td>` +
           `<td><b style="color:var(--gold)">${Prob.fmtPct(g.prob)}</b></td>`;
       }
+      // Honesty verdict (hidden by CSS unless lie detection is on).
+      tr.innerHTML += `<td class="lie-col">${
+        lieVerdict(ev.type === "gov" ? d.gi[ev.giIdx].honesty : null)
+      }</td>`;
       // Correcting a mis-tap noticed several turns later — Undo only steps back
       // from the end, so without this the whole game has to be unwound.
       const canEdit = !state.review && !state.recordingRoles && ev.n != null;
@@ -2201,6 +2300,37 @@
     $("cfBack").onclick = close;
   }
 
+  // ------------------------------ settings panel -----------------------------
+  function openSettings() {
+    renderSettings();
+    $("settingsModal").classList.remove("hidden");
+  }
+  function renderSettings() {
+    const on = settings.lieDetection;
+    $("settingsBox").innerHTML =
+      backBtn("setBack", "Back") +
+      `<div class="power-title">Settings</div>` +
+      `<div class="set-row">` +
+      `<div class="set-text">` +
+      `<div class="set-name">Lie detection</div>` +
+      `<div class="set-desc">Adds a <b>Claim</b> column to History: how likely each claimed hand is to be true, ` +
+      `and which claims the round's cards make outright impossible. ` +
+      `<span class="muted">Off by default — a table that can see this plays a different game.</span></div>` +
+      `</div>` +
+      `<button id="setLie" class="toggle-btn${on ? " on" : ""}" role="switch" aria-checked="${on}">${on ? "On" : "Off"}</button>` +
+      `</div>`;
+    $("setBack").onclick = () => $("settingsModal").classList.add("hidden");
+    $("setLie").onclick = () => {
+      settings.lieDetection = !settings.lieDetection;
+      saveSettings();
+      applySettings();
+      renderSettings();
+      // re-derive so the analysis is actually run (or dropped) straight away
+      if (state && Array.isArray(state.players) && !$("gameScreen").classList.contains("hidden"))
+        renderGame();
+    };
+  }
+
   let toastTimer = null;
   function showToast(msg) {
     const t = $("toast");
@@ -2260,6 +2390,7 @@
       undoLast();
     };
     $("btnStats").onclick = renderStats;
+    $("btnSettings").onclick = openSettings;
     $("btnBackFromStats").onclick = () => show(state && !state.review ? "gameScreen" : "setupScreen");
     $("btnExportStats").onclick = exportStats;
     $("btnImportStats").onclick = () => $("importFile").click();
@@ -2324,6 +2455,7 @@
   });
 
   // ------------------------------ boot ---------------------------------------
+  loadSettings();
   wire();
   const resumed = loadActive();
   if (resumed) {

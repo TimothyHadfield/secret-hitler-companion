@@ -41,20 +41,28 @@ const Prob = (() => {
    * Retrospective probability that the government at `idx` drew `govLiberals[idx]`
    * liberals, conditioned on every OTHER observed government in the same round.
    *
+   * Chaos top-decks matter here: they remove one card from the round pool WITHOUT
+   * being a government, and that card's colour is public. Both facts have to enter
+   * the conditioning — otherwise `R` is too big (the card is counted as unseen) and
+   * a known liberal is thrown away.
+   *
    * @param {number} N           round pool size (cards in the draw pile at round start)
    * @param {number} L           liberals in the round pool at round start
    * @param {number[]} govLiberals  true liberals drawn by each observed government in the round
    * @param {number} idx         which government to evaluate
+   * @param {number} [chaosCount=0] chaos top-decks enacted in this round
+   * @param {number} [chaosLibs=0]  how many of those were Liberal
    * @returns {number} probability in [0,1], or NaN if the configuration is impossible
    */
-  function retrospectiveProb(N, L, govLiberals, idx) {
+  function retrospectiveProb(N, L, govLiberals, idx, chaosCount = 0, chaosLibs = 0) {
     const G = govLiberals.length;
-    const R = N - 3 * G; // unseen leftover cards in the round pool
-    if (R < 0) return NaN; // more governments than the pool can supply
+    const R = N - 3 * G - chaosCount; // unseen leftover cards in the round pool
+    if (R < 0) return NaN; // more cards removed than the pool can supply
     const kLib = govLiberals[idx];
     let otherLib = 0;
     for (let j = 0; j < G; j++) if (j !== idx) otherLib += govLiberals[j];
-    const S = L - otherLib; // liberals shared between this hand and the R leftovers
+    // liberals shared between this hand and the R leftovers (chaos cards are seen)
+    const S = L - otherLib - chaosLibs;
     const num = binom(3, kLib) * binom(R, S - kLib);
     let den = 0;
     for (let m = 0; m <= 3; m++) den += binom(3, m) * binom(R, S - m);

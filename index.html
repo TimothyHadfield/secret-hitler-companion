@@ -24,6 +24,7 @@
       <button id="btnAccount" class="ghost acct-btn">
         <span class="acct-dot" id="acctDot"></span><span id="acctLabel">Sign in</span>
       </button>
+      <button id="btnSettings" class="ghost" title="Settings" aria-label="Settings">⚙</button>
       <button id="btnStats" class="ghost">Statistics</button>
     </div>
 
@@ -118,10 +119,11 @@
      <div id="historyTab" class="tab-panel hidden">
       <div class="panel">
         <h3 class="hist-title">History <span class="muted hist-note">(retrospective odds update as the round unfolds)</span></h3>
+        <div id="lieSummary" class="lie-summary lie-col hidden"></div>
         <div class="scroll-x">
           <table class="hist" id="histTable">
             <thead>
-              <tr><th>#</th><th>Rd</th><th>Event</th><th>Pres.</th><th>Chanc.</th><th>Hand</th><th>Enacted</th><th>Odds</th><th><span class="sr-only">Edit</span></th></tr>
+              <tr><th>#</th><th>Rd</th><th>Event</th><th>Pres.</th><th>Chanc.</th><th>Hand</th><th>Enacted</th><th>Odds</th><th class="lie-col">Claim</th><th><span class="sr-only">Edit</span></th></tr>
             </thead>
             <tbody></tbody>
           </table>
@@ -184,11 +186,18 @@
     <div id="accountModal" class="overlay hidden">
       <div class="overlay-box" id="accountBox"></div>
     </div>
+    <!-- settings -->
+    <div id="settingsModal" class="overlay hidden">
+      <div class="overlay-box" id="settingsBox"></div>
+    </div>
   </div>
 
   <div id="toast" class="toast hidden"></div>
 
   <script src="js/probability.js"></script>
+  <!-- Lie detection. Loaded always but only ever *called* when the setting is
+       on, so it costs nothing when the feature is off. See HONESTY_MODEL.md. -->
+  <script src="js/honesty.js"></script>
   <script src="js/stats.js"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/app.js"></script>

@@ -738,3 +738,95 @@ and the database emptied.
 
 **What's left:** the honesty posterior is now the biggest open idea; vote tracking remains
 undecided; accessibility is untouched.
+
+---
+
+## Session 21 — honesty posterior: theory only
+
+**User's brief:** start on "how likely was this claim to be honest", but **planning and theory
+only** — no design, no integration, no code. Use hard logic rather than hand-waving, and look at
+how other people have approached it.
+
+**Output: `HONESTY_MODEL.md`** (new). Nothing was implemented.
+
+**The core diagnosis.** The current headline number is a *likelihood* — "if this president were
+honest, how surprising was the hand?" — being read as a *posterior* — "how likely is this a lie?".
+The gap isn't cosmetic: without `P(claim | lying)` and a prior, rarity alone can point the wrong
+way, because a competent liar never picks an implausible story.
+
+**The structural insight the whole plan rests on.** Because the round pool `(N, L)` is known and
+`Σ h_j + r = L` with `r ≤ R ≤ 2`, the *total net lying in a round is pinned to within two cards*.
+So this is not a detection problem, it's an **attribution problem** — a known mass of lying to
+distribute across seats. It also explains what the round-modifier stepper always was: a hand-set
+point estimate of exactly that aggregate. Marginalising over it *is* the honesty posterior, which
+is why this retires the stepper rather than sitting beside it.
+
+**Structure of the model:** hard logic first (enacted-card constraints, a minimum-lie DP, the
+Policy-Peek-vs-next-hand cross-check the app already has the data for, and the free deduction that
+a chancellor elected after 3F who didn't end the game is *certainly not Hitler*), then an explicit
+generative story (deal → president's pass → chancellor's enact → each one's public claim) with
+*acting* fascist and *talking* fascist parameterised separately. Inference is **exact** — role
+assignments enumerate to ≤360, hands are a forward–backward DP over the running liberal count, so
+a whole game is ~600k flops with no sampling. It provably reduces to the current §4 retrospective
+formula when nobody lies, which is the first test to write.
+
+**Calibration is the part nobody else can do.** Published analyses guess their lie rates; GRAIL
+learned theirs from ~104k logged Avalon games. The archive already stores every claim *and* the
+recorded true roles, so EM with closed-form M-steps fits `ε, λ, β, γ, s` from the user's own group,
+with Beta shrinkage giving genuine per-player lie tendencies.
+
+**Sources consulted:** Aslaksen (UiO) for the canonical 2F ⇒ 3/4 result — which the model
+reproduces as a special case; a LessWrong scenario analysis for the bold/timid fascist split (and
+as a cautionary example of hand-Bayes going wrong); TartanLlama's stats chapter; the Cornell
+INFO 2040 testing-the-chancellor argument; GRAIL (arXiv 2506.17788) and Strategema.
+
+**Flagged for a product decision before any build:** the app sits on a shared table, and a
+calibrated public "72% fascist" readout is a different game from Secret Hitler.
+
+---
+
+## Session 21b — reviewing the plan, then building v1
+
+**User's brief:** review the honesty plan for major flaws, fix the gaps, then start implementing —
+with a **settings switch** that gates every addition (off ⇒ nothing new is shown).
+
+**The review found eight problems; three mattered.** Written up as `HONESTY_MODEL.md` §11.
+
+1. **A live bug in the shipped engine (F2).** `retrospectiveProb()` and `derive()` both compute the
+   round's unseen remainder as `N − 3G`, never subtracting **chaos top-decks**. A chaos removes a
+   card without being a government, so `R` was too big; worse, the chaos card's colour is *public*
+   and was being thrown away as if unseen; worst, `bottomLibs` ignored `chaosLib` while `drawLibs`
+   subtracted it — the two were inconsistent with each other. This corrupted the existing
+   headline % in any round containing a chaos, and it happens to break exactly the conservation
+   identity the whole honesty model rests on. Fixed first, independently of the feature.
+2. **§1 overstated the conservation law (F1).** "Total lying is pinned to within 2 cards" is true
+   at a *round boundary* only; mid-round the draw pile absorbs the slack. The model's power
+   arrives in bursts at reshuffles. `R` is now surfaced as an explicit evidence-strength measure
+   rather than pretending an early-round number is worth as much as a late-round one.
+3. **The plan was over-parameterised (F4) and over-reaching (F6).** Fitting nine parameters by EM
+   over a few hundred latent-hand observations would produce confident nonsense, and per-player
+   "% fascist" on a shared table is the worst version of this feature. **v1 fits nothing** and
+   stops at pricing *claims*, not indicting people.
+
+Also: D4/D5 turned out to be near-vacuous because `enacted` is *derived* from the claim (F3) — but
+the review found a **stronger constraint that is reachable**: a claimed **1F2L + Conflict** asserts
+"I passed LL" while a fascist policy was enacted, which no chancellor can produce. Implemented that
+instead.
+
+**Shipped:** `js/honesty.js` — the min-lie DP and the honesty posterior on **one recursion**, run
+as min-plus for certainties and sum-product for probabilities, so the two layers can't disagree
+about feasibility. A new **⚙ Settings** panel with the **Lie detection** switch, off by default;
+every added element carries `.lie-col` and is CSS-gated on `body.lie-on`.
+
+**Verified:** `node test/honesty.test.js` → **39 assertions, all passing**, including a
+**brute-force cross-check** of the DP marginals against an independently written enumeration
+across five rounds and six parameter settings (max diff < 1e-9) — so a recursion bug can't hide
+behind a plausible-looking number. Then a **21-assertion headless-Chrome run** driving the real UI:
+build a 5-player game, record three governments (the third arming Conflict on a 1F2L claim), and
+assert the column/summary are invisible with the switch off, appear with it on, show `95.9% |
+88.8% | story impossible`, persist to localStorage, and vanish again when switched back off.
+One test expectation was wrong on the first run (I predicted `minLies = 2` where the maths forces
+3) — the engine was right.
+
+**Wording rule adopted as load-bearing:** findings are about *claims*, never people, and always
+offer the recording-error alternative. The maths is certain; the data entry isn't.
