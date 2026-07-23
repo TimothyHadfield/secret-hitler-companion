@@ -1,8 +1,29 @@
 # Backend Plan — accounts, groups, shared statistics
 
-> Status: **decided, not started.** Phase 0 (export/import) is shipped; phases 1–3 are the build.
-> **Hard constraints:** permanently free, sustainable long-term, no credit card, no server to
-> operate. Real-time/online play is explicitly **out of scope**.
+> Status: **infrastructure is LIVE; phase 1 is the next build.** Phase 0 (export/import) is
+> shipped. **Hard constraints:** permanently free, sustainable long-term, no credit card, no
+> server to operate. Real-time/online play is explicitly **out of scope**.
+
+## The live project (facts, not plans)
+
+| | |
+|---|---|
+| **Project ID** | `secret-hitler-companion-th` (the unsuffixed id was already taken globally) |
+| **Project number** | `650157163497` |
+| **Web app ID** | `1:650157163497:web:eb8c5b5a79b28bf65dc178` |
+| **Firestore location** | **`nam5`** (multi-region US — the user is in Utah). ⚠️ **Permanent.** |
+| **Plan** | Spark (free). **No billing account attached — keep it that way.** |
+| **Signed in as** | `timhadfield7@gmail.com` (CLI token cached in `%APPDATA%/configstore`) |
+| **Console** | https://console.firebase.google.com/project/secret-hitler-companion-th/overview |
+
+Committed alongside: `.firebaserc` (default project), `firebase.json`, `firestore.rules`
+(deployed), `firestore.indexes.json`, `js/firebase-config.js`.
+
+**Gotcha for next time:** a fresh Google Cloud project has most APIs disabled, and
+`firestore:databases:create` fails with a 403 until `firestore.googleapis.com` is enabled. The
+Firebase CLI can't enable it (that's a `gcloud` operation, and gcloud needs its own interactive
+login), so it takes one click in the console — then a minute or two to propagate before the
+create call succeeds.
 
 ## The decision: Firebase (Spark plan)
 
