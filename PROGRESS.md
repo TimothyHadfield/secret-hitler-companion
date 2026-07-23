@@ -69,7 +69,7 @@ table game, not a game engine. Feature pillars:
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
-| `BACKEND_PLAN.md` | **Decided, not started:** accounts/groups/shared stats on Supabase — schema, RLS policies, sync strategy, phases. |
+| `BACKEND_PLAN.md` | **Decided, not started:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
 | `CHAT.md` | Session-by-session log (sessions 1–16). |
 | `PROGRESS.md` | This file. |
 
@@ -283,10 +283,14 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - No posterior on *whether* a claim was honest — the model computes P(hand | assumed lies).
 
 ## Next candidate steps
-- **→ NEXT: accounts + groups on Supabase** (decided; full design in `BACKEND_PLAN.md`).
-  Phase 0 (export/import) is shipped. Phase 1 is auth + syncing your own games — **blocked only
-  on the user creating the Supabase project** and handing over the project URL + anon key (both
-  safe to commit; RLS is the security boundary). **Real-time/online play is descoped.**
+- **→ NEXT: accounts + groups on Firebase** (decided; full design + setup steps in
+  `BACKEND_PLAN.md`). Hard constraint: **permanently free, no credit card, must not pause** —
+  which is why Supabase was dropped (its free tier sleeps after ~1 week idle) and why we use
+  **no Cloud Functions** (paid plan only): everything is client SDK + security rules, including
+  invite-based group joining. Phase 0 (export/import) is shipped. Phase 1 is auth + syncing your
+  own games — **blocked only on the user doing the ~5-minute Firebase console setup** and
+  pasting back the `firebaseConfig` block (safe to commit; the rules are the security boundary).
+  **Real-time/online play is descoped.**
 - **Honesty posterior** — "how likely is this claim honest?" given a prior on lying, instead of
   only "how likely was this hand". `PROBABILITY_MODEL.md` §7 names it as the open question; it
   would also retire the manual round-modifier stepper, the last piece of fiddly data entry.

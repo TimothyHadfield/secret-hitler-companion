@@ -556,3 +556,18 @@ anywhere.
 
 **Blocked on the user:** creating the Supabase project and handing over the project URL + anon
 key (both safe to commit — RLS is the security boundary). Everything up to that point is done.
+
+**Mid-session correction — the free/sustainable constraint.** The user then set a hard
+requirement: the backend must be **permanently free, sustainable long-term**, with me doing all
+the work and them getting exact instructions. That **changed the choice from Supabase to
+Firebase (Spark plan)**: Supabase's free tier **pauses a project after ~1 week idle** and needs a
+manual restore, which is exactly the wrong failure mode for sporadic game nights. Firebase
+doesn't pause, needs no card, and its daily quotas (50k reads / 20k writes / 1 GiB ≈ 200,000
+games) dwarf this app's usage. Cloudflare Workers+D1 was considered and rejected: free and
+never-sleeping, but it has no auth, and hand-rolling sign-in is security-critical code not worth
+owning. The binding new constraint is **no Cloud Functions** (paid plan only), so *everything*
+must work from the client SDK + security rules — including joining a group by invite, which is
+done as a rules-checked self-add (`memberUids.concat([uid])` with every other field pinned),
+with `get` open on a group but `list` closed so ids can't be enumerated. `BACKEND_PLAN.md` was
+rewritten accordingly and now ends with **exact click-by-click console setup instructions** —
+the only part the user has to do.
