@@ -192,40 +192,119 @@ payload is, which is why it was built first.
 
 # EXACT SETUP INSTRUCTIONS (the only part that needs you)
 
-Everything else I do. This takes about five minutes and needs a Google account. **Do not enter
-a credit card at any point — you never need one for the Spark plan.**
+Everything else I do. About 5–10 minutes, needs a Google account.
+**Never enter a credit card — the Spark plan never requires one.** If any screen asks for
+billing or to "upgrade to Blaze", stop and say so; nothing here needs it.
 
-### 1. Create the project
-1. Go to **https://console.firebase.google.com** and sign in.
-2. Click **Create a project**.
-3. Name it `secret-hitler-companion`. Click **Continue**.
-4. **Turn Google Analytics OFF** (we don't use it and it adds another consent surface).
-   Click **Create project**, then **Continue** when it finishes.
+> Firebase's console changes its wording from time to time. If a button isn't named exactly as
+> written below, look for the closest match — and if something looks genuinely different, say
+> what you see rather than guessing.
 
-### 2. Turn on login
-1. Left sidebar → **Build** → **Authentication** → **Get started**.
-2. On the **Sign-in method** tab, click **Email/Password** → toggle **Enable** → **Save**.
-3. Click **Add new provider** → **Google** → toggle **Enable**, pick your email as the
-   "project support email" → **Save**.
+---
 
-### 3. Create the database
-1. Left sidebar → **Build** → **Firestore Database** → **Create database**.
-2. Choose **Start in production mode** (locked down — I'll supply the rules). **Next**.
-3. Pick the location closest to you (e.g. `eur3` or `nam5`). **Enable**.
-   ⚠️ **The location is permanent** and cannot be changed later.
+### STEP 1 — Create the project
 
-### 4. Authorise the live site for login
-1. **Authentication** → **Settings** tab → **Authorised domains** → **Add domain**.
-2. Add: `timothyhadfield.github.io`
-   (`localhost` is already there, which is what I test against.)
+**Go to:** https://console.firebase.google.com/
 
-### 5. Send me the config
-1. Click the **⚙️ gear** (top left) → **Project settings**.
-2. Scroll to **Your apps** → click the **`</>`** (Web) icon.
-3. App nickname: `web`. **Do NOT tick "Firebase Hosting"** — the site stays on GitHub Pages.
-   Click **Register app**.
-4. It shows a `const firebaseConfig = { … }` block. **Copy that whole block and paste it to
-   me.**
+1. Sign in with your Google account.
+2. Click **Create a project** (or **Add project** if you already have others).
+3. **Project name:** type `secret-hitler-companion`
+   - Below the box it shows a **Project ID** like `secret-hitler-companion-a1b2c`.
+     **Write that ID down** — it goes in the URLs in later steps.
+   - Tick the terms checkbox if it appears. Click **Continue**.
+4. **Google Analytics:** switch the toggle **OFF**. (Not needed, and it adds a consent surface.)
+   Click **Create project**.
+5. Wait ~30 seconds → click **Continue**.
+
+✅ *Done when: you land on the project's dashboard page.*
+
+---
+
+### STEP 2 — Turn on login
+
+**Go to:** `https://console.firebase.google.com/project/YOUR-PROJECT-ID/authentication/providers`
+*(replace `YOUR-PROJECT-ID`; or click **Build → Authentication** in the left sidebar)*
+
+1. Click **Get started**.
+2. You are on the **Sign-in method** tab. In the providers list, click **Email/Password**.
+   - Turn on the **first** toggle (**Enable**).
+   - Leave "Email link (passwordless sign-in)" **off**.
+   - Click **Save**.
+3. Click **Add new provider** → click **Google**.
+   - Turn the toggle **on**.
+   - **Project support email:** choose your own email from the dropdown.
+   - Click **Save**.
+
+✅ *Done when: the list shows **Email/Password** and **Google**, both "Enabled".*
+
+---
+
+### STEP 3 — Create the database
+
+**Go to:** `https://console.firebase.google.com/project/YOUR-PROJECT-ID/firestore`
+*(or **Build → Firestore Database** in the left sidebar)*
+
+1. Click **Create database**.
+2. **Location** — pick the one closest to you (e.g. `eur3 (europe-west)` for the UK/Europe,
+   `nam5 (us-central)` for the US).
+   ⚠️ **This is permanent and can never be changed.**
+3. **Security rules / mode** — choose **Start in production mode** (locked down).
+   *Don't worry that it blocks everything — I supply the real rules; they're in this file.*
+4. Click **Create** / **Enable**.
+
+> The two screens sometimes appear in the opposite order. Either way: **production mode**,
+> **nearest location**.
+
+✅ *Done when: you see an empty "Data" tab with a Start collection button. Do NOT create any
+collections — I do that from code.*
+
+---
+
+### STEP 4 — Let the live site sign people in
+
+**Go to:** `https://console.firebase.google.com/project/YOUR-PROJECT-ID/authentication/settings`
+*(or **Authentication → Settings** tab)*
+
+1. Find **Authorised domains** (may be spelled "Authorized domains").
+2. Click **Add domain**.
+3. Type exactly: `timothyhadfield.github.io`
+   - No `https://`, no trailing slash, no `/secret-hitler-companion`.
+4. Click **Add**.
+
+✅ *Done when: the list contains `localhost` and `timothyhadfield.github.io`.*
+*(Without this, login works in my tests but fails on the real site.)*
+
+---
+
+### STEP 5 — Send me the config
+
+**Go to:** `https://console.firebase.google.com/project/YOUR-PROJECT-ID/settings/general`
+*(or click the **⚙️ gear** next to "Project Overview" → **Project settings**)*
+
+1. Scroll to **Your apps** at the bottom.
+2. Click the **`</>`** icon (Web). *Not iOS, not Android.*
+3. **App nickname:** `web`
+4. **Leave "Also set up Firebase Hosting" UNTICKED** — the site stays on GitHub Pages.
+5. Click **Register app**.
+6. A code block appears containing:
+
+   ```js
+   const firebaseConfig = {
+     apiKey: "…",
+     authDomain: "…",
+     projectId: "…",
+     storageBucket: "…",
+     messagingSenderId: "…",
+     appId: "…"
+   };
+   ```
+
+7. **Copy that whole block and paste it to me.**
+
+> Lost it? It's always at **Project settings → General → Your apps → SDK setup and
+> configuration → Config**.
+
+✅ *Done when: you've pasted the block to me. Nothing further is needed from you.*
 
 **On safety:** those config values are *designed* to be public and are safe in a public repo —
 they identify the project, they don't grant access. The security rules above are what actually
