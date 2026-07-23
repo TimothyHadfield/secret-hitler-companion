@@ -24,7 +24,10 @@ and easy to revisit.
   **known composition** `(N, L)` where `N` = pool size and `L` = liberals in it. This known
   starting composition is what makes the round analyzable.
 - Each government (legislative session) removes **exactly 3 cards** from the draw pile: 1
-  enacted (public) + 2 discarded (hidden). A round ends when the draw pile has `< 3` cards;
+  enacted (public) + 2 discarded (hidden). A **vetoed** government also removes exactly 3, but
+  enacts nothing — all 3 go to the discard — so the round math below is unchanged (still 3 per
+  government, and the claim is still priced); only the enacted/discard split differs. A round
+  ends when the draw pile has `< 3` cards;
   the `R = N − 3·G` leftover cards (R ∈ {0,1,2}, G = number of governments in the round) are
   never seen and get reshuffled into the next round.
 
@@ -139,6 +142,12 @@ link to the previous round.
 - **Chaos policies** (auto-enacted from the top of the pile on 3 failed elections) remove 1
   card with no discards; the bookkeeping treats that as a 1-card removal, not a 3-card
   government. (Handled as a special event.)
+- **Vetoed governments** still drew 3 cards, so they stay in the round's conditioning exactly
+  like any other government — the President's claim is priced normally. The only difference is
+  that 3 cards (rather than 2) land in the discard and no policy is enacted, which the app's
+  pile display accounts for. **Failed elections** draw no cards at all and are outside the
+  model; the "Hitler elected Chancellor" event likewise ends the game at the election with no
+  draw.
 - **Open question — priors:** a future version could put a prior on each President lying and
   produce a posterior "how likely is this claim honest?" rather than only "how likely was this
   hand given assumed honesty." Noted for later; current scope is the conditional model above.

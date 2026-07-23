@@ -490,3 +490,10 @@ style as the rest of the app.
 **Left open (asked the user):** tracking the **vote itself** (Ja/Nein counts, ties failing, dead
 players not voting) — that adds a data-entry step to every election and changes the streamlined
 "tap a ratio to submit" flow, so it needs a product decision rather than a rule fix.
+
+**Follow-up:** the user hadn't heard of the "no double investigation" rule and asked me to check.
+Verified against the official rules — *"The President investigates another player **who has not
+yet been investigated**."* The restriction is on the **target**, not the investigator (a different
+President still can't re-investigate the same player), which is how it's implemented. It can only
+ever bind in a **9–10 player** game, the only count with two Investigate Loyalty slots (5–6 has
+none, 7–8 has one) — which is why it so rarely comes up.

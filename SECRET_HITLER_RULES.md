@@ -105,6 +105,9 @@ that slot. Which slots have which power depends on player count.
 
 Power definitions:
 - **Investigate Loyalty:** President secretly views one player's **Party** card (not role).
+  **A player may not be investigated twice in the same game** (the restriction is on the
+  *target*, not the investigator). This can only ever bind at **9–10 players**, the only counts
+  with two Investigate slots.
 - **Special Election:** President picks *any* player to be the next Presidential candidate
   (a one-off; afterward the order resumes to the left of the President who used the power).
 - **Policy Peek:** President secretly views the **top 3** cards of the draw pile.
@@ -118,8 +121,8 @@ slot 5.)
 
 ## 6. The Election Tracker (chaos)
 
-- Starts at 0. **+1 on each failed election** (rejected or, in some rulings, when a term ends
-  in veto).
+- Starts at 0. **+1 on each failed election**, and **+1 on a successful veto** (the government
+  was elected but enacted nothing).
 - At **3**: the top policy auto-enacts (Chaos), tracker resets to 0, **term limits reset**
   (everyone is eligible again for the next round). No power triggers from a chaos policy.
 - The tracker **resets to 0** whenever *any* policy is enacted (through a successful
@@ -127,8 +130,9 @@ slot 5.)
 
 ## 7. What this app tracks vs. the physical game
 
-The app is a **companion/analyzer**, not an enforcer — it assumes honest human play at the
-table and focuses on:
+The app is a **companion/analyzer** rather than a game engine: the table plays the real game and
+tells the app what happened. It does, however, **enforce the rules it can** (listed below) so an
+illegal nomination or a repeated investigation can't be entered by accident. It focuses on:
 
 - **Randomization:** seating order + first President.
 - **Bookkeeping:** enacted Liberal/Fascist counts, draw & discard pile composition, reshuffle
@@ -139,9 +143,12 @@ table and focuses on:
   Investigation (target + party), Policy Peek (top-3 order), Kill (target; Hitler ⇒ Liberal win,
   else the player is marked dead and skipped), Special Election (chosen next President, with the
   normal order resuming afterward). Turn order and deaths are derived from these events.
-- **End game:** auto-detects policy-track wins and Hitler-execution, then records roles (Hitler
-  + the count-appropriate Fascists) in place on the table, colouring each player's circle.
+- **Game end:** auto-detects policy-track wins and Hitler-execution (and takes a declared
+  "Chancellor was Hitler" win), then records roles (Hitler + the count-appropriate Fascists)
+  in place on the table, colouring each player's circle.
 - **Statistics:** per-player + cross-game data, plus a reviewable per-game archive (browser).
+
+### Rules the app enforces or records
 
 - **Term limits (enforced):** the last *elected* Chancellor can never be tapped as the next
   Chancellor; the last *elected* President is also blocked **unless only 5 players are alive**
