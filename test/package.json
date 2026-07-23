@@ -1,0 +1,13 @@
+{
+  "name": "secret-hitler-companion-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Security-rules tests. Dev-only: the site itself has no dependencies.",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project demo-shtest \"node rules.test.js\""
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.16.0"
+  }
+}
