@@ -575,3 +575,15 @@ tr.ev-chaos td { color: #ffd98a; }
 .nd-item .l { font-size: 11px; color: var(--muted); }
 
 footer { text-align: center; color: var(--muted); font-size: 12px; margin: 24px 0; }
+
+/* Visually hidden, still announced by screen readers (and keeps <section>
+   elements validly headed without changing the visible design). */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

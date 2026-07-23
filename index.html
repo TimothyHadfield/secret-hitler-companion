@@ -1,17 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta charset="UTF-8">
+  <!-- Double-tap-to-zoom is blocked by `touch-action: manipulation` in styles.css,
+       so we do NOT set user-scalable=no here: that would also block pinch-zoom,
+       which people who need to magnify the board rely on. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Secret Hitler — Companion</title>
-  <link rel="icon" type="image/svg+xml" href="icon.svg" />
-  <link rel="icon" type="image/png" href="icon-512.png" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <meta name="theme-color" content="#161009" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Secret Hitler" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon-512.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="theme-color" content="#161009">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Secret Hitler">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="wrap">
@@ -28,7 +31,7 @@
       <div class="row">
         <div>
           <label for="nameInput">Player name</label>
-          <input id="nameInput" placeholder="e.g. Tim" autocomplete="off" />
+          <input id="nameInput" placeholder="e.g. Tim" autocomplete="off">
         </div>
         <button id="btnAddPlayer">Add player</button>
       </div>
@@ -149,6 +152,10 @@
 
     <!-- ===================== STATS SCREEN ===================== -->
     <section id="statsScreen" class="hidden">
+      <!-- The screen shows only a back arrow, so this heading is for screen
+           readers and HTML validity; the visible headings are built by
+           renderStatsInto(). -->
+      <h2 class="sr-only">Statistics</h2>
       <div class="screen-head">
         <button id="btnBackFromStats" class="backbtn" title="Back"><span class="arw">←</span></button>
       </div>
@@ -158,7 +165,7 @@
         <button id="btnImportStats" class="ghost">Import data</button>
         <button id="btnClearStats" class="ghost">Clear all statistics</button>
         <!-- kept out of the layout; opened by the Import button -->
-        <input id="importFile" type="file" accept="application/json,.json" class="hidden" />
+        <input id="importFile" type="file" accept="application/json,.json" class="hidden">
       </div>
     </section>
     <!-- in-app confirm dialog (replaces the browser's native confirm/alert) -->
