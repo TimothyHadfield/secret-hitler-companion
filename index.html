@@ -154,7 +154,11 @@
       </div>
       <div class="stats-body" id="statsBody"></div>
       <div class="row" style="margin-top:12px">
+        <button id="btnExportStats" class="ghost">Export data</button>
+        <button id="btnImportStats" class="ghost">Import data</button>
         <button id="btnClearStats" class="ghost">Clear all statistics</button>
+        <!-- kept out of the layout; opened by the Import button -->
+        <input id="importFile" type="file" accept="application/json,.json" class="hidden" />
       </div>
     </section>
     <!-- in-app confirm dialog (replaces the browser's native confirm/alert) -->

@@ -18,16 +18,42 @@
 
 const Stats = (() => {
   const KEY = "secretHitler.games.v1";
+  // Export envelope format. Bump only on a breaking change to the record shape;
+  // importers must refuse a schema they don't understand rather than guess.
+  const EXPORT_SCHEMA = 1;
+  const EXPORT_APP = "secret-hitler-companion";
 
   // Claimed hands, indexed by the number of liberal policies claimed (0..3).
   const CLAIM_NAMES = ["Coal (3F)", "Golden (2F/1L)", "Silver (1F/2L)", "Bronze (3L)"];
 
-  function loadGames() {
+  /** Stable per-game identifier: dedupe key on import, idempotency key on sync. */
+  function uuid() {
     try {
-      return JSON.parse(localStorage.getItem(KEY)) || [];
+      if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    } catch (e) {}
+    // Fallback for older/insecure contexts — uniqueness is all that matters here.
+    return "g-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
+  function loadGames() {
+    let games;
+    try {
+      games = JSON.parse(localStorage.getItem(KEY)) || [];
     } catch (e) {
       return [];
     }
+    if (!Array.isArray(games)) return [];
+    // Backfill ids on games saved before they existed. Writes at most once:
+    // afterwards every record has an id and this is a no-op.
+    let changed = false;
+    games.forEach((g) => {
+      if (g && !g.id) {
+        g.id = uuid();
+        changed = true;
+      }
+    });
+    if (changed) saveGames(games);
+    return games;
   }
 
   function saveGames(games) {
@@ -37,9 +63,55 @@ const Stats = (() => {
   /** Append a completed game record and persist it. */
   function recordGame(game) {
     const games = loadGames();
+    if (!game.id) game.id = uuid();
     games.push(game);
     saveGames(games);
     return games.length;
+  }
+
+  /**
+   * Everything needed to rebuild this device's archive elsewhere — the backup
+   * file, and the payload that seeds an account on first login.
+   */
+  function exportData() {
+    return {
+      app: EXPORT_APP,
+      schema: EXPORT_SCHEMA,
+      exportedAt: new Date().toISOString(),
+      games: loadGames(),
+    };
+  }
+
+  /**
+   * Merge an exported archive into this device's games. Additive and
+   * idempotent: a game already present (same id) is skipped, so re-importing
+   * the same file — or a file that overlaps another device's — is harmless.
+   * Throws on a payload that isn't a recognisable export.
+   * @returns {{added:number, skipped:number}}
+   */
+  function importData(payload) {
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.games))
+      throw new Error("That file isn't a Secret Hitler statistics export.");
+    if (payload.app && payload.app !== EXPORT_APP)
+      throw new Error("That export came from a different app.");
+    if (payload.schema > EXPORT_SCHEMA)
+      throw new Error("That export was made by a newer version of the app.");
+
+    const games = loadGames();
+    const seen = new Set(games.map((g) => g.id));
+    let added = 0,
+      skipped = 0;
+    payload.games.forEach((g) => {
+      // Only complete, recorded games carry statistics worth merging.
+      if (!g || !g.result || !Array.isArray(g.events)) return void skipped++;
+      if (!g.id) g.id = uuid();
+      if (seen.has(g.id)) return void skipped++;
+      seen.add(g.id);
+      games.push(g);
+      added++;
+    });
+    if (added) saveGames(games);
+    return { added, skipped };
   }
 
   function clearAll() {
@@ -275,7 +347,18 @@ const Stats = (() => {
     return s;
   }
 
-  return { loadGames, recordGame, clearAll, playerStats, summary, endingOf, CLAIM_NAMES };
+  return {
+    loadGames,
+    recordGame,
+    clearAll,
+    exportData,
+    importData,
+    playerStats,
+    summary,
+    endingOf,
+    uuid,
+    CLAIM_NAMES,
+  };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = Stats;

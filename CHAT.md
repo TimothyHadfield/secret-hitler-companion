@@ -497,3 +497,62 @@ yet been investigated**."* The restriction is on the **target**, not the investi
 President still can't re-investigate the same player), which is how it's implemented. It can only
 ever bind in a **9–10 player** game, the only count with two Investigate Loyalty slots (5–6 has
 none, 7–8 has one) — which is why it so rarely comes up.
+
+---
+
+## Session 16 — export/import, and the backend decision
+
+**User asked for:** first, an opinion on what to improve besides online play; then how best to
+add **user accounts, per-account data, friends and groups** where any member can record a game
+into a group and any other member can see that group's stats. Partway through they **descoped
+online/real-time play** — accounts and sharing only.
+
+**What I recommended (and why):**
+- **Supabase.** The data is relational (users, groups, memberships, games), and the entire
+  feature set reduces to "who may read which rows" — which is Postgres **Row-Level Security**,
+  so there is **no server to write or host** and the site stays static on GitHub Pages.
+  Firebase was the second choice; a hand-rolled Node service was rejected as more work for less.
+- **The load-bearing modelling call:** a *user* (login) and a *group member/seat* are two
+  different things. Games must reference **member ids, never names**, and a member carries a
+  **nullable `user_id`** — so guests can play without accounts and be linked to a real account
+  later with one UPDATE instead of a history rewrite.
+- **Keep `events` as jsonb.** `derive()` already rebuilds a game from its event log, so the DB
+  hands back the same object `saveRoles()` writes today and `js/stats.js` is untouched —
+  **group stats come free**.
+- **Skip the friend graph initially** (groups + invite codes do the real job), and **stay
+  local-first** so a basement hotspot is never on the critical path of recording a game.
+- Full design — schema, RLS policies, the `security definer` recursion gotcha, sync strategy,
+  phases — is committed as **`BACKEND_PLAN.md`**.
+
+**What I implemented (phase 0 of that plan): data export / import.**
+- Every saved game now carries a stable **UUID** (`Stats.uuid()`), assigned on record and
+  **backfilled** onto older records by `loadGames()` (writes once, then a no-op). It is the
+  dedupe key on import and the **idempotency key for the future sync** — a retried upload can
+  never insert a game twice.
+- **Export data** downloads a dated `{app, schema, exportedAt, games[]}` envelope.
+- **Import data** merges one back **additively and idempotently**: same-id games are skipped, so
+  re-importing a file, or merging two devices' overlapping archives, is harmless. It refuses a
+  foreign `app`, a newer `schema`, and records missing `result`/`events` — each with a readable
+  reason via `showToast()` (no native dialogs).
+- This is simultaneously the **backup** against cleared site data, the **device-transfer** path,
+  and the **payload that will seed a cloud account** on first login — which is exactly why it
+  was built before the backend.
+
+**Verified:** 24 assertions in Node against `js/stats.js` with a stubbed `localStorage` (id
+assignment, legacy backfill persisting, round-trip, idempotent re-import, overlapping-archive
+merge, four rejected payloads, partial records skipped); then **20 assertions in headless
+Chrome driving the real UI** — real button clicks, the real `onchange` handler, real `File`
+objects and the real toast (export blob + dated filename, restore onto a wiped device,
+re-import creating no duplicates, garbage file, foreign app, future schema, no stray overlay).
+One initial failure was a **test** race (a fixed 120ms wait read a stale toast before
+`FileReader` resolved) — fixed by polling for the toast to change, not by touching the product.
+Layout measured at three viewports: the 3-button row never overflows and `.row` already wraps
+on a real 360px phone.
+
+**Also flagged for later** (now in PROGRESS.md): the undo stack grows O(n²) and is
+re-serialised on every render, `lsSet()` silently swallows quota errors, `derive()` can't be
+unit-tested from Node because it's inside the IIFE, and there is no `aria`/keyboard support
+anywhere.
+
+**Blocked on the user:** creating the Supabase project and handing over the project URL + anon
+key (both safe to commit — RLS is the security boundary). Everything up to that point is done.

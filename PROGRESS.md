@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-23 (after session 15)._
+_Last updated: 2026-07-23 (after session 16)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -69,7 +69,8 @@ table game, not a game engine. Feature pillars:
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
-| `CHAT.md` | Session-by-session log (sessions 1–15). |
+| `BACKEND_PLAN.md` | **Decided, not started:** accounts/groups/shared stats on Supabase — schema, RLS policies, sync strategy, phases. |
+| `CHAT.md` | Session-by-session log (sessions 1–16). |
 | `PROGRESS.md` | This file. |
 
 ## Architecture notes (how app.js is organised)
@@ -124,6 +125,16 @@ table game, not a game engine. Feature pillars:
   auto-saves to `secretHitler.activeGame.v1` and is **resumed on load** (survives refresh /
   close-reopen / redeploy); the setup roster → `secretHitler.setupPlayers.v1`. Active game cleared
   only on New Game / after saving. `loadActive()` backfills fields missing from older saves.
+- **Every saved game carries a stable `id` (UUID).** Assigned by `Stats.recordGame()` and
+  backfilled onto older records by `loadGames()` (writes once, then a no-op). It is the dedupe
+  key on import and — deliberately — the idempotency key for the future cloud sync, so a
+  retried upload can never insert a game twice. Don't remove it.
+- **Export / import** (Stats screen, `Stats.exportData()` / `Stats.importData()`): downloads a
+  dated `{app, schema, exportedAt, games[]}` envelope, and merges one back **additively and
+  idempotently** — games already present (same id) are skipped, so re-importing the same file
+  or overlapping archives from two devices is harmless. Import refuses a foreign `app`, a
+  `schema` newer than it understands, and any record missing `result`/`events`. This is the
+  backup, the device-transfer path, and the payload that seeds a cloud account later.
 
 ## Interaction model (mobile-first, no-scroll)
 - **Top row:** a **back arrow (←)** at the far upper-left, then Play / History / Stats tabs;
@@ -236,6 +247,9 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   (investigations/peeks/executions/special elections), conflicts **and vetoes** split by seat,
   policies enacted as Chancellor, presidencies/chancellorships/failed elections, and things done
   *to* them (times executed / investigated / special-elected).
+- **Footer buttons on the standalone stats screen:** **Export data** / **Import data** /
+  **Clear all statistics** (a `.row`, which wraps on narrow phones). Import goes through a
+  hidden `#importFile` input; both report via `showToast()`, never a native dialog.
 - **Kept compact:** players are **collapsed rows** (name · games · win% · role split) that expand
   to the full breakdown, and numbers use a capped label→value grid (single full-width column on
   phones). Scrolling within the section is expected and fine.
@@ -258,8 +272,9 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   not separate undo steps (freely reversible with −/+).
 
 ## Known limitations / not yet done
-- **No online/multiplayer.** Persistence is per-browser/device (localStorage); a game on the
-  laptop won't appear on the phone. Private/incognito or cleared data loses saves.
+- **No accounts/backend yet.** Persistence is per-browser/device (localStorage); a game on the
+  laptop won't appear on the phone. **Export/import is the workaround** (and the safety net
+  against cleared site data) until the backend lands — see `BACKEND_PLAN.md`.
 - **Votes are not tracked** (Ja/Nein counts, ties failing, dead players not voting). The table
   votes and tells the app the outcome — the one election rule still left to honest play.
 - The app records what the table *tells* it (claims, conflicts, vetoes, power outcomes); it can't
@@ -267,10 +282,23 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - No history-row editing/deleting (Undo is the only correction tool; it steps back from the end).
 - No posterior on *whether* a claim was honest — the model computes P(hand | assumed lies).
 
-## Next candidate steps (not started)
-- Online-play backend (rooms, shared state) — the big remaining pillar.
-- **Vote tracking** (asked, undecided): either a Ja/Nein tally per election, or each player's
-  individual vote. Adds a data-entry step to every election, so it needs a product decision.
-- Editable/deletable history entries.
+## Next candidate steps
+- **→ NEXT: accounts + groups on Supabase** (decided; full design in `BACKEND_PLAN.md`).
+  Phase 0 (export/import) is shipped. Phase 1 is auth + syncing your own games — **blocked only
+  on the user creating the Supabase project** and handing over the project URL + anon key (both
+  safe to commit; RLS is the security boundary). **Real-time/online play is descoped.**
+- **Honesty posterior** — "how likely is this claim honest?" given a prior on lying, instead of
+  only "how likely was this hand". `PROBABILITY_MODEL.md` §7 names it as the open question; it
+  would also retire the manual round-modifier stepper, the last piece of fiddly data entry.
+- Editable/deletable history entries (Undo only steps back from the end, so a mis-tap noticed
+  three governments later means unwinding everything).
+- **Reliability:** cap the undo stack — `pushUndo()` stores a full-state snapshot per action and
+  `saveActive()` re-serialises all of them on every render (O(n²) growth); and `lsSet()`
+  silently swallows `QuotaExceededError`, so a failed save is invisible.
+- **Tests:** `derive()` is trapped inside the IIFE; exporting it for Node would give the rules
+  logic (term limits, veto, nested special elections, reshuffles) real regression coverage.
+  `js/stats.js` is already Node-testable and has been driven that way.
+- Accessibility: no `aria-*`, `tabindex` or key handlers anywhere; seats are `div`s with `onclick`.
+- **Vote tracking** (asked, undecided): a Ja/Nein *count* per election is one extra tap-pair and
+  gets most of the analytical value; per-player votes tax every election. Needs a product call.
 - Further statistics ideas: favourite chancellor pairings, lie tendency, per-round trends.
-- Probability: optional posterior "how likely is this claim honest?" given a prior on lying.

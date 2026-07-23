@@ -1457,6 +1457,51 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // ------------------------------ data export / import -----------------------
+  // All statistics live in this browser only, so the archive needs a way out:
+  // a backup against cleared site data, a way to carry games between devices,
+  // and the payload that will seed a cloud account later.
+  function exportStats() {
+    const data = Stats.exportData();
+    if (!data.games.length) {
+      showToast("No games to export yet.");
+      return;
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `secret-hitler-stats-${data.exportedAt.slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast(`Exported ${data.games.length} game${data.games.length === 1 ? "" : "s"}.`);
+  }
+
+  function importStats(file) {
+    const reader = new FileReader();
+    reader.onerror = () => showToast("Couldn't read that file.");
+    reader.onload = () => {
+      let res;
+      try {
+        res = Stats.importData(JSON.parse(reader.result));
+      } catch (err) {
+        // Stats.importData throws a human-readable reason; JSON.parse doesn't.
+        showToast(err instanceof SyntaxError ? "That file isn't valid JSON." : err.message);
+        return;
+      }
+      renderStats();
+      const skipped = res.skipped ? `, ${res.skipped} already saved` : "";
+      showToast(
+        res.added
+          ? `Imported ${res.added} game${res.added === 1 ? "" : "s"}${skipped}.`
+          : "Nothing new to import — those games are already saved."
+      );
+    };
+    reader.readAsText(file);
+  }
+
   // ------------------------------ in-app dialogs -----------------------------
   // The app never uses the browser's native alert/confirm (the ugly
   // "<site> says…" bar) — everything is rendered in the app's own styling.
@@ -1540,6 +1585,13 @@
     };
     $("btnStats").onclick = renderStats;
     $("btnBackFromStats").onclick = () => show(state && !state.review ? "gameScreen" : "setupScreen");
+    $("btnExportStats").onclick = exportStats;
+    $("btnImportStats").onclick = () => $("importFile").click();
+    $("importFile").onchange = (e) => {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = ""; // let the same file be picked again after a failure
+      if (f) importStats(f);
+    };
     $("btnClearStats").onclick = () => {
       askConfirm(
         {
