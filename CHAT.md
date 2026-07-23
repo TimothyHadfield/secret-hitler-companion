@@ -657,3 +657,43 @@ experiments beat any amount of reasoning about which layer was lying.
 before joining, a real invite link, two-way contribution, roster reuse without duplicates, and
 group-switching hiding the other group's games. Phase-1 sync (27) and export/import (24) both
 still pass; W3C clean. All test accounts deleted and the database purged.
+
+---
+
+## Session 19 — correcting history, plus reliability
+
+**User asked for:** "make the improvements you think would be good", with an invitation to ask
+about direction.
+
+**Chosen on the merits, in priority order:**
+
+1. **Editable / deletable history entries** — the biggest real-world gap. Undo only ever stepped
+   back from the *end*, so a mis-tap noticed three governments later meant unwinding the whole
+   game. Every history row now has a ✎ button opening an in-app editor: change the claimed hand,
+   toggle Conflict/Veto, flip a chaos policy, or delete the entry.
+   - It's cheap because everything is derived: "mutate the event, re-derive" recomputes the
+     board, piles, rotation, term limits and probabilities for free.
+   - The subtle part is what is **not** derived. `afterHistoryEdit()` clears pending power and
+     pending chaos, recomputes `gameOver`/`autoResult` (an executed or elected Hitler still ends
+     the game), and **strips a presidential power from a government that no longer enacts
+     Fascist**, since the policy that granted it no longer exists.
+   - Edits go through `pushUndo()`, so a bad correction is itself undoable.
+
+2. **Two reliability bugs flagged back in session 16 and never fixed.**
+   - `lsSet()` swallowed `QuotaExceededError`, so a full localStorage silently stopped persisting
+     the game and the next refresh lost it. It now warns once and points at Export.
+   - The undo stack was uncapped; each entry is a full-state snapshot and `saveActive()`
+     re-serialises the whole stack on **every render**, so it grew O(n²). Capped at 25.
+
+3. **Group rename + leave** — holes opened by shipping phase 2. Leaving is refused when you are
+   the only member, so a group can't be orphaned with no one able to administer it.
+
+**Verified:** a new 22-assertion editing suite drives the *real* UI — plays three governments,
+edits a Bronze into a Coal and checks the board flips 2L/1F → 1L/2F, checks the draw pile
+recomposes, deletes an entry and confirms recalculation, **undoes the delete and confirms both
+the entry and the board come back**, then deletes a failed election and confirms the tracker
+resets. Group suite now 36 assertions (rename/leave added), phase-1 sync 27, export/import 24 —
+all passing, W3C clean, test accounts deleted and the database purged.
+
+**Open question put to the user:** what the app should become next — an honesty posterior
+(changing the headline number), vote tracking, phase 3 (friends/guest-linking), or polish.

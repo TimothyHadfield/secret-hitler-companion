@@ -267,6 +267,41 @@ async function joinGroup(gid) {
   return { ok: true, name: g.name, already };
 }
 
+async function renameGroup(gid, name) {
+  const clean = String(name || "").trim().slice(0, 60);
+  if (!clean) return { ok: false, message: "A group needs a name." };
+  await updateDoc(doc(db, "groups", gid), { name: clean });
+  await loadGroups();
+  emit("cloud:groups", { groups: groupList(), activeGroupId });
+  return { ok: true };
+}
+
+/**
+ * Leave a group: drop yourself from its member list and from your own profile.
+ * The rules permit this because you are still a member at evaluation time.
+ * Games already downloaded stay on the device but fall out of scope.
+ */
+async function leaveGroup(gid) {
+  const uid = currentUser.uid;
+  const gref = doc(db, "groups", gid);
+  const snap = await getDoc(gref);
+  if (snap.exists()) {
+    const rest = (snap.data().memberUids || []).filter((u) => u !== uid);
+    // Never strand a group with no members who can administer it.
+    if (!rest.length) return { ok: false, message: "You're the only member — delete the group instead." };
+    await updateDoc(gref, { memberUids: rest });
+  }
+  const pref = doc(db, "profiles", uid);
+  const p = await getDoc(pref);
+  const ids = ((p.exists() && p.data().groupIds) || []).filter((g) => g !== gid);
+  await setDoc(pref, { displayName: myDisplayName(), groupIds: ids }, { merge: true });
+  try { localStorage.removeItem(membersKey(gid)); } catch (e) {}
+  await loadGroups();
+  if (!myGroups.length) await createGroup("My Games");
+  await setActiveGroup(myGroups[0].id);
+  return { ok: true };
+}
+
 async function setActiveGroup(gid) {
   if (!myGroups.some((g) => g.id === gid)) return false;
   activeGroupId = gid;
@@ -539,6 +574,14 @@ window.Cloud = {
   },
   async joinGroup(gid) {
     try { const r = await joinGroup(gid); if (r.ok) await sync(); return r; }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  async renameGroup(name, gid) {
+    try { return await renameGroup(gid || activeGroupId, name); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  async leaveGroup(gid) {
+    try { const r = await leaveGroup(gid || activeGroupId); if (r.ok) await sync(); return r; }
     catch (e) { return { ok: false, message: humanError(e) }; }
   },
   async addMember(name, gid) {

@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-23 (after session 18)._
+_Last updated: 2026-07-23 (after session 19)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -78,7 +78,7 @@ table game, not a game engine. Feature pillars:
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
 | `BACKEND_PLAN.md` | **Phases 0–2 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
-| `CHAT.md` | Session-by-session log (sessions 1–18). |
+| `CHAT.md` | Session-by-session log (sessions 1–19). |
 | `PROGRESS.md` | This file. |
 
 ## Architecture notes (how app.js is organised)
@@ -297,8 +297,8 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - **No friends list yet** (phase 3): you invite by link, not by picking a person.
 - **A guest seat can't yet be linked to an account** (phase 3), so someone who played as a guest
   and later signs up gets a second roster entry until that lands.
-- **Membership isn't revocable in the UI** — no "remove member" or "leave group" yet, and a
-  group can't be renamed after creation.
+- **No "remove member"** — you can rename a group and leave it yourself, but not evict anyone
+  else. (Leaving is blocked when you're the last member, so a group can't be orphaned.)
 - **Anyone with an invite link can join**, and links don't expire. The `inviteCode` field exists
   for a future rotate/revoke feature but isn't used yet.
 - **The in-progress game doesn't sync**, only completed/recorded ones. Resuming a half-played game
@@ -360,3 +360,24 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   about to be allowed (observed: games recovered in ~5s, the roster took longer). Reads retry on
   `permission-denied` with backoff, and seating a new member on the roster is best-effort —
   deferred to the next sync rather than failing the whole join.
+
+## Correcting history (session 19)
+- **Every history row has a ✎ button** opening an in-app editor: change a government's claimed
+  hand, toggle Conflict/Veto, flip a chaos policy, or **delete the entry entirely**. Undo only
+  ever stepped back from the end, so a mis-tap noticed three governments later used to mean
+  unwinding the whole game.
+- **It works because everything is derived.** Editing is "mutate the event, re-derive" — the
+  board, piles, rotation, term limits and probabilities all recompute for free.
+- **What is NOT derived must be rebuilt by hand**, and `afterHistoryEdit()` does it: pending
+  power and pending chaos are cleared, `gameOver`/`autoResult` are recomputed (an executed
+  Hitler or an elected Hitler still ends the game), and a power attached to a government that no
+  longer enacts Fascist is stripped, since the policy that granted it is gone.
+- Edits go through `pushUndo()`, so a bad correction is itself undoable.
+
+## Reliability fixes (session 19)
+- **`lsSet()` no longer swallows quota errors.** A full localStorage used to fail silently, so
+  the game simply stopped persisting and the next refresh lost it. It now warns once, pointing
+  at Export.
+- **The undo stack is capped at 25** (`UNDO_LIMIT`). Each entry is a full-state snapshot and
+  `saveActive()` re-serialises the whole stack on every render, so an uncapped stack grew O(n²)
+  and could exhaust storage in a long game.

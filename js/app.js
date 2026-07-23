@@ -61,7 +61,19 @@
   const ACTIVE_KEY = "secretHitler.activeGame.v1";
   const SETUP_KEY = "secretHitler.setupPlayers.v1";
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  // A failed save used to be invisible, so a full quota silently stopped the
+  // game from being persisted — the next refresh would lose it. Warn once.
+  let storageWarned = false;
+  const lsSet = (k, v) => {
+    try { localStorage.setItem(k, v); return true; }
+    catch (e) {
+      if (!storageWarned) {
+        storageWarned = true;
+        setTimeout(() => showToast("Storage is full — this game may not survive a refresh. Export your data."), 0);
+      }
+      return false;
+    }
+  };
   const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
 
   function saveActive() { if (state && !state.review) lsSet(ACTIVE_KEY, JSON.stringify(state)); }
@@ -178,7 +190,7 @@
         tracker++;
         failsByPlayer[ev.presidentIdx] = (failsByPlayer[ev.presidentIdx] || 0) + 1;
         pushPlayerEvent(ev.presidentIdx, { type: "fail" });
-        evInfo.push({ type: "fail", presidentIdx: ev.presidentIdx, tracker });
+        evInfo.push({ type: "fail", n, presidentIdx: ev.presidentIdx, tracker });
         advanceAfter(ev.presidentIdx, null);
         return;
       }
@@ -189,7 +201,7 @@
         tracker = 0;
         // a chaos policy resets term limits — everyone is eligible again
         lastElectedPres = lastElectedChan = null;
-        evInfo.push({ type: "chaos", enacted: ev.enacted });
+        evInfo.push({ type: "chaos", n, enacted: ev.enacted });
         reshuffleIfNeeded();
         return; // chaos does not change the presidential rotation
       }
@@ -197,7 +209,7 @@
         // Hitler was elected Chancellor with 3+ fascist policies down: the game ends
         // at the election, so no cards are drawn and nothing else moves.
         hitlerElected = { presidentIdx: ev.presidentIdx, chancellorIdx: ev.chancellorIdx };
-        evInfo.push({ type: "hitler", presidentIdx: ev.presidentIdx, chancellorIdx: ev.chancellorIdx });
+        evInfo.push({ type: "hitler", n, presidentIdx: ev.presidentIdx, chancellorIdx: ev.chancellorIdx });
         return;
       }
       // gov
@@ -227,7 +239,7 @@
       rounds[round].govs.push(giIdx);
       lastGovByPlayer[ev.presidentIdx] = info;
       pushPlayerEvent(ev.presidentIdx, info);
-      evInfo.push({ type: "gov", giIdx });
+      evInfo.push({ type: "gov", n, giIdx });
       draw -= 3;
       if (enacted === "L") lib++;
       else if (enacted === "F") fac++;
@@ -990,8 +1002,174 @@
           `<td>${g.vetoed ? "— (veto)" : g.enacted === "L" ? "🟦 Lib" : "🟥 Fac"}</td>` +
           `<td><b style="color:var(--gold)">${Prob.fmtPct(g.prob)}</b></td>`;
       }
+      // Correcting a mis-tap noticed several turns later — Undo only steps back
+      // from the end, so without this the whole game has to be unwound.
+      const canEdit = !state.review && !state.recordingRoles && ev.n != null;
+      tr.innerHTML += `<td class="hist-fix">${
+        canEdit ? `<button class="fix-btn" data-n="${ev.n}" title="Edit or delete this entry">✎</button>` : ""
+      }</td>`;
       tb.appendChild(tr);
     });
+    tb.querySelectorAll(".fix-btn").forEach((b) => {
+      b.onclick = () => openEventEditor(+b.dataset.n);
+    });
+  }
+
+  // ---------------------- editing a recorded entry ---------------------------
+  // Everything is derived from the event log, so correcting history is just
+  // "mutate the event and re-derive". The knock-on state that is NOT derived
+  // (a pending power, a detected game-over) is cleared and recomputed.
+  let editDraft = null;
+
+  function openEventEditor(n) {
+    const ev = state.events[n];
+    if (!ev) return;
+    editDraft = {
+      n,
+      libs: ev.claimLibs,
+      conflict: !!ev.conflict,
+      vetoed: !!ev.vetoed,
+      enacted: ev.enacted,
+    };
+    renderEventEditor();
+  }
+
+  function renderEventEditor() {
+    if (!editDraft) return;
+    const n = editDraft.n;
+    const ev = state.events[n];
+    const type = ev.type || "gov";
+    const m = $("confirmModal");
+    let body = "";
+
+    if (type === "gov") {
+      const ratios = RATIOS.map((r) =>
+        `<button class="ed-ratio${editDraft.libs === r.libs ? " sel" : ""}" data-libs="${r.libs}" ` +
+        `style="background:${ratioColor(r.libs)}"><span class="ratio-name ${r.cls}">${r.name}</span>` +
+        `<span class="ratio-sub">${r.sub}</span></button>`).join("");
+      const canConflict = !editDraft.vetoed && (editDraft.libs === 1 || editDraft.libs === 2);
+      body =
+        `<p class="confirm-body">What did ${escapeHtml(state.players[ev.presidentIdx].name)} actually claim?</p>` +
+        `<div class="ed-ratios">${ratios}</div>` +
+        `<div class="control-row">` +
+        `<button id="edConflict" class="conflict-btn${editDraft.conflict ? " on" : ""}"${canConflict ? "" : " disabled"}>⚔ Conflict</button>` +
+        `<button id="edVeto" class="veto-btn${editDraft.vetoed ? " on" : ""}">⊘ Veto</button>` +
+        `</div>`;
+    } else if (type === "chaos") {
+      body =
+        `<p class="confirm-body">Which policy was top-decked?</p>` +
+        `<div class="control-row">` +
+        `<button id="edChaosL" class="primary btn-lib${editDraft.enacted === "L" ? " on" : ""}">Liberal</button>` +
+        `<button id="edChaosF" class="primary${editDraft.enacted === "F" ? " on" : ""}">Fascist</button>` +
+        `</div>`;
+    } else {
+      body = `<p class="confirm-body">This entry can be deleted, but has nothing to edit.</p>`;
+    }
+
+    $("confirmBox").innerHTML =
+      backBtn("edBack", "Cancel") +
+      `<div class="power-title">Fix entry ${n + 1}</div>` +
+      body +
+      `<p class="muted" style="font-size:12px;margin:6px 0 0">Later entries keep their order. A presidential power attached to a government that no longer enacts Fascist is removed.</p>` +
+      `<div class="control-row">` +
+      `<button id="edSave" class="primary">Save</button>` +
+      `<button id="edDelete" class="danger">Delete entry</button>` +
+      `<button id="edCancel" class="ghost">Cancel</button>` +
+      `</div>`;
+    m.classList.remove("hidden");
+
+    const close = () => { m.classList.add("hidden"); editDraft = null; };
+    $("edBack").onclick = close;
+    $("edCancel").onclick = close;
+    $("edSave").onclick = () => { applyEventEdit(); close(); };
+    $("edDelete").onclick = () => {
+      close();
+      askConfirm(
+        {
+          title: "Delete this entry?",
+          body: "It is removed from the game and everything after it is recalculated.",
+          confirm: "Delete",
+          cancel: "Keep it",
+          danger: true,
+        },
+        () => deleteEvent(n)
+      );
+    };
+
+    $("confirmBox").querySelectorAll(".ed-ratio").forEach((b) => {
+      b.onclick = () => {
+        editDraft.libs = +b.dataset.libs;
+        if (editDraft.libs === 0 || editDraft.libs === 3) editDraft.conflict = false;
+        renderEventEditor();
+      };
+    });
+    if ($("edConflict")) $("edConflict").onclick = () => {
+      editDraft.conflict = !editDraft.conflict;
+      if (editDraft.conflict) editDraft.vetoed = false;
+      renderEventEditor();
+    };
+    if ($("edVeto")) $("edVeto").onclick = () => {
+      editDraft.vetoed = !editDraft.vetoed;
+      if (editDraft.vetoed) editDraft.conflict = false;
+      renderEventEditor();
+    };
+    if ($("edChaosL")) $("edChaosL").onclick = () => { editDraft.enacted = "L"; renderEventEditor(); };
+    if ($("edChaosF")) $("edChaosF").onclick = () => { editDraft.enacted = "F"; renderEventEditor(); };
+  }
+
+  // Turn-state that is NOT derived from the event log has to be rebuilt by hand
+  // after history changes underneath it.
+  function afterHistoryEdit() {
+    state.pendingPower = null;
+    state.pendingChaos = false;
+    state.gameOver = null;
+    state.autoResult = null;
+    state.form = { chanIdxOverride: null, conflictArmed: false, vetoArmed: false };
+    const d = derive();
+    // A Kill that revealed Hitler still ends the game, however history moved.
+    const revealed = state.events.some(
+      (e) => e.power && e.power.type === "kill" && e.power.wasHitler
+    );
+    if (revealed) {
+      state.gameOver = { winner: "Liberal", reason: "Hitler was executed." };
+      state.autoResult = { winner: "Liberal" };
+    } else if (d.hitlerElected) {
+      state.gameOver = { winner: "Fascist", reason: "Hitler was elected Chancellor." };
+      state.autoResult = { winner: "Fascist", hitlerIdx: d.hitlerElected.chancellorIdx };
+    } else {
+      checkGameOver(d);
+    }
+    if (!state.gameOver && d.tracker >= 3) state.pendingChaos = true;
+    renderGame();
+  }
+
+  function applyEventEdit() {
+    if (!editDraft) return;
+    const { n, libs, conflict, vetoed, enacted } = editDraft;
+    const ev = state.events[n];
+    if (!ev) return;
+    pushUndo();
+    if ((ev.type || "gov") === "gov") {
+      ev.claimLibs = libs;
+      ev.vetoed = vetoed;
+      ev.conflict = vetoed ? false : conflict && (libs === 1 || libs === 2);
+      ev.enacted = vetoed ? null : inferEnacted(libs, ev.conflict);
+      // A power was granted by a Fascist policy; if this no longer enacts one,
+      // the recorded power is meaningless.
+      if (ev.enacted !== "F" && ev.power) delete ev.power;
+    } else if (ev.type === "chaos") {
+      ev.enacted = enacted;
+    }
+    afterHistoryEdit();
+    showToast("Entry updated.");
+  }
+
+  function deleteEvent(n) {
+    if (!state.events[n]) return;
+    pushUndo();
+    state.events.splice(n, 1);
+    afterHistoryEdit();
+    showToast("Entry deleted.");
   }
 
   // ------------------------------ recording ----------------------------------
@@ -1102,10 +1280,15 @@
   // Snapshot the full game state before a state-changing action so Undo can
   // restore EVERYTHING exactly (events, round modifiers, powers, deaths,
   // game-over, conflicts, turn state) — not just pop one event.
+  // Capped: each snapshot holds the whole game, and saveActive() re-serialises
+  // the entire stack on every render, so an uncapped stack grows O(n²) and can
+  // exhaust localStorage in a long game. Nobody steps back further than this.
+  const UNDO_LIMIT = 25;
   function pushUndo() {
     const snap = {};
     for (const k in state) if (k !== "undoStack") snap[k] = state[k];
     state.undoStack.push(JSON.stringify(snap));
+    while (state.undoStack.length > UNDO_LIMIT) state.undoStack.shift();
   }
 
   // Revert to exactly the state before the most recent action.
@@ -1644,6 +1827,8 @@
         `<button id="acNewGroup" class="ghost">+ New group</button>` +
         `<button id="acInvite" class="ghost">Invite someone</button>` +
         `<button id="acMembers" class="ghost">Members</button>` +
+        `<button id="acRename" class="ghost">Rename</button>` +
+        (groups.length > 1 ? `<button id="acLeave" class="ghost">Leave group</button>` : "") +
         `</div>` +
         `</div>`;
       $("acBack").onclick = closeAccount;
@@ -1666,6 +1851,27 @@
         });
       $("acInvite").onclick = () => showInvite(c);
       $("acMembers").onclick = () => { acctView = "members"; acctMsg = null; renderAccount(); };
+      $("acRename").onclick = () => promptText(
+        "Rename group", `Currently "${activeGroupLabel()}".`, "New name", async (name) => {
+          const r = await c.renameGroup(name);
+          acctMsg = r.ok ? { text: "Renamed.", bad: false } : { text: r.message, bad: true };
+          renderAccount(); renderSetup();
+        });
+      if ($("acLeave")) $("acLeave").onclick = () => askConfirm(
+        {
+          title: `Leave ${activeGroupLabel()}?`,
+          body: "You'll stop seeing this group's games and won't be able to add to it. You can rejoin with an invite link.",
+          confirm: "Leave group",
+          cancel: "Stay",
+          danger: true,
+        },
+        async () => {
+          const r = await c.leaveGroup();
+          applyScope();
+          acctMsg = r.ok ? { text: "You left the group.", bad: false } : { text: r.message, bad: true };
+          renderAccount(); renderAcctChip(); renderSetup();
+          if (!$("statsScreen").classList.contains("hidden")) renderStats();
+        });
       $("acSync").onclick = async () => {
         acctMsg = null; renderAccount();
         const r = await c.sync();

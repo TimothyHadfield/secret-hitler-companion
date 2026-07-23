@@ -667,3 +667,23 @@ button.btn-lib:hover { background: var(--lib); border-color: var(--lib-2); }
 }
 .mem-row .mem-name { font-size: 14px; }
 .mem-row .mem-tag { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+/* ---------- history entry editing ---------- */
+.hist-fix { width: 34px; text-align: center; }
+.fix-btn {
+  padding: 2px 7px; font-size: 13px; line-height: 1.2;
+  background: transparent; border-color: transparent; color: var(--muted);
+}
+.fix-btn:hover { color: var(--gold); border-color: var(--line); background: var(--panel-2); }
+.ed-ratios { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; }
+.ed-ratio {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 7px 4px; border: 2px solid transparent; border-radius: 8px;
+}
+.ed-ratio.sel { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(217,164,65,0.28); }
+.ed-ratio .ratio-name { font-size: 13px; }
+.ed-ratio .ratio-sub { font-size: 10px; }
+@media (max-width: 480px) { .ed-ratios { grid-template-columns: repeat(2, 1fr); } }
+/* selected chaos policy in the entry editor (the .on styles above are scoped
+   to the conflict/veto buttons, which these are not) */
+button.primary.on { outline: 2px solid var(--gold); outline-offset: 1px; font-weight: 700; }
