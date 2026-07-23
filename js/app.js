@@ -376,6 +376,37 @@
     $("btnRandomize").disabled = !ok;
     $("setupHint").textContent = ok ? `${n} players ready.` : `${n} player(s) — need 5 to 10.`;
     saveSetup(); // remember the roster across sessions/games
+    renderRosterChips();
+  }
+
+  // Tap-to-add suggestions from the active group's roster. Typing a new name
+  // still works exactly as before — that name simply joins the roster when the
+  // game syncs, so nothing here is required.
+  function renderRosterChips() {
+    const wrap = $("rosterChips");
+    const head = $("groupBanner");
+    if (!wrap || !head) return;
+    const c = cloud();
+    head.textContent = c && c.user ? `Recording into: ${activeGroupLabel()}` : "";
+    head.classList.toggle("hidden", !(c && c.user));
+
+    const taken = new Set(setupPlayers.map((p) => p.trim().toLowerCase()));
+    const roster = c && c.user ? c.members() : [];
+    const avail = roster
+      .map((m) => m.displayName)
+      .filter((nm) => nm && !taken.has(nm.trim().toLowerCase()));
+    if (!avail.length || setupPlayers.length >= 10) { wrap.innerHTML = ""; wrap.classList.add("hidden"); return; }
+    wrap.classList.remove("hidden");
+    wrap.innerHTML =
+      `<span class="muted roster-lbl">Tap to add:</span>` +
+      avail.map((nm) => `<button class="roster-chip" data-name="${escapeHtml(nm)}">${escapeHtml(nm)}</button>`).join("");
+    wrap.querySelectorAll(".roster-chip").forEach((b) => {
+      b.onclick = () => {
+        if (setupPlayers.length >= 10) return;
+        setupPlayers.push(b.dataset.name);
+        renderSetup();
+      };
+    });
   }
 
   function addPlayer() {
@@ -829,6 +860,9 @@
       roundMods: state.roundMods,
       result: { winner, hitlerIdx: state.roleDraft.hitlerIdx, fascistIdxs: state.roleDraft.fascistIdxs.slice() },
       date: new Date().toISOString(),
+      // Which group this game belongs to. Null when signed out — sync assigns it
+      // to whatever group is active when the game is eventually uploaded.
+      groupId: (cloud() && cloud().groupId) || null,
     };
     Stats.recordGame(record);
     resetToSetup();
@@ -1510,8 +1544,25 @@
   // that module never loads, so the app still works with no account/network.
   let acctMode = "in"; // "in" | "up" — sign in vs create account
   let acctMsg = null;
+  let acctView = "main"; // "main" | "members"
 
   const cloud = () => window.Cloud || null;
+
+  // Which games the statistics describe. Signed out → everything on this
+  // device (unchanged behaviour). Signed in → the active group, plus anything
+  // not yet assigned to a group so a freshly recorded game never vanishes
+  // while it waits to upload.
+  function applyScope() {
+    const c = cloud();
+    if (!c || !c.user || !c.groupId) { Stats.setScope(null); return; }
+    const gid = c.groupId;
+    Stats.setScope((g) => !g.groupId || g.groupId === gid);
+  }
+
+  function activeGroupLabel() {
+    const c = cloud();
+    return c && c.user && c.groupName ? c.groupName : "This device";
+  }
 
   function renderAcctChip() {
     const dot = $("acctDot"), label = $("acctLabel");
@@ -1541,6 +1592,7 @@
 
   function openAccount() {
     acctMsg = null;
+    acctView = "main";
     renderAccount();
     $("accountModal").classList.remove("hidden");
   }
@@ -1563,8 +1615,16 @@
       return;
     }
 
+    if (c.user && acctView === "members") { renderMembersView(box, c); return; }
+
     if (c.user) {
       const pending = c.pendingCount();
+      const groups = c.groups();
+      const groupRows = groups.map((g) =>
+        `<button class="grp-row${g.id === c.groupId ? " sel" : ""}" data-gid="${escapeHtml(g.id)}">` +
+        `<span class="grp-name">${escapeHtml(g.name)}</span>` +
+        `<span class="grp-meta">${g.memberCount} member${g.memberCount === 1 ? "" : "s"}${g.isOwner ? " · yours" : ""}</span>` +
+        `</button>`).join("");
       box.innerHTML =
         backBtn("acBack", "Close") +
         `<div class="power-title">Your account</div>` +
@@ -1577,8 +1637,35 @@
         (c.uploadAllowed() === false && pending
           ? `<button id="acEnableUp" class="ghost">Upload this device's games</button>` : "") +
         `<button id="acOut" class="ghost">Sign out</button>` +
-        `</div></div>`;
+        `</div>` +
+        `<div class="grp-head">Groups <span class="muted">— games and stats belong to the selected one</span></div>` +
+        `<div class="grp-list">${groupRows}</div>` +
+        `<div class="control-row">` +
+        `<button id="acNewGroup" class="ghost">+ New group</button>` +
+        `<button id="acInvite" class="ghost">Invite someone</button>` +
+        `<button id="acMembers" class="ghost">Members</button>` +
+        `</div>` +
+        `</div>`;
       $("acBack").onclick = closeAccount;
+      box.querySelectorAll(".grp-row").forEach((b) => {
+        b.onclick = async () => {
+          await c.setActiveGroup(b.dataset.gid);
+          applyScope();
+          acctMsg = { text: "Switched to " + activeGroupLabel() + ".", bad: false };
+          renderAccount(); renderAcctChip();
+          if (!$("statsScreen").classList.contains("hidden")) renderStats();
+        };
+      });
+      $("acNewGroup").onclick = () => promptText(
+        "New group", "What should it be called?", "e.g. Thursday Night", async (name) => {
+          acctMsg = { text: "Creating…", bad: false }; renderAccount();
+          const r = await c.createGroup(name);
+          applyScope();
+          acctMsg = r.ok ? { text: "Group created.", bad: false } : { text: r.message, bad: true };
+          renderAccount(); renderAcctChip();
+        });
+      $("acInvite").onclick = () => showInvite(c);
+      $("acMembers").onclick = () => { acctView = "members"; acctMsg = null; renderAccount(); };
       $("acSync").onclick = async () => {
         acctMsg = null; renderAccount();
         const r = await c.sync();
@@ -1632,6 +1719,82 @@
     $("acPass").addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
   }
 
+  // In-app text prompt (never window.prompt — see the no-native-dialogs rule).
+  function promptText(title, body, placeholder, onOk) {
+    const m = $("confirmModal");
+    $("confirmBox").innerHTML =
+      backBtn("ptBack", "Cancel") +
+      `<div class="power-title">${escapeHtml(title)}</div>` +
+      `<p class="confirm-body">${escapeHtml(body)}</p>` +
+      `<div class="acct-field"><input id="ptInput" maxlength="60" placeholder="${escapeHtml(placeholder || "")}"></div>` +
+      `<div class="control-row"><button id="ptOk" class="primary">OK</button>` +
+      `<button id="ptNo" class="ghost">Cancel</button></div>`;
+    m.classList.remove("hidden");
+    const close = () => m.classList.add("hidden");
+    const go = () => {
+      const v = ($("ptInput").value || "").trim();
+      if (!v) return;
+      close();
+      onOk(v);
+    };
+    $("ptOk").onclick = go;
+    $("ptNo").onclick = close;
+    $("ptBack").onclick = close;
+    $("ptInput").addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+    setTimeout(() => { try { $("ptInput").focus(); } catch (e) {} }, 30);
+  }
+
+  function showInvite(c) {
+    const link = c.inviteLink(c.groupId);
+    const m = $("confirmModal");
+    $("confirmBox").innerHTML =
+      backBtn("ivBack", "Close") +
+      `<div class="power-title">Invite to ${escapeHtml(activeGroupLabel())}</div>` +
+      `<p class="confirm-body">Send this link. Opening it adds them to the group — they'll be asked to sign in first.</p>` +
+      `<div class="acct-field"><input id="ivLink" readonly value="${escapeHtml(link)}"></div>` +
+      `<div class="control-row"><button id="ivCopy" class="primary">Copy link</button></div>` +
+      `<div class="acct-msg" id="ivMsg"></div>`;
+    m.classList.remove("hidden");
+    $("ivBack").onclick = () => m.classList.add("hidden");
+    $("ivCopy").onclick = async () => {
+      const input = $("ivLink");
+      input.select();
+      let done = false;
+      try { await navigator.clipboard.writeText(link); done = true; } catch (e) {
+        try { done = document.execCommand("copy"); } catch (e2) { done = false; }
+      }
+      $("ivMsg").textContent = done ? "Copied." : "Couldn't copy — select the text and copy it manually.";
+      $("ivMsg").className = "acct-msg " + (done ? "good" : "bad");
+    };
+  }
+
+  function renderMembersView(box, c) {
+    const ms = c.members();
+    const uid = c.user.uid;
+    const rows = ms.length
+      ? ms.map((m) => {
+          const tag = m.uid === uid ? "you" : m.uid ? "has an account" : "guest";
+          return `<div class="mem-row"><span class="mem-name">${escapeHtml(m.displayName)}</span>` +
+                 `<span class="mem-tag">${tag}</span></div>`;
+        }).join("")
+      : `<div class="muted" style="font-size:13px">No one on the roster yet — players are added automatically when you record a game.</div>`;
+    box.innerHTML =
+      backBtn("acBack", "Back") +
+      `<div class="power-title">${escapeHtml(activeGroupLabel())} — members</div>` +
+      `<div class="acct-panel">` +
+      `<div class="mem-list">${rows}</div>` +
+      `<p class="confirm-body" style="margin:0">Anyone you type into a game is added here automatically, with or without an account.</p>` +
+      `<div class="control-row"><button id="acAddMem" class="ghost">+ Add someone</button></div>` +
+      `</div>`;
+    $("acBack").onclick = () => { acctView = "main"; renderAccount(); };
+    $("acAddMem").onclick = () => promptText(
+      "Add someone", "They don't need an account.", "Name", async (name) => {
+        const r = await c.addMember(name);
+        acctMsg = r.ok ? null : { text: r.message || "Couldn't add them.", bad: true };
+        renderAccount();
+      });
+  }
+
   // Ask once per account before pushing this device's existing games into it.
   function maybeAskUpload() {
     const c = cloud();
@@ -1652,12 +1815,34 @@
 
   function wireCloud() {
     const refresh = () => {
+      applyScope();
       renderAcctChip();
       if (!$("accountModal").classList.contains("hidden")) renderAccount();
     };
     document.addEventListener("cloud:auth", refresh);
     document.addEventListener("cloud:status", refresh);
+    document.addEventListener("cloud:groups", () => {
+      refresh();
+      renderSetup(); // the roster suggestions depend on the active group
+    });
     document.addEventListener("cloud:ready-to-sync", () => { refresh(); maybeAskUpload(); });
+
+    // Arrived via an invite link.
+    document.addEventListener("cloud:invite", () => {
+      const c = cloud();
+      if (c && !c.user) {
+        showToast("Sign in to join the group you were invited to.");
+        openAccount();
+      }
+    });
+    document.addEventListener("cloud:joined", (e) => {
+      const d = e.detail || {};
+      refresh();
+      renderSetup();
+      if (d.ok) showToast(d.already ? `You're already in ${d.name}.` : `Joined ${d.name}.`);
+      else showToast(d.message || "Couldn't join that group.");
+      if (!$("statsScreen").classList.contains("hidden")) renderStats();
+    });
     document.addEventListener("cloud:synced", (e) => {
       refresh();
       const d = e.detail || {};
@@ -1670,7 +1855,9 @@
     });
     document.addEventListener("cloud:error", (e) => showToast((e.detail && e.detail.message) || "Cloud error."));
     $("btnAccount").onclick = openAccount;
+    applyScope();
     renderAcctChip();
+    renderRosterChips();
   }
 
   // ------------------------------ in-app dialogs -----------------------------

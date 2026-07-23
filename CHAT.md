@@ -620,3 +620,40 @@ sign-out leaving local games intact. The 24-assertion export/import suite still 
 accounts deleted and the database purged back to empty.
 
 **Left for phase 2:** groups, invite links, member rosters, and seat→member mapping.
+
+---
+
+## Session 18 — phase 2: groups
+
+**Shipped:** create/name groups, invite links, a shared member roster (guests included), a group
+switcher, and stats scoped to the active group. Two accounts can now read and contribute to the
+same archive.
+
+**Design points worth keeping:**
+- **Seats are resolved at UPLOAD time, not when a game is recorded.** Free typing stays free at
+  the table (recording never touches the network); when the game syncs, each name is matched
+  case-insensitively to a roster member, creating one if new. Names are stored *alongside* seat
+  ids so a game still reads correctly if the roster is unavailable.
+- **Invite ids are captured before sign-in.** A visitor following a link usually has no account,
+  so `?join=` is stashed, stripped from the URL (a refresh or shared screenshot must not
+  re-trigger it), and applied once an account exists.
+- **`Stats.loadAllGames()` vs `Stats.loadGames()`.** Scoping statistics to a group meant reads
+  had to be filtered while **writes must never be** — saving a filtered list would delete other
+  groups' games. Every write path was moved to `loadAllGames()`.
+
+**The bug that ate the session, and how it was actually found.** B could join a group but then
+got `permission-denied` reading anything in it. Rather than guess, I bisected with two focused
+Node repros: (1) the same join through the SDK — **passed**, proving the security rules were
+correct; (2) the same thing through a *single* Firebase instance with a sign-out/sign-in between
+— also **passed**, killing the "stale credentials" theory. A browser probe then showed the real
+shape: right after joining, `inArray=true` and the token was correct, yet subcollection reads
+were refused — and 5 seconds later **games had recovered while the roster had not**. So the
+rules engine can still be evaluating `isMember` against a pre-join view of the group document.
+Fixed with `withRetry()` on `permission-denied` plus making the roster seat **best-effort** —
+deferred to the next sync rather than failing the whole join. The lesson: three cheap
+experiments beat any amount of reasoning about which layer was lying.
+
+**Verified:** 30 group assertions against the real project with two real accounts — isolation
+before joining, a real invite link, two-way contribution, roster reuse without duplicates, and
+group-switching hiding the other group's games. Phase-1 sync (27) and export/import (24) both
+still pass; W3C clean. All test accounts deleted and the database purged.

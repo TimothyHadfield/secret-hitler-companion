@@ -633,3 +633,37 @@ button.btn-lib:hover { background: var(--lib); border-color: var(--lib-2); }
 .acct-google:hover { background: #f1f1f1; border-color: #999; }
 .acct-toggle { background: none; border: none; color: var(--gold); text-decoration: underline; padding: 0; font-size: 13px; }
 .acct-toggle:hover { background: none; }
+
+/* ---------- groups (phase 2) ---------- */
+/* The confirm/prompt dialog must sit ABOVE the account overlay, which appears
+   later in the document and would otherwise win the stacking contest. */
+#confirmModal { z-index: 620; }
+
+.group-banner {
+  font-size: 13px; color: var(--gold); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 10px; margin: 0 0 10px;
+}
+.roster-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 0; }
+.roster-lbl { font-size: 12px; }
+.roster-chip { padding: 4px 10px; font-size: 13px; border-radius: 999px; }
+
+.grp-head { font-size: 13px; color: var(--ink); font-weight: 600; margin-top: 4px; }
+.grp-head .muted { font-weight: 400; font-size: 12px; }
+.grp-list { display: flex; flex-direction: column; gap: 6px; max-height: 168px; overflow-y: auto; }
+.grp-row {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  text-align: left; width: 100%; padding: 7px 10px;
+}
+.grp-row.sel { border-color: var(--gold); background: #37302a; }
+.grp-row .grp-name { font-weight: 600; font-size: 14px; }
+.grp-row .grp-meta { font-size: 12px; color: var(--muted); }
+
+.mem-list { display: flex; flex-direction: column; gap: 5px; max-height: 240px; overflow-y: auto; }
+.mem-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 10px;
+}
+.mem-row .mem-name { font-size: 14px; }
+.mem-row .mem-tag { font-size: 11px; color: var(--muted); white-space: nowrap; }

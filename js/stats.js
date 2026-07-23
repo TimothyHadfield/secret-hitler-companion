@@ -35,7 +35,12 @@ const Stats = (() => {
     return "g-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
   }
 
-  function loadGames() {
+  /**
+   * Every game on this device, regardless of which group it belongs to.
+   * WRITES MUST USE THIS — saving a filtered list would delete other groups'
+   * games. Reads meant for display should use loadGames() instead.
+   */
+  function loadAllGames() {
     let games;
     try {
       games = JSON.parse(localStorage.getItem(KEY)) || [];
@@ -56,13 +61,24 @@ const Stats = (() => {
     return games;
   }
 
+  // Which games the statistics should describe. Set by the app to the active
+  // group; null means "everything on this device" (the signed-out view).
+  let scope = null;
+  function setScope(fn) { scope = typeof fn === "function" ? fn : null; }
+
+  /** The games currently in view — every consumer of statistics uses this. */
+  function loadGames() {
+    const all = loadAllGames();
+    return scope ? all.filter(scope) : all;
+  }
+
   function saveGames(games) {
     localStorage.setItem(KEY, JSON.stringify(games));
   }
 
   /** Append a completed game record and persist it. */
   function recordGame(game) {
-    const games = loadGames();
+    const games = loadAllGames(); // never a filtered view — writes replace the whole array
     if (!game.id) game.id = uuid();
     games.push(game);
     saveGames(games);
@@ -78,7 +94,7 @@ const Stats = (() => {
       app: EXPORT_APP,
       schema: EXPORT_SCHEMA,
       exportedAt: new Date().toISOString(),
-      games: loadGames(),
+      games: loadAllGames(), // a backup covers the whole device, not just the active group
     };
   }
 
@@ -97,7 +113,7 @@ const Stats = (() => {
     if (payload.schema > EXPORT_SCHEMA)
       throw new Error("That export was made by a newer version of the app.");
 
-    const games = loadGames();
+    const games = loadAllGames(); // merge against everything, then write it all back
     const seen = new Set(games.map((g) => g.id));
     let added = 0,
       skipped = 0;
@@ -349,6 +365,8 @@ const Stats = (() => {
 
   return {
     loadGames,
+    loadAllGames,
+    setScope,
     recordGame,
     clearAll,
     exportData,

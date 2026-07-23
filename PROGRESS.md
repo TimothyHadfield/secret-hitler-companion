@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-23 (after session 16)._
+_Last updated: 2026-07-23 (after session 18)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -50,7 +50,7 @@ table game, not a game engine. Feature pillars:
 2. **Probability** — for each government, the likelihood the President truly got the hand they
    claim, using a *retrospective* hypergeometric model (updates as the round unfolds).
 3. **Game statistics** — per-player + cross-game data, plus a reviewable per-game archive.
-4. **Online play** — planned, not started (needs a backend).
+4. **Accounts + groups** — live: sign in, sync across devices, share an archive with a group.
 
 ## Current status: ✅ live and working
 - Static site (HTML/CSS/vanilla JS), auto-deployed via **GitHub Pages** on push to `main`.
@@ -69,7 +69,7 @@ table game, not a game engine. Feature pillars:
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
 | `js/stats.js` | localStorage read/write + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. |
 | `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring, **account UI**. |
-| `js/cloud.js` | **ES module** (the only one): Firebase auth + cross-device sync. Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
+| `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, and groups. Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
 | `test/` | Dev-only test harness (`rules.prod.test.js`). Has its own `package.json`; the site itself stays dependency-free. |
@@ -77,8 +77,8 @@ table game, not a game engine. Feature pillars:
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
-| `BACKEND_PLAN.md` | **Decided, not started:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
-| `CHAT.md` | Session-by-session log (sessions 1–16). |
+| `BACKEND_PLAN.md` | **Phases 0–2 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
+| `CHAT.md` | Session-by-session log (sessions 1–18). |
 | `PROGRESS.md` | This file. |
 
 ## Architecture notes (how app.js is organised)
@@ -294,8 +294,13 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   not separate undo steps (freely reversible with −/+).
 
 ## Known limitations / not yet done
-- **Groups aren't built yet** (phase 2). Accounts + cross-device sync work, but every user syncs
-  only their own solo group — you can't yet share an archive with other players.
+- **No friends list yet** (phase 3): you invite by link, not by picking a person.
+- **A guest seat can't yet be linked to an account** (phase 3), so someone who played as a guest
+  and later signs up gets a second roster entry until that lands.
+- **Membership isn't revocable in the UI** — no "remove member" or "leave group" yet, and a
+  group can't be renamed after creation.
+- **Anyone with an invite link can join**, and links don't expire. The `inviteCode` field exists
+  for a future rotate/revoke feature but isn't used yet.
 - **The in-progress game doesn't sync**, only completed/recorded ones. Resuming a half-played game
   on another device is out of scope (that's real-time play, explicitly descoped).
 - Google sign-in is wired but **only verified manually** — it needs a browser OAuth round-trip, so
@@ -308,13 +313,12 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - No posterior on *whether* a claim was honest — the model computes P(hand | assumed lies).
 
 ## Next candidate steps
-- **→ NEXT: phase 2, groups** (design in `BACKEND_PLAN.md`). Phases 0 (export/import) and 1
-  (accounts + cross-device sync) are **shipped and live**; the infrastructure is done and needs
-  nothing further from the user. Phase 2 = create/name groups, invite links (`?join=<groupId>`),
-  a member roster including guests without accounts, a group switcher deciding which group a new
-  game records into, and seat→member mapping so games reference member ids rather than name
-  strings. Free-typed names are allowed and auto-create guests. Then phase 3: friends + linking a
-  guest seat to a real account. **Real-time/online play stays descoped.**
+- **→ NEXT: phase 3** — friends (a request/accept handshake, so you can invite someone without
+  pasting a link) and **linking a guest seat to a real account** (set a member's `uid`; their
+  whole history then follows them). Both need new security rules, tested the same adversarial
+  way as the current set. Note the honest caveat from the plan: friends are the lowest
+  value-per-effort item, since groups + invite links already cover playing together.
+  Phases 0–2 are **shipped and live**. **Real-time/online play stays descoped.**
 - **Honesty posterior** — "how likely is this claim honest?" given a prior on lying, instead of
   only "how likely was this hand". `PROBABILITY_MODEL.md` §7 names it as the open question; it
   would also retire the manual round-modifier stepper, the last piece of fiddly data entry.
@@ -330,3 +334,29 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - **Vote tracking** (asked, undecided): a Ja/Nein *count* per election is one extra tap-pair and
   gets most of the analytical value; per-player votes tax every election. Needs a product call.
 - Further statistics ideas: favourite chancellor pairings, lie tendency, per-round trends.
+
+## Groups (phase 2 — live)
+- **A group is the unit of sharing.** Create one, invite people with a link, and every member
+  reads and contributes to the same archive. A solo user still has an auto-created "My Games"
+  group, so there is exactly one data model.
+- **Invite links are `?join=<groupId>`.** `cloud.js` captures the id on load *before* sign-in
+  (a visitor usually has no account yet), strips it from the URL so a refresh or a shared
+  screenshot can't re-trigger, and joins once an account exists. The security rules let a
+  non-member append **only their own uid** with every other field pinned — that is what
+  replaces the Cloud Function this would otherwise need.
+- **Seats are resolved at UPLOAD time, not when a game is recorded.** Free-typed names stay
+  free-typed at the table (recording never needs the network); when the game syncs, each name is
+  matched to a roster member case-insensitively, creating one if it's new. Names are stored
+  alongside seat ids so a game still reads correctly if the roster is unavailable.
+- **Guests are first-class.** A roster member has a nullable `uid`: someone who has never signed
+  in is just a member without one. Phase 3 links them by setting that field.
+- **Stats are scoped to the active group.** `Stats.setScope()` filters what statistics describe;
+  **`Stats.loadAllGames()` is the raw list and every WRITE must use it** — saving a filtered view
+  would delete other groups' games. Signed out, scope is null (everything on this device).
+  Games with no `groupId` stay visible so a freshly recorded game never vanishes while it waits
+  to upload.
+- **`withRetry()` guards reads that follow a join.** Immediately after joining, the rules engine
+  can still evaluate `isMember` against a pre-join view of the group and refuse a read that is
+  about to be allowed (observed: games recovered in ~5s, the roster took longer). Reads retry on
+  `permission-denied` with backoff, and seating a new member on the roster is best-effort —
+  deferred to the next sync rather than failing the whole join.
