@@ -27,9 +27,13 @@ service cloud.firestore {
       return signedIn() && uid() in group(gid).memberUids;
     }
 
-    // ---- profiles: readable by any signed-in user, writable only by you ----
+    // ---- profiles: fetchable by id, writable only by you ----
+    // 'get' is open (you need a uid to ask, and members already expose display
+    // names within a group) but 'list' is CLOSED: otherwise any signed-in user
+    // could enumerate every account on the service and read their names.
     match /profiles/{userId} {
-      allow read:   if signedIn();
+      allow get:    if signedIn();
+      allow list:   if false;
       allow create: if signedIn() && uid() == userId
                     && request.resource.data.displayName is string
                     && request.resource.data.displayName.size() > 0
@@ -39,6 +43,21 @@ service cloud.firestore {
                     && request.resource.data.displayName.size() > 0
                     && request.resource.data.displayName.size() <= 60;
       allow delete: if false; // deleting a profile would orphan game history
+
+      // ---- invitation inbox ----
+      // Lets you invite someone you've played with by name instead of sending
+      // them a link. Anyone signed in may drop an invite in your inbox (it
+      // carries no access by itself — accepting is an ordinary invite-join, so
+      // a closed group still can't be entered), and only you can read or clear
+      // it. Deliberately not a friend graph: no handshake, nothing to maintain.
+      match /invites/{groupId} {
+        allow read, delete: if signedIn() && uid() == userId;
+        allow create:       if signedIn()
+                            && request.resource.data.from == uid()
+                            && request.resource.data.groupName is string
+                            && request.resource.data.groupName.size() <= 60;
+        allow update:       if false;
+      }
     }
 
     match /groups/{groupId} {
@@ -62,13 +81,18 @@ service cloud.firestore {
       //  2. a NON-member joining via an invite link — allowed to append only
       //     their OWN uid and to change nothing else. Pinning every other
       //     field is what stops a stranger renaming or hijacking the group.
+      //     `joinOpen` makes an invite link revocable: members can close the
+      //     group and old links stop working. Absent on groups created before
+      //     the field existed, hence the .get() default of true.
       allow update: if signedIn() && (
                       isMember(groupId)
                       || (
-                        request.resource.data.memberUids == resource.data.memberUids.concat([uid()])
+                        resource.data.get('joinOpen', true) == true
+                        && request.resource.data.memberUids == resource.data.memberUids.concat([uid()])
                         && request.resource.data.name       == resource.data.name
                         && request.resource.data.ownerUid   == resource.data.ownerUid
                         && request.resource.data.inviteCode == resource.data.inviteCode
+                        && request.resource.data.get('joinOpen', true) == resource.data.get('joinOpen', true)
                       )
                     );
 
@@ -76,7 +100,20 @@ service cloud.firestore {
 
       // ---- seats: a person who plays in this group, account optional ----
       match /members/{memberId} {
-        allow read, create, update, delete: if isMember(groupId);
+        allow read, create, delete: if isMember(groupId);
+
+        // Members may edit roster entries freely EXCEPT the account link, which
+        // decides whose history a seat belongs to. You may only ever attach
+        // your OWN account, only to a seat nobody has claimed, and you may only
+        // release your own. Without this, any member could hand another
+        // member's identity to themselves.
+        allow update: if isMember(groupId) && (
+                        request.resource.data.get('uid', null) == resource.data.get('uid', null)
+                        || (request.resource.data.get('uid', null) == uid()
+                            && resource.data.get('uid', null) == null)
+                        || (request.resource.data.get('uid', null) == null
+                            && resource.data.get('uid', null) == uid())
+                      );
       }
 
       // ---- recorded games ----

@@ -156,6 +156,55 @@ function makeUser(name) {
   await denied("random top-level collection is denied", () =>
     setDoc(doc(alice.db, `whatever/${RUN}`), { a: 1 }));
 
+  log("\n10. Accounts cannot be enumerated");
+  await denied("CANNOT list every profile on the service", () => getDocs(collection(alice.db, "profiles")));
+  await allowed("but CAN fetch a specific profile by id", () => getDoc(doc(alice.db, `profiles/${bob.uid}`)));
+
+  log("\n11. The account link on a roster seat is protected");
+  await resetGroup();
+  await setDoc(doc(bob.db, `groups/${GID}`), { ...GROUP(), memberUids: [bob.uid, alice.uid] });
+  await setDoc(doc(bob.db, `groups/${GID}/members/guest1`), { displayName: "Cal", uid: null });
+  await setDoc(doc(bob.db, `groups/${GID}/members/bobseat`), { displayName: "Bob", uid: bob.uid });
+
+  await allowed("a guest seat CAN be claimed by the person claiming it", () =>
+    updateDoc(doc(alice.db, `groups/${GID}/members/guest1`), { uid: alice.uid }));
+  await denied("CANNOT claim a seat already linked to somebody else", () =>
+    updateDoc(doc(alice.db, `groups/${GID}/members/bobseat`), { uid: alice.uid }));
+  await denied("CANNOT assign a seat to a third party", () =>
+    updateDoc(doc(alice.db, `groups/${GID}/members/guest1`), { uid: "mallory-uid" }));
+  await denied("CANNOT unlink somebody else's seat", () =>
+    updateDoc(doc(alice.db, `groups/${GID}/members/bobseat`), { uid: null }));
+  await allowed("CAN rename a seat without touching its link", () =>
+    updateDoc(doc(alice.db, `groups/${GID}/members/bobseat`), { displayName: "Bobby" }));
+
+  log("\n12. Invite links are revocable");
+  await resetGroup();
+  await setDoc(doc(bob.db, `groups/${GID}`), { ...GROUP(), joinOpen: false });
+  await denied("CANNOT join once the group is closed", () =>
+    updateDoc(doc(alice.db, `groups/${GID}`), { memberUids: [bob.uid, alice.uid] }));
+  await denied("CANNOT re-open the group to let yourself in", () =>
+    updateDoc(doc(alice.db, `groups/${GID}`), { memberUids: [bob.uid, alice.uid], joinOpen: true }));
+  await allowed("the owner CAN re-open it", () =>
+    updateDoc(doc(bob.db, `groups/${GID}`), { joinOpen: true }));
+  await allowed("and then joining works again", () =>
+    updateDoc(doc(alice.db, `groups/${GID}`), { memberUids: [bob.uid, alice.uid] }));
+
+  log("\n13. The invitation inbox");
+  await allowed("CAN drop an invite in someone else's inbox", () =>
+    setDoc(doc(alice.db, `profiles/${bob.uid}/invites/${GID}`),
+      { from: alice.uid, groupName: "Rules Test Group" }));
+  await denied("CANNOT forge an invite as somebody else", () =>
+    setDoc(doc(alice.db, `profiles/${bob.uid}/invites/${GID}_f`),
+      { from: bob.uid, groupName: "Forged" }));
+  await allowed("the recipient CAN read their own inbox", () =>
+    getDocs(collection(bob.db, `profiles/${bob.uid}/invites`)));
+  await denied("CANNOT read someone else's inbox", () =>
+    getDocs(collection(alice.db, `profiles/${bob.uid}/invites`)));
+  await denied("CANNOT clear someone else's invite", () =>
+    deleteDoc(doc(alice.db, `profiles/${bob.uid}/invites/${GID}`)));
+  await allowed("the recipient CAN clear their own", () =>
+    deleteDoc(doc(bob.db, `profiles/${bob.uid}/invites/${GID}`)));
+
   // ---- teardown ----
   log("\nCleaning up…");
   for (const u of created) {

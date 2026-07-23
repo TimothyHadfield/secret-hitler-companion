@@ -687,3 +687,25 @@ button.btn-lib:hover { background: var(--lib); border-color: var(--lib-2); }
 /* selected chaos policy in the entry editor (the .on styles above are scoped
    to the conflict/veto buttons, which these are not) */
 button.primary.on { outline: 2px solid var(--gold); outline-offset: 1px; font-weight: 700; }
+
+/* ---------- roster actions, invitations, people picker ---------- */
+.mem-act {
+  padding: 3px 9px; font-size: 12px; border-radius: 6px; flex: 0 0 auto;
+}
+.mem-act.claim { border-color: var(--gold); color: var(--gold); }
+.mem-act.del { color: var(--muted); padding: 3px 7px; }
+.mem-act.del:hover { color: var(--fac-2); border-color: var(--fac-2); }
+
+.inv-box { display: flex; flex-direction: column; gap: 6px; }
+.inv-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--gold);
+  border-radius: 8px; padding: 8px 10px; font-size: 13px;
+}
+.inv-acts { display: flex; gap: 6px; flex: 0 0 auto; }
+.inv-yes, .inv-no { padding: 3px 10px; font-size: 12px; }
+.inv-yes { background: var(--gold); color: #241a08; font-weight: 700; border-color: var(--gold); }
+
+.inv-people { display: flex; flex-wrap: wrap; gap: 6px; }
+.person-chip { padding: 5px 12px; font-size: 13px; border-radius: 999px; }
+.person-chip:disabled { opacity: 0.5; }

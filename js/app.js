@@ -1814,6 +1814,7 @@
         `<div class="acct-panel">` +
         `<div class="acct-who">${escapeHtml(c.user.email || c.user.displayName || "Signed in")}</div>` +
         `<div class="acct-state">${escapeHtml(syncStateText(c))}</div>` +
+        invitesHtml() +
         msgHtml +
         `<div class="control-row">` +
         `<button id="acSync" class="primary">Sync now</button>` +
@@ -1832,6 +1833,7 @@
         `</div>` +
         `</div>`;
       $("acBack").onclick = closeAccount;
+      wireInvites(box, c);
       box.querySelectorAll(".grp-row").forEach((b) => {
         b.onclick = async () => {
           await c.setActiveGroup(b.dataset.gid);
@@ -1952,16 +1954,48 @@
 
   function showInvite(c) {
     const link = c.inviteLink(c.groupId);
+    const open = c.joinOpen();
+    const people = c.knownPeople();
     const m = $("confirmModal");
+    // "People you've played with" replaces a friend graph entirely: anyone with
+    // an account who shares a group with you. No requests, no accept/decline
+    // state, nothing to keep in sync.
+    const peopleHtml = people.length
+      ? `<div class="inv-people">` +
+        people.map((p) =>
+          `<button class="person-chip" data-uid="${escapeHtml(p.uid)}">${escapeHtml(p.displayName)}</button>`).join("") +
+        `</div>`
+      : `<p class="muted" style="font-size:12px;margin:0">Once you've played with people who have accounts, you'll be able to invite them by name here.</p>`;
     $("confirmBox").innerHTML =
       backBtn("ivBack", "Close") +
       `<div class="power-title">Invite to ${escapeHtml(activeGroupLabel())}</div>` +
-      `<p class="confirm-body">Send this link. Opening it adds them to the group — they'll be asked to sign in first.</p>` +
+      `<p class="confirm-body" style="margin-bottom:6px">Someone you've played with:</p>` +
+      peopleHtml +
+      `<p class="confirm-body" style="margin:12px 0 6px">…or send a link. Opening it joins the group; they'll sign in first.</p>` +
       `<div class="acct-field"><input id="ivLink" readonly value="${escapeHtml(link)}"></div>` +
-      `<div class="control-row"><button id="ivCopy" class="primary">Copy link</button></div>` +
+      `<div class="control-row">` +
+      `<button id="ivCopy" class="primary">Copy link</button>` +
+      `<button id="ivToggle" class="ghost">${open ? "Stop new members" : "Allow new members"}</button>` +
+      `</div>` +
+      `<p class="muted" style="font-size:12px;margin:0">${
+        open ? "Anyone with the link can join." : "The link is currently disabled — nobody new can join."
+      }</p>` +
       `<div class="acct-msg" id="ivMsg"></div>`;
     m.classList.remove("hidden");
     $("ivBack").onclick = () => m.classList.add("hidden");
+    $("ivToggle").onclick = async () => {
+      const r = await c.setJoinOpen(!open);
+      if (r.ok) showInvite(c);
+      else { $("ivMsg").textContent = r.message; $("ivMsg").className = "acct-msg bad"; }
+    };
+    $("confirmBox").querySelectorAll(".person-chip").forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        const r = await c.invitePerson(b.dataset.uid);
+        $("ivMsg").textContent = r.ok ? `Invited ${b.textContent}.` : (r.message || "Couldn't send that invite.");
+        $("ivMsg").className = "acct-msg " + (r.ok ? "good" : "bad");
+      };
+    });
     $("ivCopy").onclick = async () => {
       const input = $("ivLink");
       input.select();
@@ -1977,11 +2011,23 @@
   function renderMembersView(box, c) {
     const ms = c.members();
     const uid = c.user.uid;
+    const mine = ms.some((m) => m.uid === uid);
     const rows = ms.length
       ? ms.map((m) => {
-          const tag = m.uid === uid ? "you" : m.uid ? "has an account" : "guest";
+          const isMe = m.uid === uid;
+          const tag = isMe ? "you" : m.uid ? "has an account" : "guest";
+          // Claiming a guest seat is what makes a player's whole history follow
+          // them once they sign up. The rules only permit claiming an unclaimed
+          // seat, and only for yourself.
+          const act = isMe
+            ? `<button class="mem-act" data-act="release" data-id="${escapeHtml(m.id)}">Not me</button>`
+            : !m.uid && !mine
+              ? `<button class="mem-act claim" data-act="claim" data-id="${escapeHtml(m.id)}">That's me</button>`
+              : "";
+          const del = m.uid ? "" :
+            `<button class="mem-act del" data-act="remove" data-id="${escapeHtml(m.id)}" title="Remove from roster">✕</button>`;
           return `<div class="mem-row"><span class="mem-name">${escapeHtml(m.displayName)}</span>` +
-                 `<span class="mem-tag">${tag}</span></div>`;
+                 `<span class="mem-tag">${tag}</span>${act}${del}</div>`;
         }).join("")
       : `<div class="muted" style="font-size:13px">No one on the roster yet — players are added automatically when you record a game.</div>`;
     box.innerHTML =
@@ -1989,7 +2035,8 @@
       `<div class="power-title">${escapeHtml(activeGroupLabel())} — members</div>` +
       `<div class="acct-panel">` +
       `<div class="mem-list">${rows}</div>` +
-      `<p class="confirm-body" style="margin:0">Anyone you type into a game is added here automatically, with or without an account.</p>` +
+      (mine ? "" : `<p class="confirm-body" style="margin:0">If one of these guests is you, mark it — your games under that name become yours.</p>`) +
+      `<p class="muted" style="font-size:12px;margin:0">Anyone you type into a game is added here automatically, with or without an account.</p>` +
       `<div class="control-row"><button id="acAddMem" class="ghost">+ Add someone</button></div>` +
       `</div>`;
     $("acBack").onclick = () => { acctView = "main"; renderAccount(); };
@@ -1999,6 +2046,68 @@
         acctMsg = r.ok ? null : { text: r.message || "Couldn't add them.", bad: true };
         renderAccount();
       });
+    box.querySelectorAll(".mem-act").forEach((b) => {
+      b.onclick = async () => {
+        const id = b.dataset.id;
+        if (b.dataset.act === "remove") {
+          const who = ms.find((m) => m.id === id);
+          askConfirm(
+            {
+              title: "Remove from roster?",
+              body: `${(who && who.displayName) || "This player"} disappears from the roster. Games they played in are unchanged.`,
+              confirm: "Remove",
+              cancel: "Keep",
+              danger: true,
+            },
+            async () => { await c.removeMember(id); renderAccount(); }
+          );
+          return;
+        }
+        const r = await c.claimSeat(id, b.dataset.act === "claim");
+        acctMsg = r.ok ? null : { text: r.message || "Couldn't update that seat.", bad: true };
+        renderAccount();
+      };
+    });
+  }
+
+  // Pending invitations, shown at the top of the account panel.
+  let pendingInvites = [];
+  async function refreshInvites() {
+    const c = cloud();
+    if (!c || !c.user) { pendingInvites = []; return; }
+    pendingInvites = await c.loadInvites();
+    if (!$("accountModal").classList.contains("hidden")) renderAccount();
+    renderAcctChip();
+  }
+
+  function invitesHtml() {
+    if (!pendingInvites.length) return "";
+    return `<div class="inv-box">` +
+      pendingInvites.map((i) =>
+        `<div class="inv-row"><span><b>${escapeHtml(i.fromName || "Someone")}</b> invited you to ` +
+        `<b>${escapeHtml(i.groupName || "a group")}</b></span>` +
+        `<span class="inv-acts">` +
+        `<button class="inv-yes" data-gid="${escapeHtml(i.groupId)}">Join</button>` +
+        `<button class="inv-no" data-gid="${escapeHtml(i.groupId)}">Dismiss</button>` +
+        `</span></div>`).join("") +
+      `</div>`;
+  }
+
+  function wireInvites(box, c) {
+    box.querySelectorAll(".inv-yes").forEach((b) => {
+      b.onclick = async () => {
+        acctMsg = { text: "Joining…", bad: false }; renderAccount();
+        const r = await c.acceptInvite(b.dataset.gid);
+        await refreshInvites();
+        applyScope();
+        acctMsg = r.ok ? { text: "Joined " + (r.name || "the group") + ".", bad: false }
+                       : { text: r.message || "Couldn't join.", bad: true };
+        renderAccount(); renderAcctChip(); renderSetup();
+      };
+    });
+    box.querySelectorAll(".inv-no").forEach((b) => {
+      b.onclick = async () => { await c.dismissInvite(b.dataset.gid); await refreshInvites(); renderAccount(); };
+    });
   }
 
   // Ask once per account before pushing this device's existing games into it.
@@ -2031,7 +2140,7 @@
       refresh();
       renderSetup(); // the roster suggestions depend on the active group
     });
-    document.addEventListener("cloud:ready-to-sync", () => { refresh(); maybeAskUpload(); });
+    document.addEventListener("cloud:ready-to-sync", () => { refresh(); maybeAskUpload(); refreshInvites(); });
 
     // Arrived via an invite link.
     document.addEventListener("cloud:invite", () => {

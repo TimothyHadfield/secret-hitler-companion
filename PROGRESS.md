@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-23 (after session 19)._
+_Last updated: 2026-07-23 (after session 20)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -77,8 +77,8 @@ table game, not a game engine. Feature pillars:
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
-| `BACKEND_PLAN.md` | **Phases 0–2 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
-| `CHAT.md` | Session-by-session log (sessions 1–19). |
+| `BACKEND_PLAN.md` | **Phases 0–3 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
+| `CHAT.md` | Session-by-session log (sessions 1–20). |
 | `PROGRESS.md` | This file. |
 
 ## Architecture notes (how app.js is organised)
@@ -294,13 +294,8 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   not separate undo steps (freely reversible with −/+).
 
 ## Known limitations / not yet done
-- **No friends list yet** (phase 3): you invite by link, not by picking a person.
-- **A guest seat can't yet be linked to an account** (phase 3), so someone who played as a guest
-  and later signs up gets a second roster entry until that lands.
-- **No "remove member"** — you can rename a group and leave it yourself, but not evict anyone
-  else. (Leaving is blocked when you're the last member, so a group can't be orphaned.)
-- **Anyone with an invite link can join**, and links don't expire. The `inviteCode` field exists
-  for a future rotate/revoke feature but isn't used yet.
+- **No way to evict a member who has an account** — you can remove guest seats and leave a group
+  yourself, but not remove another account holder. Closing the group stops new joins.
 - **The in-progress game doesn't sync**, only completed/recorded ones. Resuming a half-played game
   on another device is out of scope (that's real-time play, explicitly descoped).
 - Google sign-in is wired but **only verified manually** — it needs a browser OAuth round-trip, so
@@ -309,16 +304,12 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   votes and tells the app the outcome — the one election rule still left to honest play.
 - The app records what the table *tells* it (claims, conflicts, vetoes, power outcomes); it can't
   detect a lie about those, only price the claim.
-- No history-row editing/deleting (Undo is the only correction tool; it steps back from the end).
 - No posterior on *whether* a claim was honest — the model computes P(hand | assumed lies).
 
 ## Next candidate steps
-- **→ NEXT: phase 3** — friends (a request/accept handshake, so you can invite someone without
-  pasting a link) and **linking a guest seat to a real account** (set a member's `uid`; their
-  whole history then follows them). Both need new security rules, tested the same adversarial
-  way as the current set. Note the honest caveat from the plan: friends are the lowest
-  value-per-effort item, since groups + invite links already cover playing together.
-  Phases 0–2 are **shipped and live**. **Real-time/online play stays descoped.**
+- **The backend plan is COMPLETE** (phases 0–3 shipped and live): accounts, cross-device
+  sync, groups, invite links, invitations by person, guest-seat linking and revocable
+  invites. **Real-time/online play stays descoped.**
 - **Honesty posterior** — "how likely is this claim honest?" given a prior on lying, instead of
   only "how likely was this hand". `PROBABILITY_MODEL.md` §7 names it as the open question; it
   would also retire the manual round-modifier stepper, the last piece of fiddly data entry.
@@ -381,3 +372,28 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - **The undo stack is capped at 25** (`UNDO_LIMIT`). Each entry is a full-state snapshot and
   `saveActive()` re-serialises the whole stack on every render, so an uncapped stack grew O(n²)
   and could exhaust storage in a long game.
+
+## Phase 3 + security hardening (session 20 — live)
+- **Guest linking.** A roster seat has a nullable `uid`; in Members, a guest seat offers
+  **"That's me"**. Claiming it makes every game that person played under that name theirs.
+  This is the payoff of separating *user* from *seat* back in the data model.
+- **Invitations by person, not a friend graph.** `profiles/{uid}/invites/{groupId}` is an inbox:
+  anyone signed in may drop an invite in it, only the recipient can read or clear it, and the
+  invite **carries no access by itself** — accepting is an ordinary invite-join, so a closed
+  group still can't be entered. "People you've played with" is computed from members of your own
+  groups who have accounts. **No requests, no accept/decline state, nothing to keep in sync** —
+  this deliberately replaces the friend graph the plan originally sketched.
+- **Invite links are revocable.** `joinOpen` on the group; the invite dialog toggles
+  "Stop / Allow new members". Absent on older groups, so rules read it as
+  `resource.data.get('joinOpen', true)`.
+- **Roster removal** for guests (a seat with an account can't be silently deleted out from
+  under its owner).
+
+### Rules hardening (all adversarially tested — 49 assertions)
+- **Profiles can no longer be listed.** `allow read` covered `list`, so any signed-in user could
+  enumerate every account on the service and read their display names. Now `get` only.
+- **The account link on a seat is protected.** Members may edit roster entries, but `uid` may
+  only be set to *your own*, only on a seat nobody has claimed, and only released by its owner.
+  Without this any member could hand another member's identity to themselves.
+- **A joiner can't re-open a closed group** to let themselves in (`joinOpen` is pinned in the
+  join branch, exactly like name/owner/inviteCode).

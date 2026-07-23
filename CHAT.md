@@ -697,3 +697,44 @@ all passing, W3C clean, test accounts deleted and the database purged.
 
 **Open question put to the user:** what the app should become next — an honesty posterior
 (changing the headline number), vote tracking, phase 3 (friends/guest-linking), or polish.
+
+---
+
+## Session 20 — phase 3, and hardening the security rules
+
+**User's brief:** "do whatever you think we'll eventually do in the long run." So: finish the
+backend plan, and fix the things that get harder to change the longer they're live — the rules.
+
+**Security hardening first (the part that actually mattered).** Reviewing what was exposed found
+three real weaknesses, all now closed and adversarially tested:
+- **Any signed-in user could enumerate every account on the service.** `allow read` on
+  `/profiles/{userId}` covers `list` as well as `get`, so the whole user table — including
+  display names — was readable. Now `get` only.
+- **Any group member could steal another member's identity.** The roster's `uid` field decides
+  whose history a seat belongs to, and members could edit it freely. Now `uid` may only be set to
+  your own, only on an unclaimed seat, and only released by its owner.
+- **Invite links could never be revoked.** Added `joinOpen`, pinned in the join branch so a
+  would-be joiner can't re-open a closed group to let themselves in. Read via
+  `resource.data.get('joinOpen', true)` so groups created before the field still work.
+
+**Phase 3 shipped:**
+- **Guest linking** — "That's me" on a guest seat. This is the payoff of separating *user* from
+  *seat* in the original data model: one field, and a player's whole history becomes theirs.
+- **Invitations by person instead of a friend graph.** `profiles/{uid}/invites/{groupId}` is an
+  inbox; "people you've played with" is derived from members of your own groups who have
+  accounts. No requests, no accept/decline state, nothing to keep in sync — and the invite
+  carries no access by itself, so a closed group still can't be entered. This is deliberately
+  *not* what the plan originally sketched: the friend graph was the low-value half, and this
+  delivers the actual user-facing capability at a fraction of the surface area.
+- **Roster removal** for guests, and the invite-revocation toggle.
+
+**Verified:** rules suite now **49 adversarial assertions** (up from 32) and a new **29-assertion
+phase-3 suite** driving two real accounts through closing a group, being refused, re-opening,
+inviting by person, accepting from the inbox, claiming a guest seat, and appearing in the other
+user's acquaintance list. Regressions all pass: groups 36, phase-1 sync 27, history editing 22,
+export/import 24. **All 15 leftover test accounts purged** (enumerated with `firebase auth:export`
+and deleted by deriving each password from its email — the real account was explicitly skipped)
+and the database emptied.
+
+**What's left:** the honesty posterior is now the biggest open idea; vote tracking remains
+undecided; accessibility is untouched.

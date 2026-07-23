@@ -27,8 +27,8 @@ import {
   signOut as fbSignOut, updateProfile,
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection, getDocs,
-  serverTimestamp,
+  getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection,
+  getDocs, serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
 const GAMES_KEY = "secretHitler.games.v1";
@@ -167,6 +167,7 @@ async function loadGroups() {
   writeGroupCache(found.map((g) => ({
     id: g.id, name: g.name, ownerUid: g.ownerUid, inviteCode: g.inviteCode,
     memberUids: g.memberUids || [],
+    joinOpen: g.joinOpen !== false, // absent on groups predating the field
   })));
   return found;
 }
@@ -379,6 +380,73 @@ async function resolveSeats(gid, players) {
   return seats;
 }
 
+// ---------------------------------------------- seats, admin, invitations
+/** Attach your account to a guest seat (or release your own). */
+async function claimSeat(gid, memberId, claim) {
+  await updateDoc(doc(db, "groups", gid, "members", memberId), {
+    uid: claim ? currentUser.uid : null,
+  });
+  await fetchMembers(gid);
+  return { ok: true };
+}
+
+async function removeMember(gid, memberId) {
+  await deleteDoc(doc(db, "groups", gid, "members", memberId));
+  await fetchMembers(gid);
+  return { ok: true };
+}
+
+/** Close or re-open a group to invite links. */
+async function setJoinOpen(gid, open) {
+  await updateDoc(doc(db, "groups", gid), { joinOpen: !!open });
+  await loadGroups();
+  emit("cloud:groups", { groups: groupList(), activeGroupId });
+  return { ok: true };
+}
+
+/**
+ * Everyone with an account who shares a group with you — the "people you've
+ * played with" list. This is what replaces a friend graph: no requests, no
+ * accept/decline state, nothing to keep in sync.
+ */
+function knownPeople() {
+  const seen = new Map();
+  for (const g of myGroups) {
+    for (const m of readMembers(g.id)) {
+      if (m.uid && m.uid !== (currentUser && currentUser.uid) && !seen.has(m.uid)) {
+        seen.set(m.uid, { uid: m.uid, displayName: m.displayName });
+      }
+    }
+  }
+  return [...seen.values()];
+}
+
+/** Drop an invitation in someone's inbox. Carries no access by itself. */
+async function invitePerson(targetUid, gid) {
+  const g = myGroups.find((x) => x.id === gid);
+  await setDoc(doc(db, "profiles", targetUid, "invites", gid), {
+    from: currentUser.uid,
+    fromName: myDisplayName(),
+    groupName: (g && g.name) || "a group",
+    at: serverTimestamp(),
+  });
+  return { ok: true };
+}
+
+async function loadInvites() {
+  if (!currentUser) return [];
+  try {
+    const snap = await getDocs(collection(db, "profiles", currentUser.uid, "invites"));
+    const list = [];
+    snap.forEach((d) => list.push({ groupId: d.id, ...d.data() }));
+    return list;
+  } catch (e) { return []; }
+}
+
+async function dismissInvite(gid) {
+  try { await deleteDoc(doc(db, "profiles", currentUser.uid, "invites", gid)); } catch (e) {}
+}
+
 function groupList() {
   const cached = readGroupCache();
   const live = myGroups.length ? myGroups : cached;
@@ -584,6 +652,33 @@ window.Cloud = {
     try { const r = await leaveGroup(gid || activeGroupId); if (r.ok) await sync(); return r; }
     catch (e) { return { ok: false, message: humanError(e) }; }
   },
+  knownPeople,
+  loadInvites,
+  async claimSeat(memberId, claim, gid) {
+    try { return await claimSeat(gid || activeGroupId, memberId, claim); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  async removeMember(memberId, gid) {
+    try { return await removeMember(gid || activeGroupId, memberId); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  async setJoinOpen(open, gid) {
+    try { return await setJoinOpen(gid || activeGroupId, open); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  joinOpen(gid) {
+    const g = (myGroups.length ? myGroups : readGroupCache()).find((x) => x.id === (gid || activeGroupId));
+    return !g || g.joinOpen !== false;
+  },
+  async invitePerson(targetUid, gid) {
+    try { return await invitePerson(targetUid, gid || activeGroupId); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  async acceptInvite(gid) {
+    try { const r = await joinGroup(gid); await dismissInvite(gid); if (r.ok) await sync(); return r; }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  dismissInvite,
   async addMember(name, gid) {
     try { const id = await addMember(gid || activeGroupId, name); return { ok: !!id, id }; }
     catch (e) { return { ok: false, message: humanError(e) }; }
