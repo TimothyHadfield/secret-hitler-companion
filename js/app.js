@@ -833,6 +833,8 @@
     Stats.recordGame(record);
     resetToSetup();
     showToast("Game saved to statistics.");
+    // cloud.js listens for this and syncs; a no-op when signed out or offline.
+    document.dispatchEvent(new CustomEvent("game:recorded", { detail: { id: record.id } }));
   }
 
   // ------------------------------ review a saved game ------------------------
@@ -1502,13 +1504,185 @@
     reader.readAsText(file);
   }
 
+  // ------------------------------ account / cloud sync -----------------------
+  // js/cloud.js (an ES module) does all Firebase work and talks to us only via
+  // window.Cloud + `cloud:*` events. Everything here degrades to a no-op if
+  // that module never loads, so the app still works with no account/network.
+  let acctMode = "in"; // "in" | "up" — sign in vs create account
+  let acctMsg = null;
+
+  const cloud = () => window.Cloud || null;
+
+  function renderAcctChip() {
+    const dot = $("acctDot"), label = $("acctLabel");
+    if (!dot || !label) return;
+    const c = cloud();
+    dot.className = "acct-dot";
+    if (!c || !c.user) { label.textContent = "Sign in"; return; }
+    const pending = c.pendingCount();
+    const st = c.status;
+    if (st === "syncing") dot.classList.add("syncing");
+    else if (st === "error") dot.classList.add("err");
+    else if (st === "offline" || pending > 0) dot.classList.add("pending");
+    else dot.classList.add("on");
+    const name = c.user.displayName || (c.user.email || "").split("@")[0] || "Account";
+    label.textContent = name.length > 14 ? name.slice(0, 13) + "…" : name;
+  }
+
+  function syncStateText(c) {
+    const pending = c.pendingCount();
+    if (c.status === "syncing") return "Syncing…";
+    if (c.status === "error") return "Sync problem: " + (c.error || "unknown");
+    if (c.status === "offline") return "Offline — will sync when you reconnect.";
+    if (c.uploadAllowed() === false && pending) return `${pending} game${pending === 1 ? "" : "s"} on this device are not being uploaded.`;
+    if (pending) return `${pending} game${pending === 1 ? "" : "s"} waiting to upload.`;
+    return "All games are backed up to your account.";
+  }
+
+  function openAccount() {
+    acctMsg = null;
+    renderAccount();
+    $("accountModal").classList.remove("hidden");
+  }
+  function closeAccount() { $("accountModal").classList.add("hidden"); }
+
+  function renderAccount() {
+    const box = $("accountBox");
+    if (!box || $("accountModal").classList.contains("hidden") && !box.innerHTML) { /* fallthrough */ }
+    const c = cloud();
+    const msgHtml = acctMsg
+      ? `<div class="acct-msg ${acctMsg.bad ? "bad" : "good"}">${escapeHtml(acctMsg.text)}</div>`
+      : `<div class="acct-msg"></div>`;
+
+    if (!c) {
+      box.innerHTML =
+        backBtn("acBack", "Close") +
+        `<div class="power-title">Account</div>` +
+        `<p class="confirm-body">Cloud sync couldn't load — you may be offline. The app works normally; your games are saved on this device.</p>`;
+      $("acBack").onclick = closeAccount;
+      return;
+    }
+
+    if (c.user) {
+      const pending = c.pendingCount();
+      box.innerHTML =
+        backBtn("acBack", "Close") +
+        `<div class="power-title">Your account</div>` +
+        `<div class="acct-panel">` +
+        `<div class="acct-who">${escapeHtml(c.user.email || c.user.displayName || "Signed in")}</div>` +
+        `<div class="acct-state">${escapeHtml(syncStateText(c))}</div>` +
+        msgHtml +
+        `<div class="control-row">` +
+        `<button id="acSync" class="primary">Sync now</button>` +
+        (c.uploadAllowed() === false && pending
+          ? `<button id="acEnableUp" class="ghost">Upload this device's games</button>` : "") +
+        `<button id="acOut" class="ghost">Sign out</button>` +
+        `</div></div>`;
+      $("acBack").onclick = closeAccount;
+      $("acSync").onclick = async () => {
+        acctMsg = null; renderAccount();
+        const r = await c.sync();
+        acctMsg = r && r.error
+          ? { text: r.error, bad: true }
+          : { text: `Uploaded ${r.uploaded || 0}, downloaded ${r.downloaded || 0}.`, bad: false };
+        renderAccount();
+      };
+      const up = $("acEnableUp");
+      if (up) up.onclick = async () => { c.setUploadAllowed(true); await c.sync(); renderAccount(); };
+      $("acOut").onclick = async () => {
+        await c.signOut();
+        closeAccount();
+        showToast("Signed out. Your games stay on this device.");
+      };
+      return;
+    }
+
+    const isUp = acctMode === "up";
+    box.innerHTML =
+      backBtn("acBack", "Close") +
+      `<div class="power-title">${isUp ? "Create an account" : "Sign in"}</div>` +
+      `<div class="acct-panel">` +
+      `<p class="confirm-body" style="margin:0">Sign in to keep your games across devices. The app works fine without an account.</p>` +
+      `<button id="acGoogle" class="acct-google">Continue with Google</button>` +
+      `<div class="acct-sep">or</div>` +
+      (isUp ? `<div class="acct-field"><label for="acName">Display name</label><input id="acName" autocomplete="nickname" placeholder="Tim"></div>` : "") +
+      `<div class="acct-field"><label for="acEmail">Email</label><input id="acEmail" type="email" autocomplete="email" placeholder="you@example.com"></div>` +
+      `<div class="acct-field"><label for="acPass">Password</label><input id="acPass" type="password" autocomplete="${isUp ? "new-password" : "current-password"}"></div>` +
+      msgHtml +
+      `<div class="control-row"><button id="acGo" class="primary">${isUp ? "Create account" : "Sign in"}</button></div>` +
+      `<button id="acSwap" class="acct-toggle">${isUp ? "I already have an account" : "Create an account instead"}</button>` +
+      `</div>`;
+    $("acBack").onclick = closeAccount;
+    $("acSwap").onclick = () => { acctMode = isUp ? "in" : "up"; acctMsg = null; renderAccount(); };
+    $("acGoogle").onclick = async () => {
+      acctMsg = { text: "Opening Google…", bad: false }; renderAccount();
+      const r = await c.signInWithGoogle();
+      if (!r.ok) { acctMsg = { text: r.message, bad: true }; renderAccount(); }
+    };
+    const submit = async () => {
+      const email = ($("acEmail").value || "").trim();
+      const pass = $("acPass").value || "";
+      const name = isUp && $("acName") ? ($("acName").value || "").trim() : "";
+      if (!email || !pass) { acctMsg = { text: "Email and password are both needed.", bad: true }; return renderAccount(); }
+      acctMsg = { text: "Working…", bad: false }; renderAccount();
+      const r = isUp ? await c.signUpEmail(email, pass, name) : await c.signInEmail(email, pass);
+      if (!r.ok) { acctMsg = { text: r.message, bad: true }; renderAccount(); }
+    };
+    $("acGo").onclick = submit;
+    $("acPass").addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+  }
+
+  // Ask once per account before pushing this device's existing games into it.
+  function maybeAskUpload() {
+    const c = cloud();
+    if (!c || !c.user || c.uploadAllowed() !== null) return;
+    const n = c.pendingCount();
+    if (!n) { c.setUploadAllowed(true); return; }
+    askConfirm(
+      {
+        title: "Add this device's games?",
+        body: `There ${n === 1 ? "is" : "are"} ${n} game${n === 1 ? "" : "s"} saved on this device. Add ${n === 1 ? "it" : "them"} to your account so you can see ${n === 1 ? "it" : "them"} on your other devices?`,
+        confirm: "Add to my account",
+        cancel: "Keep them local only",
+      },
+      () => { c.setUploadAllowed(true); c.sync(); },
+      () => { c.setUploadAllowed(false); c.sync(); } // still download
+    );
+  }
+
+  function wireCloud() {
+    const refresh = () => {
+      renderAcctChip();
+      if (!$("accountModal").classList.contains("hidden")) renderAccount();
+    };
+    document.addEventListener("cloud:auth", refresh);
+    document.addEventListener("cloud:status", refresh);
+    document.addEventListener("cloud:ready-to-sync", () => { refresh(); maybeAskUpload(); });
+    document.addEventListener("cloud:synced", (e) => {
+      refresh();
+      const d = e.detail || {};
+      if (d.downloaded) {
+        // New games arrived from another device — repaint whatever is on screen.
+        if (!$("statsScreen").classList.contains("hidden")) renderStats();
+        else if (state && !state.review) renderGame();
+        showToast(`${d.downloaded} game${d.downloaded === 1 ? "" : "s"} downloaded from your account.`);
+      }
+    });
+    document.addEventListener("cloud:error", (e) => showToast((e.detail && e.detail.message) || "Cloud error."));
+    $("btnAccount").onclick = openAccount;
+    renderAcctChip();
+  }
+
   // ------------------------------ in-app dialogs -----------------------------
   // The app never uses the browser's native alert/confirm (the ugly
   // "<site> says…" bar) — everything is rendered in the app's own styling.
   const backBtn = (id, title) =>
     `<button id="${id}" class="backbtn ovl" title="${title || "Back"}"><span class="arw">←</span></button>`;
 
-  function askConfirm(opts, onYes) {
+  // `onNo` fires only for an explicit "no" click — dismissing with the back
+  // arrow leaves the question unanswered, so a caller storing a preference
+  // will ask again rather than record a choice the user never made.
+  function askConfirm(opts, onYes, onNo) {
     const m = $("confirmModal");
     $("confirmBox").innerHTML =
       backBtn("cfBack", "Cancel") +
@@ -1521,7 +1695,7 @@
     m.classList.remove("hidden");
     const close = () => m.classList.add("hidden");
     $("cfYes").onclick = () => { close(); if (onYes) onYes(); };
-    $("cfNo").onclick = close;
+    $("cfNo").onclick = () => { close(); if (onNo) onNo(); };
     $("cfBack").onclick = close;
   }
 
@@ -1628,6 +1802,8 @@
     document.querySelectorAll(".tabbar .tab").forEach((b) => {
       b.onclick = () => switchTab(b.dataset.tab);
     });
+
+    wireCloud();
   }
 
   function adjustRoundModFor(roundIdx, delta) {

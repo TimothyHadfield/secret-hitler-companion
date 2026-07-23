@@ -21,6 +21,9 @@
     <div class="topbar" id="topbar">
       <h1>Secret&nbsp;Hitler <span class="muted brand-sub">companion</span></h1>
       <div class="spacer"></div>
+      <button id="btnAccount" class="ghost acct-btn">
+        <span class="acct-dot" id="acctDot"></span><span id="acctLabel">Sign in</span>
+      </button>
       <button id="btnStats" class="ghost">Statistics</button>
     </div>
 
@@ -175,12 +178,22 @@
     <div id="confirmModal" class="overlay hidden">
       <div class="overlay-box" id="confirmBox"></div>
     </div>
+    <!-- account / sync panel -->
+    <div id="accountModal" class="overlay hidden">
+      <div class="overlay-box" id="accountBox"></div>
+    </div>
   </div>
 
   <div id="toast" class="toast hidden"></div>
 
   <script src="js/probability.js"></script>
   <script src="js/stats.js"></script>
+  <script src="js/firebase-config.js"></script>
   <script src="js/app.js"></script>
+  <!-- Loads Firebase from a CDN, so there is still no build step. Deferred by
+       virtue of being a module, so app.js (classic) has already run; the two
+       talk via window.Cloud and `cloud:*` events. The app works fully without
+       this file ever loading. -->
+  <script type="module" src="js/cloud.js"></script>
 </body>
 </html>

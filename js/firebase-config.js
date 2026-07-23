@@ -19,4 +19,7 @@ const FIREBASE_CONFIG = {
   appId: "1:650157163497:web:eb8c5b5a79b28bf65dc178",
 };
 
+// Exposed on window so js/cloud.js (an ES module) can read it without an import,
+// keeping this file loadable as a plain script and by Node's require().
+if (typeof window !== "undefined") window.FIREBASE_CONFIG = FIREBASE_CONFIG;
 if (typeof module !== "undefined" && module.exports) module.exports = FIREBASE_CONFIG;

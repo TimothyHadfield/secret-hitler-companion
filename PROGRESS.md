@@ -68,7 +68,12 @@ table game, not a game engine. Feature pillars:
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
 | `js/stats.js` | localStorage read/write + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. |
-| `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring. |
+| `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring, **account UI**. |
+| `js/cloud.js` | **ES module** (the only one): Firebase auth + cross-device sync. Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
+| `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
+| `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
+| `test/` | Dev-only test harness (`rules.prod.test.js`). Has its own `package.json`; the site itself stays dependency-free. |
+| `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
@@ -132,6 +137,20 @@ table game, not a game engine. Feature pillars:
   backfilled onto older records by `loadGames()` (writes once, then a no-op). It is the dedupe
   key on import and — deliberately — the idempotency key for the future cloud sync, so a
   retried upload can never insert a game twice. Don't remove it.
+- **Cloud sync sits BEHIND localStorage, never in front of it.** `js/cloud.js` is a background
+  reconciler: it pushes local games up and pulls remote ones down, writing into the same
+  `secretHitler.games.v1` array the app has always used. `app.js` and `stats.js` don't know the
+  network exists — which is why the app works fully offline/signed-out and why a sync bug can
+  never break a game in progress. **Don't invert this.**
+- **Everything is a group.** A solo user gets an auto-created group of one ("My Games"), so there
+  is one data model and personal stats *are* group stats. Groups are found via
+  `profiles/{uid}.groupIds`, because the rules deny listing `/groups` (ids can't be enumerated).
+- **Uploading asks once per account** (`secretHitler.cloud.upload.<uid>` = yes/no). Signing in must
+  never silently absorb a shared device's history into whichever account logged in. Downloading
+  is always allowed. `askConfirm()` takes an optional `onNo` so dismissing with the back arrow
+  leaves the question unanswered rather than recording a choice the user didn't make.
+- **Every game's UUID is its Firestore document id**, which makes uploads idempotent — a retried
+  or interrupted sync can never insert a game twice.
 - **Export / import** (Stats screen, `Stats.exportData()` / `Stats.importData()`): downloads a
   dated `{app, schema, exportedAt, games[]}` envelope, and merges one back **additively and
   idempotently** — games already present (same id) are skipped, so re-importing the same file
@@ -275,9 +294,12 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   not separate undo steps (freely reversible with −/+).
 
 ## Known limitations / not yet done
-- **No accounts/backend yet.** Persistence is per-browser/device (localStorage); a game on the
-  laptop won't appear on the phone. **Export/import is the workaround** (and the safety net
-  against cleared site data) until the backend lands — see `BACKEND_PLAN.md`.
+- **Groups aren't built yet** (phase 2). Accounts + cross-device sync work, but every user syncs
+  only their own solo group — you can't yet share an archive with other players.
+- **The in-progress game doesn't sync**, only completed/recorded ones. Resuming a half-played game
+  on another device is out of scope (that's real-time play, explicitly descoped).
+- Google sign-in is wired but **only verified manually** — it needs a browser OAuth round-trip, so
+  the automated tests cover email/password only.
 - **Votes are not tracked** (Ja/Nein counts, ties failing, dead players not voting). The table
   votes and tells the app the outcome — the one election rule still left to honest play.
 - The app records what the table *tells* it (claims, conflicts, vetoes, power outcomes); it can't
@@ -286,14 +308,13 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - No posterior on *whether* a claim was honest — the model computes P(hand | assumed lies).
 
 ## Next candidate steps
-- **→ NEXT: accounts + groups on Firebase** (decided; full design + setup steps in
-  `BACKEND_PLAN.md`). Hard constraint: **permanently free, no credit card, must not pause** —
-  which is why Supabase was dropped (its free tier sleeps after ~1 week idle) and why we use
-  **no Cloud Functions** (paid plan only): everything is client SDK + security rules, including
-  invite-based group joining. Phase 0 (export/import) is shipped. Phase 1 is auth + syncing your
-  own games — **blocked only on the user doing the ~5-minute Firebase console setup** and
-  pasting back the `firebaseConfig` block (safe to commit; the rules are the security boundary).
-  **Real-time/online play is descoped.**
+- **→ NEXT: phase 2, groups** (design in `BACKEND_PLAN.md`). Phases 0 (export/import) and 1
+  (accounts + cross-device sync) are **shipped and live**; the infrastructure is done and needs
+  nothing further from the user. Phase 2 = create/name groups, invite links (`?join=<groupId>`),
+  a member roster including guests without accounts, a group switcher deciding which group a new
+  game records into, and seat→member mapping so games reference member ids rather than name
+  strings. Free-typed names are allowed and auto-create guests. Then phase 3: friends + linking a
+  guest seat to a real account. **Real-time/online play stays descoped.**
 - **Honesty posterior** — "how likely is this claim honest?" given a prior on lying, instead of
   only "how likely was this hand". `PROBABILITY_MODEL.md` §7 names it as the open question; it
   would also retire the manual round-modifier stepper, the last piece of fiddly data entry.

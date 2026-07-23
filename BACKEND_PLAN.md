@@ -1,7 +1,6 @@
 # Backend Plan — accounts, groups, shared statistics
 
-> Status: **infrastructure is LIVE; phase 1 is the next build.** Phase 0 (export/import) is
-> shipped. **Hard constraints:** permanently free, sustainable long-term, no credit card, no
+> Status: **phases 0 and 1 are SHIPPED and live.** Phase 2 (groups) is next. **Hard constraints:** permanently free, sustainable long-term, no credit card, no
 > server to operate. Real-time/online play is explicitly **out of scope**.
 
 ## The live project (facts, not plans)
@@ -195,7 +194,7 @@ rather than re-fetched on every render.
 | # | Phase | Contents |
 |---|---|---|
 | 0 | **Export / import** ✅ shipped | JSON backup + merge-by-id; also the account-seeding payload. |
-| 1 | **Auth + personal cloud sync** | Login, `profiles`, sync own games. No groups yet. Proves the pipe: rules, sync, offline. |
+| 1 | **Auth + personal cloud sync** ✅ shipped | Google + email/password login, `profiles`, auto-created solo group, background reconciler behind localStorage, consent-gated upload. |
 | 2 | **Groups** | `groups` + `members` + invite links; group stats reuse `renderStatsInto()` over a different game list. |
 | 3 | **Link seats to accounts** | Attach a `uid` to an existing member; "my stats across all groups". Friends, if still wanted, are a two-person group. |
 

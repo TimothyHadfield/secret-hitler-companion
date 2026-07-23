@@ -606,3 +606,30 @@ footer { text-align: center; color: var(--muted); font-size: 12px; margin: 24px 
    inline style this replaced also beat `button.primary:hover`. */
 button.btn-lib,
 button.btn-lib:hover { background: var(--lib); border-color: var(--lib-2); }
+
+/* ---------- account / sync (phase 1 backend) ---------- */
+.acct-btn { display: inline-flex; align-items: center; gap: 7px; }
+.acct-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--muted);
+  flex: 0 0 auto; transition: background 0.2s;
+}
+.acct-dot.on      { background: #4caf50; }                 /* signed in, synced */
+.acct-dot.pending { background: var(--gold); }             /* queued uploads */
+.acct-dot.syncing { background: var(--gold); animation: acctPulse 1s infinite; }
+.acct-dot.err     { background: var(--fac-2); }
+@keyframes acctPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+.acct-panel { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.acct-panel .acct-who { font-size: 14px; color: var(--muted); word-break: break-all; }
+.acct-panel .acct-state { font-size: 13px; }
+.acct-field { display: flex; flex-direction: column; gap: 4px; }
+.acct-field input { width: 100%; }
+.acct-msg { font-size: 13px; min-height: 1em; }
+.acct-msg.bad { color: var(--fac-2); }
+.acct-msg.good { color: var(--lib-2); }
+.acct-sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.acct-sep::before, .acct-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.acct-google { background: #fff; color: #222; border-color: #ccc; font-weight: 600; }
+.acct-google:hover { background: #f1f1f1; border-color: #999; }
+.acct-toggle { background: none; border: none; color: var(--gold); text-decoration: underline; padding: 0; font-size: 13px; }
+.acct-toggle:hover { background: none; }

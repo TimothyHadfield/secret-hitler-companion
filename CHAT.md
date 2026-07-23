@@ -571,3 +571,52 @@ done as a rules-checked self-add (`memberUids.concat([uid])` with every other fi
 with `get` open on a group but `list` closed so ids can't be enumerated. `BACKEND_PLAN.md` was
 rewritten accordingly and now ends with **exact click-by-click console setup instructions** —
 the only part the user has to do.
+
+---
+
+## Session 17 — phase 1: accounts and cross-device sync
+
+**User decisions that shaped it:** duplicates are a non-issue ("the players will be in the room
+recording it"), guests without accounts are permanent, and free-typed player names stay allowed.
+Then: build it.
+
+**The load-bearing architectural choice: sync sits BEHIND localStorage.** `js/cloud.js` is a
+background reconciler — it pushes local games up and pulls remote ones down, writing into the
+same `secretHitler.games.v1` array the app has always read. `app.js` and `stats.js` were not
+taught about the network at all; **`stats.js` needed zero changes**. That is what keeps the app
+fully working offline and signed-out, and means a sync bug can never break a game in progress.
+
+**Second choice: everything is a group.** A solo user gets an auto-created group of one ("My
+Games"), so there is one data model and personal stats *are* group stats — and inviting someone
+into an existing archive will be free in phase 2 instead of a migration. It also meant **the
+already-deployed security rules needed no changes**. Groups are discovered via
+`profiles/{uid}.groupIds`, since the rules deny listing `/groups`.
+
+**Built:**
+- `js/cloud.js` — the app's only ES module, loading Firebase from a CDN so there is still **no
+  build step**. It exposes `window.Cloud` and fires `cloud:*` DOM events; `app.js` stays a
+  classic script. If the module never loads, the app degrades to exactly its old behaviour.
+- Account UI: a top-bar chip with a colour-coded sync dot (synced / pending / syncing / error)
+  and an overlay for Google or email+password sign-in, sync status, manual sync, and sign-out.
+- **Upload consent, asked once per account.** Signing in must never silently absorb a shared
+  device's history into whichever account logged in, so the app asks before the first upload;
+  downloading is always allowed. `askConfirm()` gained an optional `onNo`, deliberately *not*
+  fired by the back arrow — dismissing leaves the question unanswered instead of recording a
+  choice the user never made.
+- Auto-sync on recording a game, on reconnect, and manually.
+
+**Testing was the hard part.** The old headless recipe (`--virtual-time-budget --dump-dom`) does
+not work here: Firebase Auth's IndexedDB initialisation never completes under virtual time, so
+`onAuthStateChanged` never fires and the page hangs. Replaced with a **CDP driver over real
+time** (`cdp.js`) using Node 24's built-in `WebSocket` — no dependency added. Worth keeping for
+any future async/network work.
+
+**Verified end to end against the real project — 27 assertions, all passing:** account creation,
+solo-group auto-creation, the consent dialog actually appearing and being *clicked*, uploading 2
+games, auto-upload on recording a third, then **simulating a second device** by wiping local
+storage and syncing to pull all 3 back — checking the full event log, nested Policy Peek data and
+player names all survive the round trip — plus idempotent re-sync (0/0, no duplicates) and
+sign-out leaving local games intact. The 24-assertion export/import suite still passes. Both test
+accounts deleted and the database purged back to empty.
+
+**Left for phase 2:** groups, invite links, member rosters, and seat→member mapping.
