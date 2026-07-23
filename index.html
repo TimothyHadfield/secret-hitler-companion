@@ -118,25 +118,7 @@
      </div><!-- /historyTab -->
 
      <div id="statsTab" class="tab-panel hidden">
-      <div class="panel">
-        <h3 style="margin-top:0">Cross-game summary</h3>
-        <div class="statgrid" id="summaryGridInline"></div>
-      </div>
-      <div class="panel" style="margin-top:12px">
-        <h3 style="margin-top:0">Player statistics</h3>
-        <div style="overflow-x:auto">
-          <table class="hist" id="playerStatsTableInline">
-            <thead>
-              <tr><th>Player</th><th>Games</th><th>Wins</th><th>Win %</th><th>Pres.</th><th>Chanc.</th><th>As Hitler</th><th>Conflicts</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="panel" style="margin-top:12px">
-        <h3 style="margin-top:0">All games <span class="muted" style="font-size:12px">(tap a game to review it)</span></h3>
-        <div class="games-list" id="gamesListInline"></div>
-      </div>
+      <div class="stats-body" id="statsBodyInline"></div>
      </div><!-- /statsTab -->
 
       <!-- full-screen blocking overlays -->
@@ -166,25 +148,9 @@
       <div class="screen-head">
         <button id="btnBackFromStats" class="backbtn" title="Back"><span class="arw">←</span></button>
       </div>
-      <div class="panel">
-        <h2 style="margin-top:0">Cross-game summary</h2>
-        <div class="statgrid" id="summaryGrid"></div>
-      </div>
-      <div class="panel" style="margin-top:16px">
-        <h2 style="margin-top:0">Player statistics</h2>
-        <table class="hist" id="playerStatsTable">
-          <thead>
-            <tr><th>Player</th><th>Games</th><th>Wins</th><th>Win %</th><th>Pres.</th><th>Chanc.</th><th>As Hitler</th><th>Conflicts</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-        <div class="row" style="margin-top:12px">
-          <button id="btnClearStats" class="ghost">Clear all statistics</button>
-        </div>
-      </div>
-      <div class="panel" style="margin-top:16px">
-        <h2 style="margin-top:0">All games <span class="muted" style="font-size:13px">(click a game to review it)</span></h2>
-        <div class="games-list" id="gamesList"></div>
+      <div class="stats-body" id="statsBody"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="btnClearStats" class="ghost">Clear all statistics</button>
       </div>
     </section>
     <!-- in-app confirm dialog (replaces the browser's native confirm/alert) -->

@@ -418,3 +418,38 @@ refreshes, closing/reopening, and redeploys.
   and 6p→5-alive-by-execution (`[3]` only); tapping a termed seat is blocked with a hint; board
   inside the felt at 1280×800 and 1366×640 while the phone keeps piles at 11/501px; quit opens the
   app modal with `nativeDialogUsed=false`; review opens and the top-left arrow returns to stats.
+
+---
+
+## Session 14 — 2026-07-23 — In-depth statistics
+
+**User asked for:** much deeper statistics — per player: times Fascist / Liberal / Hitler, how
+many times they claimed each policy option, conflicts, how many times they were President for
+each power, times killed, etc. — plus **general game statistics** in the same categories. Keep
+the section clean and compact; scrolling within it is fine.
+
+**What I changed:**
+- **Rewrote `js/stats.js`.** `playerStats()` now returns, per player: mutually-exclusive role
+  counts (Liberal / Fascist / Hitler, summing to games) with win rate by team; claimed hands as
+  President (Coal/Golden/Silver/Bronze); powers wielded (investigations, peeks, executions,
+  special elections); conflicts split by seat (as Chancellor vs as President); policies enacted
+  as Chancellor; presidencies / chancellorships / failed elections; and things done *to* them
+  (times executed, investigated, special-elected). `summary()` adds cross-game totals and
+  averages, the claim distribution, chaos top-decks, and `endings` via a new `endingOf()` that
+  infers how each game finished (Hitler executed / 6 Fascist / 5 Liberal / other).
+- **Rebuilt the stats UI** as one `renderStatsInto(container)` feeding both the standalone screen
+  (`#statsBody`) and the in-game tab (`#statsBodyInline`) — replacing the old summary grid + wide
+  player table. Sections: Overview tiles → Claimed hands → Game totals → How games ended →
+  Players → All games. Players are **collapsed rows that expand** to the full breakdown, so the
+  depth doesn't cost space; numbers use a capped label→value grid (one full-width column on
+  phones).
+- **Visualisation decision (dataviz skill).** Ran the palette validator on the app's red→blue
+  claim ramp: it **fails** — middle steps read as gray (chroma 0.04–0.07) and the normal-vision
+  separation floor is ΔE 10 (< 15, a hard gate). So a 4-colour stacked bar was rejected in favour
+  of **single-series magnitude bars** in one validated accent (`#b3852f`: in dark lightness band,
+  chroma ≥ 0.1, contrast ≥ 3:1), with every row directly labelled — identity never rides on colour.
+- Verified the aggregation in Node against a 4-game fixture covering every stat (totals, kills,
+  Hitler executed, investigations, peeks, special elections, chaos, conflicts all matched
+  hand-computed values; claims summed to governments; role buckets summed to games for every
+  player), then rendered and eyeballed it at 1280px and 512px, and confirmed the in-game tab
+  builds all 6 panels and scrolls. No stale element references, no JS errors.

@@ -489,6 +489,11 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
   .t-full { display: none; }
   .t-short { display: inline; }
   .backbtn { padding: 6px 8px; }
+  /* stats: one full-width column so values sit at the panel edge.
+     .stats-body-scoped so these beat the base stats rules defined later in the file */
+  .stats-body .kv-grid { grid-template-columns: 1fr; }
+  .stats-body .statgrid { grid-template-columns: repeat(auto-fit, minmax(92px,1fr)); }
+  .stats-body .pstat-quick { font-size: 10.5px; }
   .round-block { min-width: 88px; padding: 6px 7px; }
   .tab { padding: 6px 13px; }
 }
@@ -506,10 +511,48 @@ tr.ev-fail td { color: var(--muted); font-style: italic; }
 tr.ev-chaos td { color: #ffd98a; }
 
 /* ---------- Stats ---------- */
-.statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 12px; }
-.stat-tile { background: var(--panel-2); border-radius: 10px; padding: 14px; text-align: center; }
-.stat-tile .big { font-size: 26px; color: var(--gold); font-weight: 700; }
-.stat-tile .lbl { font-size: 12px; color: var(--muted); }
+.statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px,1fr)); gap: 8px; }
+.stat-tile { background: var(--panel-2); border-radius: 10px; padding: 9px 8px; text-align: center; }
+.stat-tile .big { font-size: 21px; color: var(--gold); font-weight: 700; line-height: 1.15; }
+.stat-tile .lbl { font-size: 11px; color: var(--muted); }
+
+/* ---------- statistics layout (compact; the section itself scrolls) ---------- */
+.stats-body { display: flex; flex-direction: column; gap: 10px; }
+.stats-body .panel { padding: 12px; }
+.sec-title { margin: 0 0 9px; font-size: 14px; color: var(--gold); font-weight: 700; }
+.sec-note { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+
+/* label → value pairs, two-up on anything wider than a phone */
+/* columns are capped so a label never drifts far from its value on wide screens */
+.kv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(172px,232px));
+           justify-content: start; gap: 0 18px; }
+.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+      font-size: 12.5px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.055); }
+.kv .k { color: var(--muted); }
+.kv .v { font-weight: 700; color: var(--ink); white-space: nowrap; }
+
+/* single-series magnitude bars — one accent hue, every row directly labelled */
+.bar-list { display: flex; flex-direction: column; gap: 6px; }
+.bar-row { display: grid; grid-template-columns: minmax(84px,auto) 1fr minmax(58px,auto);
+           align-items: center; gap: 10px; font-size: 12.5px; }
+.bar-lbl { color: var(--ink); white-space: nowrap; }
+.bar-track { background: rgba(255,255,255,0.07); border-radius: 4px; height: 11px; }
+.bar-fill { display: block; height: 100%; background: #b3852f; border-radius: 4px; min-width: 2px; }
+.bar-val { text-align: right; color: var(--muted); white-space: nowrap; }
+
+/* expandable per-player breakdown */
+.player-list { display: flex; flex-direction: column; gap: 6px; }
+.pstat { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--panel-2); }
+.pstat-head { width: 100%; display: flex; align-items: center; gap: 10px; background: none;
+              border: 0; border-radius: 0; padding: 8px 11px; text-align: left; color: var(--ink); }
+.pstat-head:hover { background: #37302a; }
+.pstat-name { font-weight: 700; font-size: 13.5px; }
+.pstat-quick { color: var(--muted); font-size: 11.5px; margin-left: auto; text-align: right; }
+.pstat-chev { color: var(--gold); font-size: 14px; line-height: 1; transition: transform 0.15s; }
+.pstat-head.open .pstat-chev { transform: rotate(180deg); }
+.pstat-detail { padding: 2px 11px 10px; }
+.sub-head { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px;
+            color: var(--gold); margin: 9px 0 2px; }
 
 .next-draw { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 .nd-item { background: var(--panel-2); border-radius: 8px; padding: 8px 12px; text-align: center; min-width: 84px; }

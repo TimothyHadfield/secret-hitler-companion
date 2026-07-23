@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-22 (after session 13)._
+_Last updated: 2026-07-23 (after session 14)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -64,7 +64,7 @@ table game, not a game engine. Feature pillars:
 | `index.html` | App shell. Screens: **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over. (No separate end screen — role recording is in-place.) |
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
-| `js/stats.js` | localStorage read/write + per-player / cross-game aggregation. Reads the event model. |
+| `js/stats.js` | localStorage read/write + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. |
 | `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
@@ -203,8 +203,27 @@ Every overlay (power / chaos / game-over) has a **↶ Back** button. Powers bloc
   stats, then back to setup.
 
 ## Statistics + game review
-- **Stats** (in-game tab and standalone screen): cross-game summary tiles, per-player table
-  (games/wins/win%/pres/chanc/as-Hitler/conflicts), and an **"All games" list**.
+- **One renderer, two mounts:** `renderStatsInto(container)` builds the whole section into
+  `#statsBody` (standalone screen) or `#statsBodyInline` (in-game Stats tab). Both scroll.
+  Sections, in order: **Overview** tiles → **Claimed hands** → **Game totals** → **How games
+  ended** → **Players** → **All games**.
+- **Depth lives in `js/stats.js`.** `summary()` returns cross-game totals (governments, fails,
+  policies L/F, claim distribution, conflicts, chaos top-decks, investigations, peeks, executions,
+  special elections, Hitler executed, averages) plus `endings` — inferred per game by
+  `endingOf()` (Hitler executed / 6 Fascist / 5 Liberal / other). `playerStats()` returns, per
+  player: role counts (**Liberal / Fascist / Hitler are mutually exclusive and sum to games**) +
+  win rate by team, claimed hands as President (Coal/Golden/Silver/Bronze), powers wielded
+  (investigations/peeks/executions/special elections), conflicts split by seat, policies enacted
+  as Chancellor, presidencies/chancellorships/failed elections, and things done *to* them
+  (times executed / investigated / special-elected).
+- **Kept compact:** players are **collapsed rows** (name · games · win% · role split) that expand
+  to the full breakdown, and numbers use a capped label→value grid (single full-width column on
+  phones). Scrolling within the section is expected and fine.
+- **Charting rule:** the claim distribution uses **single-series magnitude bars** in one accent
+  (`#b3852f`, validated in-band/chroma/contrast on the dark surface) with every row directly
+  labelled — identity never comes from colour. A 4-colour stacked bar was rejected: the app's
+  red→blue claim ramp fails the normal-vision separation floor (ΔE 10 < 15) and its middle steps
+  read as gray (chroma 0.04–0.07).
 - **All-games list:** each game is a **winner-coloured box** (Hitler on top, Fascists beside).
   Clicking opens a **read-only review**: that game's coloured table + every presidency's
   cards/odds/details, with a **stats panel** (policies, governments, fails, Hitler/Fascists) where

@@ -1209,34 +1209,136 @@
 
 
   // ------------------------------ STATS --------------------------------------
-  function fillStats(gridEl, tbodyEl) {
-    const s = Stats.summary();
-    gridEl.innerHTML = [
-      tile(s.totalGames, "Games recorded"),
-      tile(s.liberalWins, "Liberal wins"),
-      tile(s.fascistWins, "Fascist wins"),
-      tile((s.fascistWinRate * 100).toFixed(0) + "%", "Fascist win rate"),
-      tile(s.avgGovernments.toFixed(1), "Avg governments / game"),
-    ].join("");
-    const rows = Stats.playerStats();
-    tbodyEl.innerHTML = rows.length
-      ? rows
-          .map(
-            (p) =>
-              `<tr><td>${escapeHtml(p.name)}</td><td>${p.games}</td><td>${p.wins}</td>` +
-              `<td>${(p.winRate * 100).toFixed(0)}%</td><td>${p.presidencies}</td>` +
-              `<td>${p.chancellorships}</td><td>${p.asHitler}</td><td>${p.conflicts}</td></tr>`
-          )
-          .join("")
-      : `<tr><td colspan="8" class="muted">No games recorded yet.</td></tr>`;
-  }
-  function renderStats() {
-    fillStats($("summaryGrid"), $("playerStatsTable").querySelector("tbody"));
-    renderGamesList($("gamesList"));
-    show("statsScreen");
-  }
+  // ------------------------------ statistics ---------------------------------
   function tile(big, lbl) {
     return `<div class="stat-tile"><div class="big">${big}</div><div class="lbl">${lbl}</div></div>`;
+  }
+  const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  const pct = (x) => (x * 100).toFixed(0) + "%";
+
+  // Single-series magnitude bars. Identity comes from the row label, never the
+  // colour, so one accent hue is used for every bar (no categorical palette).
+  function barRow(label, value, max, note) {
+    const w = max > 0 ? Math.round((value / max) * 100) : 0;
+    return (
+      `<div class="bar-row"><span class="bar-lbl">${escapeHtml(label)}</span>` +
+      `<span class="bar-track"><span class="bar-fill" style="width:${w}%"></span></span>` +
+      `<span class="bar-val">${value}${note ? " · " + note : ""}</span></div>`
+    );
+  }
+
+  function playerCard(p) {
+    const roles = `${p.asLiberal}L · ${p.asFascist}F · ${p.asHitler}H`;
+    return (
+      `<div class="pstat">` +
+      `<button class="pstat-head" type="button">` +
+      `<span class="pstat-name">${escapeHtml(p.name)}</span>` +
+      `<span class="pstat-quick">${p.games} games · ${pct(p.winRate)} won · ${roles}</span>` +
+      `<span class="pstat-chev">▾</span></button>` +
+      `<div class="pstat-detail hidden">` +
+      `<div class="sub-head">Roles</div><div class="kv-grid">` +
+      kv("As Liberal", p.asLiberal) +
+      kv("As Fascist", p.asFascist) +
+      kv("As Hitler", p.asHitler) +
+      kv("Won as Liberal", p.asLiberal ? pct(p.libWinRate) : "—") +
+      kv("Won as Fascist", p.asFascist + p.asHitler ? pct(p.facWinRate) : "—") +
+      kv("Wins / games", p.wins + " / " + p.games) +
+      `</div>` +
+      `<div class="sub-head">Claimed hands as President</div><div class="kv-grid">` +
+      p.claims.map((c, i) => kv(Stats.CLAIM_NAMES[i], c)).join("") +
+      `</div>` +
+      `<div class="sub-head">Powers used as President</div><div class="kv-grid">` +
+      kv("Investigations", p.investigations) +
+      kv("Policy peeks", p.peeks) +
+      kv("Executions", p.kills) +
+      kv("Special elections", p.specialElections) +
+      `</div>` +
+      `<div class="sub-head">Seats &amp; outcomes</div><div class="kv-grid">` +
+      kv("Presidencies", p.presidencies) +
+      kv("Chancellorships", p.chancellorships) +
+      kv("Failed elections", p.failedElections) +
+      kv("Conflicts as Chancellor", p.conflictsAsChancellor) +
+      kv("Conflicts as President", p.conflictsAsPresident) +
+      kv("Enacted Liberal", p.libEnactedAsChancellor) +
+      kv("Enacted Fascist", p.facEnactedAsChancellor) +
+      kv("Times executed", p.timesKilled) +
+      kv("Times investigated", p.timesInvestigated) +
+      kv("Times special-elected", p.timesSpecialElected) +
+      `</div></div></div>`
+    );
+  }
+
+  function renderStatsInto(container) {
+    const s = Stats.summary();
+    const gid = container.id + "Games";
+
+    if (!s.totalGames) {
+      container.innerHTML =
+        `<div class="panel"><h3 class="sec-title">Statistics</h3>` +
+        `<p class="muted" style="margin:0">No games recorded yet — finish a game and record the roles ` +
+        `to start building statistics.</p></div>`;
+      return;
+    }
+
+    const claimTotal = s.claims.reduce((a, b) => a + b, 0);
+    const claimMax = Math.max.apply(null, s.claims);
+    const claimBars = s.claims
+      .map((c, i) => barRow(Stats.CLAIM_NAMES[i], c, claimMax, claimTotal ? pct(c / claimTotal) : "0%"))
+      .join("");
+    const endings = Object.keys(s.endings)
+      .sort((a, b) => s.endings[b] - s.endings[a])
+      .map((k) => kv(k, s.endings[k]))
+      .join("");
+
+    container.innerHTML =
+      `<div class="panel"><h3 class="sec-title">Overview</h3><div class="statgrid">` +
+      tile(s.totalGames, "Games") +
+      tile(s.liberalWins, "Liberal wins") +
+      tile(s.fascistWins, "Fascist wins") +
+      tile(pct(s.fascistWinRate), "Fascist win rate") +
+      tile(s.avgGovernments.toFixed(1), "Govs / game") +
+      tile(s.avgFailedElections.toFixed(1), "Fails / game") +
+      `</div></div>` +
+      `<div class="panel"><h3 class="sec-title">Claimed hands ` +
+      `<span class="sec-note">${claimTotal} presidencies</span></h3>` +
+      `<div class="bar-list">${claimBars}</div></div>` +
+      `<div class="panel"><h3 class="sec-title">Game totals</h3><div class="kv-grid">` +
+      kv("Governments", s.governments) +
+      kv("Failed elections", s.failedElections) +
+      kv("Liberal policies", s.policiesLib) +
+      kv("Fascist policies", s.policiesFac) +
+      kv("Conflicts", s.conflicts) +
+      kv("Chaos top-decks", s.chaosPolicies) +
+      kv("Investigations", s.investigations) +
+      kv("Policy peeks", s.peeks) +
+      kv("Executions", s.kills) +
+      kv("Special elections", s.specialElections) +
+      kv("Hitler executed", s.hitlerExecuted) +
+      kv("Avg players", s.avgPlayers.toFixed(1)) +
+      `</div></div>` +
+      `<div class="panel"><h3 class="sec-title">How games ended</h3>` +
+      `<div class="kv-grid">${endings}</div></div>` +
+      `<div class="panel"><h3 class="sec-title">Players ` +
+      `<span class="sec-note">tap for the full breakdown</span></h3>` +
+      `<div class="player-list">${Stats.playerStats().map(playerCard).join("")}</div></div>` +
+      `<div class="panel"><h3 class="sec-title">All games ` +
+      `<span class="sec-note">tap a game to review it</span></h3>` +
+      `<div class="games-list" id="${gid}"></div></div>`;
+
+    renderGamesList($(gid));
+    container.querySelectorAll(".pstat-head").forEach((b) => {
+      b.onclick = () => {
+        const det = b.nextElementSibling;
+        const wasOpen = !det.classList.contains("hidden");
+        det.classList.toggle("hidden", wasOpen);
+        b.classList.toggle("open", !wasOpen);
+      };
+    });
+  }
+
+  function renderStats() {
+    renderStatsInto($("statsBody"));
+    show("statsScreen");
   }
 
   // in-game tab switching (Play / History / Stats)
@@ -1247,10 +1349,7 @@
     document.querySelectorAll(".tabbar .tab").forEach((b) => {
       b.classList.toggle("sel", b.dataset.tab === name);
     });
-    if (name === "stats") {
-      fillStats($("summaryGridInline"), $("playerStatsTableInline").querySelector("tbody"));
-      renderGamesList($("gamesListInline"));
-    }
+    if (name === "stats") renderStatsInto($("statsBodyInline"));
   }
 
   // ------------------------------ misc ---------------------------------------
