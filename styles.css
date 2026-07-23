@@ -109,6 +109,9 @@ button.danger:hover { background: var(--fac-2); }
   .controls .ratio-btn .ratio-sub { font-size: 10px; line-height: 1.1; }
   .controls .control-row { flex: 0 0 auto; flex-direction: column; margin-top: 0; gap: 5px; }
   .controls .control-row button { width: 100%; padding: 6px 10px; }
+  /* Conflict + Veto share one row so the extra toggles cost no vertical space */
+  .controls .control-row .btn-pair { display: flex; gap: 5px; width: 100%; }
+  .controls .control-row .btn-pair button { width: auto; flex: 1 1 0; min-width: 0; }
 }
 
 .topbar {
@@ -379,6 +382,18 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .conflict-btn { background: #3a2320; border-color: #6b3a30; color: #f0c9c1; }
 .conflict-btn:hover:not(:disabled) { background: var(--fac); border-color: var(--fac-2); color: #fff; }
 .conflict-btn.on { background: var(--fac); border-color: #fff; color: #fff; font-weight: 700; }
+
+/* Veto (unlocked at 5 fascist policies) — armed like Conflict, then pick the hand */
+.veto-btn { background: #34291a; border-color: #6b552a; color: #f0dfb8; }
+.veto-btn:hover:not(:disabled) { background: #6b552a; border-color: var(--gold); color: #fff; }
+.veto-btn.on { background: var(--gold); border-color: #fff; color: #241a08; font-weight: 700; }
+/* declaring the elected Chancellor was Hitler (only from 3 fascist policies) */
+.hitler-btn { background: #241a16; border-color: #55403a; color: #e9d5cd; }
+.hitler-btn:hover:not(:disabled) { background: #000; border-color: #fff; color: #fff; }
+
+/* a vetoed hand: cards were drawn and discarded, nothing was enacted */
+.miniHand.vetoed { opacity: 0.5; filter: grayscale(0.5); }
+.pres-detail.stale { opacity: 0.55; text-decoration: line-through; }
 
 /* ---------- Full-screen blocking overlays (chaos / powers) ---------- */
 .overlay {

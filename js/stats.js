@@ -6,8 +6,11 @@
  *   { players:[{name}], playerCount, firstPres, events:[…], roundMods,
  *     result:{ winner, hitlerIdx, fascistIdxs }, date }
  * Events are the same model the app plays with:
- *   { type:'gov', presidentIdx, chancellorIdx, claimLibs, conflict, enacted, power? }
+ *   { type:'gov', presidentIdx, chancellorIdx, claimLibs, conflict, enacted, vetoed, power? }
  *   { type:'fail', presidentIdx }   { type:'chaos', enacted }
+ *   { type:'hitler', presidentIdx, chancellorIdx }  // Hitler elected Chancellor: game ends
+ * A vetoed government enacts nothing (enacted null), discards all 3 cards and
+ * advances the election tracker.
  * where power is one of
  *   {type:'invest',targetIdx,party} {type:'special',chosenIdx}
  *   {type:'peek',order}             {type:'kill',killedIdx,wasHitler}
@@ -56,14 +59,18 @@ const Stats = (() => {
   function endingOf(g) {
     let lib = 0,
       fac = 0,
-      hitlerShot = false;
+      hitlerShot = false,
+      hitlerChancellor = false;
     for (const ev of eventsOf(g)) {
       const t = typeOf(ev);
       if (t === "fail") continue;
+      if (t === "hitler") { hitlerChancellor = true; continue; }
+      if (ev.vetoed) continue; // a vetoed government enacts nothing
       if (ev.enacted === "L") lib++;
       else if (ev.enacted === "F") fac++;
       if (t === "gov" && ev.power && ev.power.type === "kill" && ev.power.wasHitler) hitlerShot = true;
     }
+    if (hitlerChancellor) return "Hitler elected Chancellor";
     if (hitlerShot) return "Hitler executed";
     if (fac >= 6) return "6 Fascist policies";
     if (lib >= 5) return "5 Liberal policies";
@@ -93,6 +100,9 @@ const Stats = (() => {
         // conflicts
         conflictsAsChancellor: 0,
         conflictsAsPresident: 0,
+        // vetoed governments (unlocked after 5 fascist policies)
+        vetoesAsPresident: 0,
+        vetoesAsChancellor: 0,
         // powers wielded as President
         investigations: 0,
         peeks: 0,
@@ -132,7 +142,7 @@ const Stats = (() => {
 
       for (const ev of eventsOf(g)) {
         const t = typeOf(ev);
-        if (t === "chaos") continue;
+        if (t === "chaos" || t === "hitler") continue;
         if (t === "fail") {
           const n = nameAt(ev.presidentIdx);
           if (n) ensure(n).failedElections++;
@@ -144,6 +154,7 @@ const Stats = (() => {
           s.presidencies++;
           if (ev.claimLibs >= 0 && ev.claimLibs <= 3) s.claims[ev.claimLibs]++;
           if (ev.conflict) s.conflictsAsPresident++;
+          if (ev.vetoed) s.vetoesAsPresident++;
           const pw = ev.power;
           if (pw) {
             if (pw.type === "invest") s.investigations++;
@@ -157,8 +168,9 @@ const Stats = (() => {
           const s = ensure(chan);
           s.chancellorships++;
           if (ev.conflict) s.conflictsAsChancellor++;
-          if (ev.enacted === "L") s.libEnactedAsChancellor++;
-          if (ev.enacted === "F") s.facEnactedAsChancellor++;
+          if (ev.vetoed) s.vetoesAsChancellor++;
+          else if (ev.enacted === "L") s.libEnactedAsChancellor++;
+          else if (ev.enacted === "F") s.facEnactedAsChancellor++;
         }
         // things done TO other players by this presidency's power
         const pw = ev.power;
@@ -205,6 +217,7 @@ const Stats = (() => {
       policiesFac: 0,
       claims: [0, 0, 0, 0],
       conflicts: 0,
+      vetoes: 0,
       chaosPolicies: 0,
       investigations: 0,
       peeks: 0,
@@ -223,17 +236,21 @@ const Stats = (() => {
 
       for (const ev of eventsOf(g)) {
         const t = typeOf(ev);
+        if (t === "hitler") continue; // terminal marker: no cards, no government
         if (t === "fail") {
           s.failedElections++;
           continue;
         }
-        if (ev.enacted === "L") s.policiesLib++;
-        else if (ev.enacted === "F") s.policiesFac++;
+        if (!ev.vetoed) {
+          if (ev.enacted === "L") s.policiesLib++;
+          else if (ev.enacted === "F") s.policiesFac++;
+        }
         if (t === "chaos") {
           s.chaosPolicies++;
           continue;
         }
         s.governments++;
+        if (ev.vetoed) s.vetoes++;
         if (ev.claimLibs >= 0 && ev.claimLibs <= 3) s.claims[ev.claimLibs]++;
         if (ev.conflict) s.conflicts++;
         const pw = ev.power;

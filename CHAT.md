@@ -453,3 +453,40 @@ the section clean and compact; scrolling within it is fine.
   hand-computed values; claims summed to governments; role buckets summed to games for every
   player), then rendered and eyeballed it at 1280px and 512px, and confirmed the in-game tab
   builds all 6 panels and scrolls. No stale element references, no JS errors.
+
+---
+
+## Session 15 — 2026-07-23 — Apply the remaining rules from the audit
+
+**User asked for:** implement every rule the session-13 audit flagged as missing, in the same
+style as the rest of the app.
+
+**What I implemented:**
+- **Veto power** (the big one). A **⊘ Veto** toggle appears once 5 Fascist policies are down; arm
+  it, then tap the claimed hand. The government is recorded with `vetoed:true` / `enacted:null`:
+  no policy is enacted, **all 3 drawn cards go to the discard** (`discardTotal` in `derive()` now
+  counts 3 for a vetoed gov instead of 2), and the **election tracker advances** instead of
+  resetting — hitting 3 triggers chaos. The claim still prices normally because the President
+  really did draw 3 cards. Veto and Conflict are mutually exclusive; a veto triggers no power.
+- **"Hitler elected Chancellor" win.** From 3 Fascist policies on, a **⚑ Chancellor was Hitler**
+  button ends the game as a Fascist win and pre-fills that seat as Hitler for role recording. It
+  writes a terminal `{type:'hitler'}` event that draws no cards and moves nothing — restoring the
+  ability (lost in session 13) to record such a game to statistics.
+- **No double investigations.** `derive()` returns an `investigated` set and the Investigation
+  prompt removes those seats (with a fallback so it can never dead-end).
+- **Nested special elections fixed.** `advanceAfter()` no longer overwrites `pendingResume`, so the
+  rotation resumes after the President who *first* broke the order.
+- **Stale Policy Peeks** from an earlier round are struck through and marked "(reshuffled)".
+- Stats/history follow: vetoes counted per player (as President / as Chancellor) and in Game
+  totals, vetoed policies excluded from enacted counts, and `endingOf()` reports
+  "Hitler elected Chancellor".
+- **Verified in headless Chrome:** veto took exactly 3 cards from the draw (6F6L→4F5L), put all 3
+  in the discard (2F1L matching the claim), advanced the tracker to 1 and left the track at 5F/0L;
+  nested special election resumed at seat 1 (not the detour); the Investigation prompt excluded
+  both the President and the already-investigated seat; the Hitler button produced the Fascist
+  game-over; the earlier-round peek rendered struck through. Node-checked the stats layer
+  (ending, veto attribution, vetoed policy not counted). Control column still fits at 720px.
+
+**Left open (asked the user):** tracking the **vote itself** (Ja/Nein counts, ties failing, dead
+players not voting) — that adds a data-entry step to every election and changes the streamlined
+"tap a ratio to submit" flow, so it needs a product decision rather than a rule fix.

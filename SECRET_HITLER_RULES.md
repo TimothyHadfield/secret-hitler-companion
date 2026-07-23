@@ -147,7 +147,21 @@ table and focuses on:
   Chancellor; the last *elected* President is also blocked **unless only 5 players are alive**
   (a 5-player game, or a larger game reduced to 5 by executions). A **chaos** top-deck clears
   both. Ineligible seats are drawn dashed/dimmed and tapping one explains why.
+- **Veto (recordable):** a **⊘ Veto** toggle appears once **5 Fascist policies** are enacted.
+  Arm it, then tap the hand the President claimed: the government is recorded as vetoed —
+  **no policy is enacted, all 3 drawn cards go to the discard, and the Election Tracker
+  advances by 1** (reaching 3 triggers chaos as usual). The claim still prices normally, because
+  the President really did draw 3 cards. Veto and Conflict are mutually exclusive.
+- **"Hitler elected Chancellor" (recordable):** from **3 Fascist policies** on, a
+  **⚑ Chancellor was Hitler** button appears. It ends the game immediately as a Fascist win and
+  pre-fills that player as Hitler for role recording. No cards are drawn — the game ends at the
+  election — so it touches neither the piles nor the tracker.
+- **Investigate Loyalty (enforced):** a player may **not be investigated twice in one game** —
+  previously investigated seats are removed from the Investigation prompt.
+- **Special Election (fixed):** the presidency resumes after the President who **first** broke the
+  normal order, so a *nested* special election no longer overwrites that seat.
+- **Policy Peek staleness:** a peek only describes the pile until the next reshuffle, so a peek
+  recorded in an earlier round is struck through and marked "(reshuffled)".
 
-The app still does not enforce votes or veto *usage*, and it can't auto-detect the
-"Hitler elected Chancellor" win (it doesn't know who Hitler is mid-game). These assume honest
-table play and could become validations later.
+The app still does not track the **vote itself** (Ja/Nein counts, ties failing, dead players not
+voting) — the table votes and then tells the app the outcome. That assumes honest table play.

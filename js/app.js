@@ -74,7 +74,8 @@
       if (!s || !s.players || !Array.isArray(s.events)) return null;
       // backfill fields that may be absent in a game saved by an older version
       if (!Array.isArray(s.undoStack)) s.undoStack = [];
-      if (!s.form) s.form = { chanIdxOverride: null, conflictArmed: false };
+      if (!s.form) s.form = { chanIdxOverride: null, conflictArmed: false, vetoArmed: false };
+      if (s.form.vetoArmed === undefined) s.form.vetoArmed = false;
       if (!s.roundMods) s.roundMods = {};
       if (!("gameOver" in s)) s.gameOver = null;
       if (!("pendingPower" in s)) s.pendingPower = null;
@@ -93,7 +94,7 @@
       roundMods: {},
       // President, suggested Chancellor, and deaths are DERIVED from events.
       // The form only holds the user's current Chancellor tap + conflict arm.
-      form: { chanIdxOverride: null, conflictArmed: false },
+      form: { chanIdxOverride: null, conflictArmed: false, vetoArmed: false },
       pendingChaos: false,
       pendingPower: null, // { type, govIndex, presidentIdx } while a power is unresolved
       gameOver: null, // { winner, reason } once a terminal outcome occurs
@@ -139,6 +140,8 @@
     // term limits: the last *elected* government (reset by a chaos top-deck)
     let lastElectedPres = null,
       lastElectedChan = null;
+    let hitlerElected = null; // set if Hitler was elected Chancellor (game ends there)
+    const investigated = new Set(); // nobody may be investigated twice in one game
     const nextAlive = (idx) => {
       for (let s = 1; s <= N; s++) {
         const j = (idx + s) % N;
@@ -148,7 +151,10 @@
     };
     const advanceAfter = (presIdx, ev) => {
       if (ev && ev.power && ev.power.type === "special" && ev.power.chosenIdx != null) {
-        pendingResume = nextAlive(presIdx); // normal order resumes here after the detour
+        // Normal order resumes after the president who first broke it. A nested
+        // special election must NOT overwrite that seat, or the rotation would
+        // resume from the detour instead of the original break point.
+        if (pendingResume === null) pendingResume = nextAlive(presIdx);
         pointer = ev.power.chosenIdx;
       } else if (pendingResume !== null) {
         pointer = pendingResume;
@@ -187,9 +193,19 @@
         reshuffleIfNeeded();
         return; // chaos does not change the presidential rotation
       }
+      if (ev.type === "hitler") {
+        // Hitler was elected Chancellor with 3+ fascist policies down: the game ends
+        // at the election, so no cards are drawn and nothing else moves.
+        hitlerElected = { presidentIdx: ev.presidentIdx, chancellorIdx: ev.chancellorIdx };
+        evInfo.push({ type: "hitler", presidentIdx: ev.presidentIdx, chancellorIdx: ev.chancellorIdx });
+        return;
+      }
       // gov
       reshuffleIfNeeded(); // safety (normally already reshuffled after prior event)
-      const enacted = ev.enacted;
+      // A vetoed government enacts nothing: all 3 drawn cards are discarded and the
+      // election tracker advances. `enacted` is null in that case.
+      const vetoed = !!ev.vetoed;
+      const enacted = vetoed ? null : ev.enacted;
       // apply a resolved Kill before advancing so the dead player is skipped
       if (ev.power && ev.power.type === "kill" && ev.power.killedIdx != null && !ev.power.wasHitler) {
         deadSet.add(ev.power.killedIdx);
@@ -201,6 +217,7 @@
         libs: ev.claimLibs,
         conflict: !!ev.conflict,
         enacted,
+        vetoed,
         presidentIdx: ev.presidentIdx,
         chancellorIdx: ev.chancellorIdx,
         power: ev.power || null,
@@ -213,8 +230,11 @@
       evInfo.push({ type: "gov", giIdx });
       draw -= 3;
       if (enacted === "L") lib++;
-      else fac++;
-      tracker = 0;
+      else if (enacted === "F") fac++;
+      // a successful veto enacts no policy and advances the election tracker
+      tracker = vetoed ? tracker + 1 : 0;
+      if (ev.power && ev.power.type === "invest" && ev.power.targetIdx != null)
+        investigated.add(ev.power.targetIdx);
       lastChan = ev.chancellorIdx;
       lastElectedPres = ev.presidentIdx;
       lastElectedChan = ev.chancellorIdx;
@@ -287,7 +307,9 @@
     const drawFasc = draw - drawLibs;
     const libEnactedGov = cur.govs.filter((idx) => gi[idx].enacted === "L").length;
     const discardLibs = Math.max(0, cur.claimSum - libEnactedGov);
-    const discardFasc = Math.max(0, cur.govs.length * 2 - discardLibs);
+    // a normal government discards 2 of its 3 cards; a vetoed one discards all 3
+    const discardTotal = cur.govs.reduce((a, idx) => a + (gi[idx].vetoed ? 3 : 2), 0);
+    const discardFasc = Math.max(0, discardTotal - discardLibs);
 
     return {
       fac,
@@ -310,6 +332,8 @@
       deadSet,
       termLimited,
       aliveCount,
+      investigated,
+      hitlerElected,
     };
   }
 
@@ -561,8 +585,10 @@
           const cards = [];
           for (let k = 0; k < 3; k++) cards.push(k < 3 - ev.libs ? "F" : "L");
           const hand =
-            `<div class="miniHand">` + cards.map((c) => `<div class="miniCard ${c}"></div>`).join("") + `</div>`;
-          const side = `<div class="odds">${Prob.fmtPct(ev.prob)}</div>` + presDetails(ev);
+            `<div class="miniHand${ev.vetoed ? " vetoed" : ""}">` +
+            cards.map((c) => `<div class="miniCard ${c}"></div>`).join("") +
+            `</div>`;
+          const side = `<div class="odds">${Prob.fmtPct(ev.prob)}</div>` + presDetails(ev, d.round);
           rows.push(`<div class="pres-row">${hand}<div class="pres-side">${side}</div></div>`);
         }
       }
@@ -716,6 +742,13 @@
     });
 
     $("btnConflict").classList.toggle("on", state.form.conflictArmed);
+    // Veto unlocks at 5 fascist policies; "Chancellor was Hitler" is only a win
+    // once 3 fascist policies are down.
+    const vetoOn = d.fac >= 5;
+    $("btnVeto").classList.toggle("hidden", !vetoOn);
+    $("btnVeto").classList.toggle("on", vetoOn && !!state.form.vetoArmed);
+    $("btnConflict").disabled = vetoOn && !!state.form.vetoArmed;
+    $("btnHitlerChan").classList.toggle("hidden", d.fac < 3);
   }
 
   // ------------------------------ role recording -----------------------------
@@ -813,7 +846,7 @@
       firstPres: g.firstPres || 0,
       events: g.events || [],
       roundMods: g.roundMods || {},
-      form: { chanIdxOverride: null, conflictArmed: false },
+      form: { chanIdxOverride: null, conflictArmed: false, vetoArmed: false },
       result: g.result,
       review: true,
       recordingRoles: false,
@@ -897,6 +930,13 @@
         tr.innerHTML =
           `<td>${idx + 1}</td><td class="tag-round">—</td><td>⚠ Chaos top-deck</td><td>—</td><td>—</td><td>—</td>` +
           `<td>${ev.enacted === "L" ? "🟦 Lib" : "🟥 Fac"}</td><td>—</td>`;
+      } else if (ev.type === "hitler") {
+        tr.className = "ev-chaos";
+        tr.innerHTML =
+          `<td>${idx + 1}</td><td class="tag-round">—</td><td>⚑ Hitler elected Chancellor</td>` +
+          `<td>${escapeHtml(state.players[ev.presidentIdx].name)}</td>` +
+          `<td>${escapeHtml(state.players[ev.chancellorIdx].name)}</td><td>—</td>` +
+          `<td>Fascists win</td><td>—</td>`;
       } else {
         const g = d.gi[ev.giIdx];
         const ratio = RATIOS[g.libs];
@@ -904,12 +944,14 @@
           `<td>${idx + 1}</td>` +
           `<td class="tag-round">${g.round + 1}</td>` +
           `<td><span class="ratio-name ${ratio.cls}">${ratio.name}</span>${
+            g.vetoed ? ` <span style="color:var(--gold)">⊘ vetoed</span>` : ""
+          }${
             g.conflict ? ` <span style="color:var(--fac-2)">⚔ conflict ${escapeHtml(state.players[g.chancellorIdx].name)}</span>` : ""
           }${powerAnnotation(g.power)}</td>` +
           `<td>${escapeHtml(state.players[g.presidentIdx].name)}</td>` +
           `<td>${escapeHtml(state.players[g.chancellorIdx].name)}</td>` +
           `<td>${ratio.sub}</td>` +
-          `<td>${g.enacted === "L" ? "🟦 Lib" : "🟥 Fac"}</td>` +
+          `<td>${g.vetoed ? "— (veto)" : g.enacted === "L" ? "🟦 Lib" : "🟥 Fac"}</td>` +
           `<td><b style="color:var(--gold)">${Prob.fmtPct(g.prob)}</b></td>`;
       }
       tb.appendChild(tr);
@@ -962,8 +1004,11 @@
       return;
     }
     const presIdx = d0.presIdx;
-    const conflict = !!state.form.conflictArmed && (libs === 1 || libs === 2);
-    const enacted = inferEnacted(libs, conflict);
+    // Veto is only unlocked once 5 fascist policies are down. A vetoed government
+    // enacts nothing, discards all 3 cards and advances the election tracker.
+    const vetoed = !!state.form.vetoArmed && d0.fac >= 5;
+    const conflict = !vetoed && !!state.form.conflictArmed && (libs === 1 || libs === 2);
+    const enacted = vetoed ? null : inferEnacted(libs, conflict);
     pushUndo();
     state.events.push({
       type: "gov",
@@ -972,25 +1017,48 @@
       claimLibs: libs,
       conflict,
       enacted,
+      vetoed,
     });
-    state.form = { chanIdxOverride: null, conflictArmed: false };
+    state.form = { chanIdxOverride: null, conflictArmed: false, vetoArmed: false };
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-    // does this fascist policy trigger a presidential power?
+    // does this fascist policy trigger a presidential power? (a veto enacts none)
     const d1 = derive();
     if (enacted === "F") {
       const power = powerForFascistCount(d1.fac);
       if (power) state.pendingPower = { type: power, govIndex: state.events.length - 1, presidentIdx: presIdx };
     }
+    if (vetoed && d1.tracker >= 3) state.pendingChaos = true;
     checkGameOver(d1);
     renderGame();
-    animateEnact(presIdx, enacted);
+    if (!vetoed) animateEnact(presIdx, enacted);
+  }
+
+  // Hitler elected Chancellor with 3+ fascist policies down ⇒ Fascists win now.
+  // The app can't know who Hitler is, so the table declares it.
+  function recordHitlerElected() {
+    if (busy()) return;
+    const d = derive();
+    const chanIdx = effChan(d);
+    if (chanIdx == null) {
+      flashTurn("Tap the player who was elected Chancellor first.");
+      return;
+    }
+    if (d.fac < 3) return;
+    pushUndo();
+    state.events.push({ type: "hitler", presidentIdx: d.presIdx, chancellorIdx: chanIdx });
+    state.form = { chanIdxOverride: null, conflictArmed: false, vetoArmed: false };
+    state.gameOver = { winner: "Fascist", reason: "Hitler was elected Chancellor." };
+    state.autoResult = { winner: "Fascist", hitlerIdx: chanIdx };
+    if (!state.roleDraft) state.roleDraft = { hitlerIdx: null, fascistIdxs: [] };
+    state.roleDraft.hitlerIdx = chanIdx;
+    renderGame();
   }
 
   function recordFail() {
     if (busy()) return;
     pushUndo();
     state.events.push({ type: "fail", presidentIdx: derive().presIdx });
-    state.form = { chanIdxOverride: null, conflictArmed: false };
+    state.form = { chanIdxOverride: null, conflictArmed: false, vetoArmed: false };
     if (derive().tracker >= 3) state.pendingChaos = true;
     renderGame();
   }
@@ -1025,8 +1093,9 @@
   }
 
   // Compact per-presidency detail chips (conflict / power) shown beside the cards.
-  function presDetails(ev) {
+  function presDetails(ev, curRound) {
     let s = "";
+    if (ev.vetoed) s += `<div class="pres-detail c-gold">⊘ vetoed</div>`;
     if (ev.conflict) s += `<div class="pres-detail c-fac">⚔ conflict</div>`;
     const p = ev.power;
     if (p) {
@@ -1037,7 +1106,11 @@
       } else if (p.type === "special" && p.chosenIdx != null) {
         s += `<div class="pres-detail c-gold">⚡→ ${escapeHtml(state.players[p.chosenIdx].name)}</div>`;
       } else if (p.type === "peek" && p.order) {
-        s += `<div class="pres-detail">👁 ${p.order.join("·")}</div>`;
+        // a peek only describes the pile until the next reshuffle (= round boundary)
+        const stale = curRound != null && ev.round != null && ev.round < curRound;
+        s += `<div class="pres-detail${stale ? " stale" : ""}"${
+          stale ? ' title="reshuffled since — no longer describes the pile"' : ""
+        }>👁 ${p.order.join("·")}${stale ? " (reshuffled)" : ""}</div>`;
       } else if (p.type === "kill" && p.killedIdx != null) {
         s += `<div class="pres-detail c-fac">💀 ${escapeHtml(state.players[p.killedIdx].name)}</div>`;
       }
@@ -1081,18 +1154,30 @@
     const pp = state.pendingPower;
     const pres = state.players[pp.presidentIdx];
     const body = $("powerBody");
-    const aliveSel = (id, exclude) =>
+    const aliveSel = (id, exclude, skip) =>
       `<select id="${id}">` +
       state.players
-        .map((p, i) => (i === exclude || p.dead ? "" : `<option value="${i}">${escapeHtml(p.name)}</option>`))
+        .map((p, i) =>
+          i === exclude || p.dead || (skip && skip.has(i))
+            ? ""
+            : `<option value="${i}">${escapeHtml(p.name)}</option>`
+        )
         .join("") +
       `</select>`;
 
     if (pp.type === "invest") {
       if (!powerDraft) powerDraft = { targetIdx: null, party: null };
+      // nobody may be investigated twice in the same game
+      let seen = d.investigated;
+      const anyLeft = state.players.some(
+        (p, i) => i !== pp.presidentIdx && !p.dead && !seen.has(i)
+      );
+      if (!anyLeft) seen = new Set(); // never dead-end the prompt
       body.innerHTML =
         `<div class="power-title">🔍 Investigation — <span class="who">${escapeHtml(pres.name)}</span> investigates a player</div>` +
-        `<div class="power-field"><label>Who was investigated?</label>${aliveSel("pwWho", pp.presidentIdx)}</div>` +
+        `<div class="power-field"><label>Who was investigated? ` +
+        `<span class="muted" style="font-weight:400">(already-investigated players are excluded)</span></label>` +
+        `${aliveSel("pwWho", pp.presidentIdx, seen)}</div>` +
         `<div class="power-field"><label>Their party membership</label> ` +
         `<span class="seg"><button id="pwLib" class="${powerDraft.party === "L" ? "sel L" : ""}">Liberal</button>` +
         `<button id="pwFac" class="${powerDraft.party === "F" ? "sel F" : ""}">Fascist</button></span></div>` +
@@ -1259,6 +1344,8 @@
       kv("Failed elections", p.failedElections) +
       kv("Conflicts as Chancellor", p.conflictsAsChancellor) +
       kv("Conflicts as President", p.conflictsAsPresident) +
+      kv("Vetoes as President", p.vetoesAsPresident) +
+      kv("Vetoes as Chancellor", p.vetoesAsChancellor) +
       kv("Enacted Liberal", p.libEnactedAsChancellor) +
       kv("Enacted Fascist", p.facEnactedAsChancellor) +
       kv("Times executed", p.timesKilled) +
@@ -1308,6 +1395,7 @@
       kv("Liberal policies", s.policiesLib) +
       kv("Fascist policies", s.policiesFac) +
       kv("Conflicts", s.conflicts) +
+      kv("Vetoed governments", s.vetoes) +
       kv("Chaos top-decks", s.chaosPolicies) +
       kv("Investigations", s.investigations) +
       kv("Policy peeks", s.peeks) +
@@ -1472,8 +1560,15 @@
     $("btnFail").onclick = recordFail;
     $("btnConflict").onclick = () => {
       state.form.conflictArmed = !state.form.conflictArmed;
+      if (state.form.conflictArmed) state.form.vetoArmed = false;
       renderControls(derive());
     };
+    $("btnVeto").onclick = () => {
+      state.form.vetoArmed = !state.form.vetoArmed;
+      if (state.form.vetoArmed) state.form.conflictArmed = false;
+      renderControls(derive());
+    };
+    $("btnHitlerChan").onclick = recordHitlerElected;
     $("chaosLib").onclick = () => resolveChaos("L");
     $("chaosFac").onclick = () => resolveChaos("F");
     $("chaosBack").onclick = undoLast;

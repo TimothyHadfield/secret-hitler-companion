@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-23 (after session 14)._
+_Last updated: 2026-07-23 (after session 15)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -80,7 +80,10 @@ table game, not a game engine. Feature pillars:
   are **derived from the event log** — nothing turn-related is stored, which is why Undo/resume
   "just work".
 - **Event model:** `state.events` is ordered, mixed: `{type:'gov', presidentIdx, chancellorIdx,
-  claimLibs, conflict, enacted, power?}`, `{type:'fail', presidentIdx}`, `{type:'chaos', enacted}`.
+  claimLibs, conflict, enacted, vetoed, power?}`, `{type:'fail', presidentIdx}`,
+  `{type:'chaos', enacted}`, `{type:'hitler', presidentIdx, chancellorIdx}` (Hitler elected
+  Chancellor — terminal, draws no cards). A **vetoed** gov has `enacted:null`, discards all 3
+  cards and advances the tracker.
 - **`state.form`** only holds transient UI: `{chanIdxOverride, conflictArmed}`.
 - **`renderGame()`** calls the sub-renderers and then `saveActive()`. Rendering is full-redraw.
 
@@ -102,6 +105,14 @@ table game, not a game engine. Feature pillars:
   only 5 players are alive** (`aliveCount > 5` guard — covers a 5-player game and a bigger game
   cut to 5 by executions). A **chaos** top-deck clears both. Termed seats render dashed/dimmed
   (never the sitting President) and tapping one explains why instead of selecting them.
+- **Veto is modelled as a gov that enacts nothing.** Armed via the **⊘ Veto** toggle (visible only
+  at 5+ fascist policies), it still consumes 3 cards and still prices the President's claim, but
+  increments the tracker instead of resetting it and discards 3 instead of 2 (`discardTotal` in
+  `derive()` accounts for this). Chaos still fires if the tracker reaches 3.
+- **Other enforced rules:** nobody may be **investigated twice** in a game (`derive().investigated`
+  filters the prompt); a **nested special election** keeps the *first* resume seat so the rotation
+  returns to the original break point; a **Policy Peek from an earlier round** is struck through as
+  "(reshuffled)" since a reshuffle invalidates it.
 - **No native browser dialogs, ever.** `alert`/`confirm` are replaced by `askConfirm()`
   (in-app `#confirmModal`) and `showToast()`; the ugly "site says…" bar must never appear.
 - **Enacted policy is inferred, not asked:** Coal(3F)→Fascist, Bronze(3L)→Liberal,
@@ -239,10 +250,8 @@ Every overlay (power / chaos / game-over) has a **↶ Back** button. Powers bloc
 ## Known limitations / not yet done
 - **No online/multiplayer.** Persistence is per-browser/device (localStorage); a game on the
   laptop won't appear on the phone. Private/incognito or cleared data loses saves.
-- **"Hitler elected Chancellor" win is not auto-detected** (the app doesn't know who Hitler is
-  mid-game), and since **Quit game** replaced the old manual "End game", such a game **cannot be
-  saved to statistics** — only auto-detected endings reach the role-recording panel. A
-  "the elected Chancellor was Hitler" button (once 3 Fascist policies are down) would close this.
+- **Votes are not tracked** (Ja/Nein counts, ties failing, dead players not voting). The table
+  votes and tells the app the outcome — this is the one election rule still left to honest play.
 - No enforcement of term limits / votes / veto *usage* (companion assumes honest table play).
 - No history-row editing/deleting (Undo is the only correction tool; it steps back from the end).
 - No posterior on *whether* a claim was honest — the model computes P(hand | assumed lies).
