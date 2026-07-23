@@ -1,0 +1,100 @@
+rules_version = '2';
+
+// ============================================================================
+// Security rules for the Secret Hitler companion.
+//
+// These rules are the ENTIRE security boundary. There is no server and no Cloud
+// Functions (those need the paid plan), so anything not forbidden here is
+// allowed to any signed-in user on the internet. Deploy with:
+//     firebase deploy --only firestore:rules
+// Design notes live in BACKEND_PLAN.md.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid()      { return request.auth.uid; }
+
+    // Membership check. Reads the parent group doc, so it costs ONE document
+    // read per query (not per document returned) — which is exactly why
+    // memberUids is denormalised onto the group instead of living only in the
+    // members subcollection.
+    function group(gid) {
+      return get(/databases/$(database)/documents/groups/$(gid)).data;
+    }
+    function isMember(gid) {
+      return signedIn() && uid() in group(gid).memberUids;
+    }
+
+    // ---- profiles: readable by any signed-in user, writable only by you ----
+    match /profiles/{userId} {
+      allow read:   if signedIn();
+      allow create: if signedIn() && uid() == userId
+                    && request.resource.data.displayName is string
+                    && request.resource.data.displayName.size() > 0
+                    && request.resource.data.displayName.size() <= 60;
+      allow update: if signedIn() && uid() == userId
+                    && request.resource.data.displayName is string
+                    && request.resource.data.displayName.size() > 0
+                    && request.resource.data.displayName.size() <= 60;
+      allow delete: if false; // deleting a profile would orphan game history
+    }
+
+    match /groups/{groupId} {
+
+      // 'get' is open to any signed-in user because the random group id in an
+      // invite link IS the secret that grants entry. 'list' stays CLOSED so
+      // groups can never be enumerated — do not loosen it.
+      allow get:  if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+                    && request.resource.data.ownerUid == uid()
+                    && request.resource.data.memberUids == [uid()]
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 60
+                    && request.resource.data.inviteCode is string;
+
+      // Two distinct cases:
+      //  1. an existing member editing the group (rename, roster changes)
+      //  2. a NON-member joining via an invite link — allowed to append only
+      //     their OWN uid and to change nothing else. Pinning every other
+      //     field is what stops a stranger renaming or hijacking the group.
+      allow update: if signedIn() && (
+                      isMember(groupId)
+                      || (
+                        request.resource.data.memberUids == resource.data.memberUids.concat([uid()])
+                        && request.resource.data.name       == resource.data.name
+                        && request.resource.data.ownerUid   == resource.data.ownerUid
+                        && request.resource.data.inviteCode == resource.data.inviteCode
+                      )
+                    );
+
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
+
+      // ---- seats: a person who plays in this group, account optional ----
+      match /members/{memberId} {
+        allow read, create, update, delete: if isMember(groupId);
+      }
+
+      // ---- recorded games ----
+      match /games/{gameId} {
+        allow read:   if isMember(groupId);
+        allow create: if isMember(groupId)
+                      && request.resource.data.createdBy == uid()
+                      && request.resource.data.events is list
+                      && request.resource.data.seats is list
+                      && request.resource.data.result is map;
+        // Recorded history is append-only and never rewritten.
+        allow update, delete: if false;
+      }
+    }
+
+    // Anything not matched above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

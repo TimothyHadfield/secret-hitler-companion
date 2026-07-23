@@ -190,11 +190,53 @@ payload is, which is why it was built first.
 
 ---
 
-# EXACT SETUP INSTRUCTIONS (the only part that needs you)
+# SETUP — who does what
 
-Everything else I do. About 5–10 minutes, needs a Google account.
+The Firebase CLI is installed (`firebase-tools`, global npm) and `firestore.rules`,
+`firebase.json` and `firestore.indexes.json` are committed and ready to deploy. That reduces
+the user's job to **one command plus two console toggles**; I do everything else.
+
 **Never enter a credit card — the Spark plan never requires one.** If any screen asks for
-billing or to "upgrade to Blaze", stop and say so; nothing here needs it.
+billing or to "upgrade to Blaze", stop; nothing here needs it.
+
+| # | Who | Task |
+|---|-----|------|
+| A | **User** | Run `firebase login` — interactive browser OAuth, cannot be delegated. |
+| B | **Claude** | `projects:create`, `firestore:databases:create`, `apps:create WEB`, `apps:sdkconfig` (fetches the config itself), wire it in, `deploy --only firestore:rules`. |
+| C | **User** | Two console toggles that no CLI or API exposes: enable the sign-in providers, add the authorised domain. Claude supplies the exact deep links once the project id exists. |
+| D | **Claude** | Build phase 1. |
+
+### Task A — the one command (user)
+
+```bash
+npm install -g firebase-tools    # already done on this machine
+firebase login
+```
+
+A browser opens → choose your Google account → **Allow**. Then say "done".
+Verify any time with `firebase login:list`.
+
+> Why this can't be delegated: it is a first-time OAuth consent. A human must click Allow in a
+> real browser. Everything after it reuses the cached refresh token, so this is a **one-time**
+> cost — not once per task.
+
+### Task C — the two console-only toggles (user)
+
+Both need the project to exist, so they come after task B. Neither is exposed by the CLI:
+enabling Google sign-in provisions an OAuth client and needs a support email chosen by a human.
+
+1. **Sign-in providers** — `https://console.firebase.google.com/project/<ID>/authentication/providers`
+   - **Get started** → **Email/Password** → enable the *first* toggle only → **Save**
+   - **Add new provider** → **Google** → toggle on → pick your email as support email → **Save**
+2. **Authorised domain** — `https://console.firebase.google.com/project/<ID>/authentication/settings`
+   - **Authorised domains** → **Add domain** → `timothyhadfield.github.io`
+     (no `https://`, no trailing slash). Without it, login works locally but fails on the live site.
+
+---
+
+## Fallback: doing it all by hand in the console
+
+Only needed if the CLI route fails. Otherwise ignore this section.
 
 > Firebase's console changes its wording from time to time. If a button isn't named exactly as
 > written below, look for the closest match — and if something looks genuinely different, say
