@@ -1,0 +1,9 @@
+{
+  "extends": ["development"],
+  "hints": {
+    "compat-api/html": ["default", {
+      "ignore": ["meta[name=theme-color]"]
+    }],
+    "button-type": "off"
+  }
+}

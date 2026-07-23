@@ -19,7 +19,7 @@
 <body>
   <div class="wrap">
     <div class="topbar" id="topbar">
-      <h1>Secret&nbsp;Hitler <span class="muted" style="font-size:14px">companion</span></h1>
+      <h1>Secret&nbsp;Hitler <span class="muted brand-sub">companion</span></h1>
       <div class="spacer"></div>
       <button id="btnStats" class="ghost">Statistics</button>
     </div>
@@ -112,8 +112,8 @@
 
      <div id="historyTab" class="tab-panel hidden">
       <div class="panel">
-        <h3 style="margin-top:0">History <span class="muted" style="font-size:13px">(retrospective odds update as the round unfolds)</span></h3>
-        <div style="overflow-x:auto">
+        <h3 class="hist-title">History <span class="muted hist-note">(retrospective odds update as the round unfolds)</span></h3>
+        <div class="scroll-x">
           <table class="hist" id="histTable">
             <thead>
               <tr><th>#</th><th>Rd</th><th>Event</th><th>Pres.</th><th>Chanc.</th><th>Hand</th><th>Enacted</th><th>Odds</th></tr>
@@ -135,7 +135,7 @@
           <div class="power-title">⚠ Three failed elections</div>
           <p>The top policy is enacted automatically (Chaos). What was the top-decked policy?</p>
           <div class="control-row">
-            <button id="chaosLib" class="primary" style="background:var(--lib);border-color:var(--lib-2)">Liberal</button>
+            <button id="chaosLib" class="primary btn-lib">Liberal</button>
             <button id="chaosFac" class="primary">Fascist</button>
           </div>
         </div>
@@ -160,12 +160,15 @@
         <button id="btnBackFromStats" class="backbtn" title="Back"><span class="arw">←</span></button>
       </div>
       <div class="stats-body" id="statsBody"></div>
-      <div class="row" style="margin-top:12px">
+      <div class="row stats-tools">
         <button id="btnExportStats" class="ghost">Export data</button>
         <button id="btnImportStats" class="ghost">Import data</button>
         <button id="btnClearStats" class="ghost">Clear all statistics</button>
-        <!-- kept out of the layout; opened by the Import button -->
-        <input id="importFile" type="file" accept="application/json,.json" class="hidden">
+        <!-- Kept out of the layout and opened by the Import button, but it still
+             needs an accessible name for anything that reaches it directly. -->
+        <input id="importFile" type="file" accept="application/json,.json" class="hidden"
+               title="Choose a statistics export file to import"
+               aria-label="Choose a statistics export file to import">
       </div>
     </section>
     <!-- in-app confirm dialog (replaces the browser's native confirm/alert) -->
