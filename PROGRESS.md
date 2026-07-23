@@ -40,6 +40,26 @@ _Last updated: 2026-07-23 (after session 20)._
   trusting the image size. To test persistence across "reloads", run two Chrome processes sharing
   `--user-data-dir`. Working examples live in the session scratchpad but the pattern above is
   enough to rebuild them.
+- **Testing cloud/account/group features is DIFFERENT — `--virtual-time-budget` does not work
+  for them.** Firebase Auth's IndexedDB init never completes under virtual time, so
+  `onAuthStateChanged` never fires and the page hangs. Instead drive the page over **real time
+  via CDP**: launch `chrome --headless --remote-debugging-port=<port> --user-data-dir=<fresh>`,
+  connect with Node 24's built-in `WebSocket` (no dependency), navigate, and poll a result
+  `<div>`/`document.title`. The reusable driver is `cdp.js` in the session scratchpad. Use a
+  **fresh `--user-data-dir` per run** (a stale one throws "Device or resource busy" and IndexedDB
+  keeps the previous session). The test writes real accounts (`claude-*@example.com`) and docs
+  into the **live** Firebase project.
+- **ALWAYS clean up after a cloud test — it mutates production.** Delete every test account and
+  empty the database, then confirm only `timhadfield7@gmail.com` remains:
+  `firebase auth:export <tmp>.json --format=json` to enumerate, delete each `claude-*@example.com`
+  by signing in (its password is derived from the email — see `purge-users.js` in the scratchpad)
+  and calling `accounts:delete`, then
+  `firebase firestore:delete --all-collections --force --project secret-hitler-companion-th`
+  (run twice; the second must list nothing). Also `Stop-Process` any leftover `--headless` Chrome.
+- **Live backend facts + the ~5-min one-time setup a user must do are in `BACKEND_PLAN.md`.**
+  Firebase CLI is logged in as `timhadfield7@gmail.com`; deploy rules with
+  `firebase deploy --only firestore:rules`. The Firestore emulator will NOT start on this machine,
+  so `rules.prod.test.js` tests the **deployed** rules against the live project (49 assertions).
 - **Style:** match the existing code (vanilla JS in one IIFE in `app.js`, full-redraw rendering,
   original stylised CSS for the board — never reproduce the real game's printed artwork/logo).
 
@@ -52,9 +72,16 @@ table game, not a game engine. Feature pillars:
 3. **Game statistics** — per-player + cross-game data, plus a reviewable per-game archive.
 4. **Accounts + groups** — live: sign in, sync across devices, share an archive with a group.
 
-## Current status: ✅ live and working
+## Current status: ✅ live and working (as of session 20)
 - Static site (HTML/CSS/vanilla JS), auto-deployed via **GitHub Pages** on push to `main`.
 - All features below verified with headless-Chrome smoke tests + screenshots (no build step).
+- **All four pillars are shipped.** The full backend plan (accounts → cross-device sync →
+  groups → guest-linking/invitations) is **done and live**; nothing there needs the user.
+- **Biggest open idea:** the *honesty posterior* (P(claim honest) via a prior on lying) — the
+  one change that would alter what the headline number means; see the last section. Everything
+  else pending is refinement (vote tracking — undecided; accessibility — untouched).
+- **The user periodically wipes the chat and relies entirely on this file + `CHAT.md`.** Keep
+  both current after every meaningful change.
 
 ## Repository / hosting
 - Repo: **https://github.com/TimothyHadfield/secret-hitler-companion** (public).
@@ -72,7 +99,7 @@ table game, not a game engine. Feature pillars:
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, and groups. Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only test harness (`rules.prod.test.js`). Has its own `package.json`; the site itself stays dependency-free. |
+| `test/` | Dev-only. `rules.prod.test.js` = 49 adversarial assertions against the **deployed** rules (real accounts on the live project, torn down at the end). `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |

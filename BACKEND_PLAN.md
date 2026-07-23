@@ -1,7 +1,10 @@
 # Backend Plan — accounts, groups, shared statistics
 
-> Status: **phases 0 and 1 are SHIPPED and live.** Phase 2 (groups) is next. **Hard constraints:** permanently free, sustainable long-term, no credit card, no
-> server to operate. Real-time/online play is explicitly **out of scope**.
+> Status: **ALL phases (0–3) SHIPPED and live** as of session 20 — export/import, accounts +
+> cross-device sync, groups + invite links, and guest-linking + invitations-by-person. Security
+> rules hardened and adversarially tested (49 assertions). Nothing here needs the user.
+> **Hard constraints (met):** permanently free, sustainable long-term, no credit card, no server
+> to operate. Real-time/online play is explicitly **out of scope**.
 
 ## The live project (facts, not plans)
 
@@ -195,8 +198,8 @@ rather than re-fetched on every render.
 |---|---|---|
 | 0 | **Export / import** ✅ shipped | JSON backup + merge-by-id; also the account-seeding payload. |
 | 1 | **Auth + personal cloud sync** ✅ shipped | Google + email/password login, `profiles`, auto-created solo group, background reconciler behind localStorage, consent-gated upload. |
-| 2 | **Groups** | `groups` + `members` + invite links; group stats reuse `renderStatsInto()` over a different game list. |
-| 3 | **Link seats to accounts** | Attach a `uid` to an existing member; "my stats across all groups". Friends, if still wanted, are a two-person group. |
+| 2 | **Groups** ✅ shipped | `groups` + `members` + invite links (`?join=<id>`); seats resolved at upload; stats scoped per group; rename/leave. |
+| 3 | **Link seats + invitations** ✅ shipped | "That's me" claims a guest seat (`uid` set); invitations-by-person inbox instead of a friend graph; revocable invite links (`joinOpen`); guest removal. |
 
 **On first login, offer to upload the local archive** — that is exactly what phase 0's export
 payload is, which is why it was built first.
