@@ -105,25 +105,74 @@
   const rolesOn = () =>
     (settings.lieDetection || settings.boardOdds) && typeof Honesty !== "undefined";
 
-  // Build the role-posterior input from derived rounds/govs and run it. Shared by
-  // derive() (live, gated by the switch) and the game record (a permanent
-  // snapshot, computed regardless of the switch). Returns pFascist[] or null.
+  // Build the role-posterior input from derived rounds/govs and run it. Feeds the
+  // engine every signal the app records (claims, enactments, conflicts,
+  // nominations, investigations, executions, special elections, policy peeks) plus
+  // the hard role deductions. Shared by derive() (live, gated by the switch) and
+  // the game record (a permanent snapshot). Returns the full {pFascist,pHitler,…}
+  // result, or null if the engine is absent / there's nothing to analyse.
   function analyzeRoles(rounds, gi, hitlerElected) {
     if (typeof Honesty === "undefined" || !gi.length) return null;
-    const forcedFascist = [];
-    // Hitler elected Chancellor reveals that chancellor; an executed Hitler
-    // reveals the victim. Both are certain fascists.
-    if (hitlerElected && hitlerElected.chancellorIdx != null)
-      forcedFascist.push(hitlerElected.chancellorIdx);
-    gi.forEach((g) => {
-      if (g.power && g.power.type === "kill" && g.power.wasHitler && g.power.killedIdx != null)
-        forcedFascist.push(g.power.killedIdx);
-    });
     const n = state.players.length;
+    const forcedFascist = [];
+    let forcedHitler = null;
+    const notHitler = new Set();
+    const investigations = [];
+    const kills = [];
+    const specials = [];
+    const peekChecks = [];
+
+    // Hitler elected Chancellor, or an executed Hitler, reveals Hitler exactly.
+    if (hitlerElected && hitlerElected.chancellorIdx != null) {
+      forcedFascist.push(hitlerElected.chancellorIdx);
+      forcedHitler = hitlerElected.chancellorIdx;
+    }
+
+    gi.forEach((g) => {
+      const p = g.power;
+      // A chancellor seated with 3+ fascist policies down, in a game that did NOT
+      // end at that election, is provably not Hitler (else Fascists would've won).
+      if (g.facBefore >= 3 && g.chancellorIdx != null) notHitler.add(g.chancellorIdx);
+      if (!p) return;
+      if (p.type === "invest" && p.targetIdx != null && p.party)
+        investigations.push({ investIdx: g.presidentIdx, targetIdx: p.targetIdx, party: p.party });
+      else if (p.type === "kill" && p.killedIdx != null) {
+        if (p.wasHitler) { forcedFascist.push(p.killedIdx); forcedHitler = p.killedIdx; }
+        else { kills.push({ killerIdx: g.presidentIdx, victimIdx: p.killedIdx }); notHitler.add(p.killedIdx); }
+      } else if (p.type === "special" && p.chosenIdx != null)
+        specials.push({ chooserIdx: g.presidentIdx, chosenIdx: p.chosenIdx });
+    });
+
+    // Policy Peek vs. the next hand: the peek names the top 3, which the next
+    // government in the SAME round then draws (no reshuffle between). Comparing
+    // the peek's liberal count to that government's claim is a cross-check on the
+    // same three cards — disagreement means one of the two lied.
+    rounds.forEach((r) => {
+      for (let k = 0; k < r.govs.length - 1; k++) {
+        const g = gi[r.govs[k]];
+        if (g.power && g.power.type === "peek" && Array.isArray(g.power.order)) {
+          const peekLibs = g.power.order.filter((c) => c === "L").length;
+          const next = gi[r.govs[k + 1]];
+          peekChecks.push({
+            peekerIdx: g.presidentIdx,
+            nextPresIdx: next.presidentIdx,
+            agree: peekLibs === next.libs,
+          });
+        }
+      }
+    });
+
     return Honesty.analyzeGame({
       playerCount: n,
       fascistCount: Math.ceil(n / 2) - 1, // fascists incl. Hitler
+      cautiousHitler: n >= 7, // Hitler is blind to the fascists in 7+ games
       forcedFascist,
+      forcedHitler,
+      notHitler: [...notHitler],
+      investigations,
+      kills,
+      specials,
+      peekChecks,
       rounds: rounds.map((r) => ({
         startN: r.startN,
         startL: r.startL,
@@ -136,13 +185,16 @@
           enacted: gi[idx].enacted,
           vetoed: gi[idx].vetoed,
           conflict: gi[idx].conflict,
+          facBefore: gi[idx].facBefore,
+          libBefore: gi[idx].libBefore,
         })),
       })),
-    }).pFascist;
+    });
   }
 
   // A permanent snapshot for the saved game, computed even when the switch is off
-  // (so every recorded game carries the estimate). null if the engine is absent.
+  // (so every recorded game carries the estimate). Returns the full role result
+  // {pFascist, pHitler, …} or null if the engine is absent.
   function computeRoleOdds() {
     const d = derive();
     return analyzeRoles(d.rounds, d.gi, d.hitlerElected);
@@ -306,6 +358,10 @@
         chancellorIdx: ev.chancellorIdx,
         power: ev.power || null,
         prob: null,
+        // policy counts BEFORE this government enacts — used by the role model's
+        // state-dependent push rates and the "not Hitler past 3F" deduction.
+        facBefore: fac,
+        libBefore: lib,
       };
       const giIdx = gi.push(info) - 1;
       rounds[round].govs.push(giIdx);
@@ -412,9 +468,11 @@
       }
     });
 
-    // Role posterior (opt-in): P(each player is fascist) from the same model,
-    // enumerated over assignments. Purely a read — never feeds gameplay.
-    const roleOdds = rolesOn() ? analyzeRoles(rounds, gi, hitlerElected) : null;
+    // Role posterior (opt-in): P(each player is fascist / Hitler) from the same
+    // model, enumerated over assignments. Purely a read — never feeds gameplay.
+    const roleInfo = rolesOn() ? analyzeRoles(rounds, gi, hitlerElected) : null;
+    const roleOdds = roleInfo ? roleInfo.pFascist : null;
+    const roleHitler = roleInfo ? roleInfo.pHitler : null;
 
     // current draw / discard composition
     const cur = rounds[round];
@@ -450,6 +508,7 @@
       investigated,
       hitlerElected,
       roleOdds,
+      roleHitler,
     };
   }
 
@@ -978,6 +1037,7 @@
   function saveRoles() {
     if (!roleReady()) return;
     const winner = state.gameOver ? state.gameOver.winner : state.winnerDraft;
+    const ri = computeRoleOdds() || {};
     const record = {
       players: state.players.map((p) => ({ name: p.name })),
       playerCount: state.players.length,
@@ -985,11 +1045,12 @@
       events: state.events,
       roundMods: state.roundMods,
       result: { winner, hitlerIdx: state.roleDraft.hitlerIdx, fascistIdxs: state.roleDraft.fascistIdxs.slice() },
-      // The model's fascist-odds estimate from gameplay alone (the recorded roles
-      // above are the ground TRUTH — storing the prediction beside them is what
-      // lets the model be calibrated later; see HONESTY_MODEL.md §7). Computed
+      // The model's fascist/Hitler-odds estimate from gameplay alone (the recorded
+      // roles above are the ground TRUTH — storing the prediction beside them is
+      // what lets the model be calibrated later; see HONESTY_MODEL.md §7). Computed
       // unconditionally so the snapshot is permanent regardless of the setting.
-      roleOdds: computeRoleOdds(),
+      roleOdds: ri.pFascist || null,
+      roleHitler: ri.pHitler || null,
       date: new Date().toISOString(),
       // Which group this game belongs to. Null when signed out — sync assigns it
       // to whatever group is active when the game is eventually uploaded.
@@ -1791,6 +1852,92 @@
     );
   }
 
+  // Calibration harness (§12.10): scores the stored fascist-odds predictions
+  // against the recorded true roles across every game that has both. Tells us —
+  // from the user's OWN games — whether the model beats just guessing the base
+  // rate. Returns null when there isn't enough data to say anything yet.
+  function calibrationStats() {
+    const games = (Stats.loadAllGames ? Stats.loadAllGames() : Stats.loadGames())
+      .filter((g) => g.result && Array.isArray(g.roleOdds) && g.roleOdds.some((x) => x != null));
+    if (games.length < 3) return { games: games.length, enough: false };
+
+    const clamp01 = (p) => Math.max(1e-6, Math.min(1 - 1e-6, p));
+    const isFascist = (g, i) =>
+      i === g.result.hitlerIdx || (g.result.fascistIdxs || []).includes(i);
+
+    let n = 0, brier = 0, logloss = 0, brierBase = 0;
+    let topHits = 0, topTotal = 0;
+    const bins = Array.from({ length: 5 }, () => ({ sum: 0, fasc: 0, n: 0 }));
+
+    games.forEach((g) => {
+      const pc = g.playerCount || (g.players ? g.players.length : g.roleOdds.length);
+      const f = Math.ceil(pc / 2) - 1;
+      const base = f / pc;
+      const preds = [];
+      for (let i = 0; i < pc; i++) {
+        const p = g.roleOdds[i];
+        if (p == null) continue;
+        const y = isFascist(g, i) ? 1 : 0;
+        n++;
+        brier += (p - y) * (p - y);
+        brierBase += (base - y) * (base - y);
+        logloss += -(y * Math.log(clamp01(p)) + (1 - y) * Math.log(1 - clamp01(p)));
+        const b = Math.min(4, Math.floor(p * 5));
+        bins[b].sum += p; bins[b].fasc += y; bins[b].n++;
+        preds.push({ i, p, y });
+      }
+      // "top-f suspects": are the f highest-odds seats the actual fascists?
+      preds.sort((a, b) => b.p - a.p);
+      for (let k = 0; k < f && k < preds.length; k++) { topTotal++; if (preds[k].y) topHits++; }
+    });
+    if (!n) return { games: games.length, enough: false };
+    return {
+      games: games.length, enough: true, seats: n,
+      brier: brier / n, brierBase: brierBase / n,
+      skill: 1 - (brier / n) / (brierBase / n || 1), // Brier skill score vs base rate
+      logloss: logloss / n,
+      topAccuracy: topTotal ? topHits / topTotal : 0,
+      bins: bins.map((b, i) => ({
+        lo: i * 20, hi: i * 20 + 20,
+        n: b.n, predicted: b.n ? b.sum / b.n : 0, actual: b.n ? b.fasc / b.n : 0,
+      })),
+    };
+  }
+
+  function calibrationHtml() {
+    if (!lieOn()) return "";
+    const c = calibrationStats();
+    if (!c) return "";
+    if (!c.enough)
+      return (
+        `<div class="panel lie-col"><h3 class="sec-title">Model calibration</h3>` +
+        `<p class="muted" style="margin:0">Needs at least 3 recorded games with a stored fascist-odds ` +
+        `read to score the model (have ${c.games}). Keep recording games — the prediction is saved ` +
+        `beside the true roles every time.</p></div>`
+      );
+    const skillPct = Math.round(c.skill * 100);
+    const skillWord = c.skill > 0.02 ? "better than" : c.skill < -0.02 ? "WORSE than" : "about the same as";
+    const skillCls = c.skill > 0.02 ? "lie-good" : c.skill < -0.02 ? "lie-bad" : "lie-warn";
+    const rows = c.bins
+      .filter((b) => b.n)
+      .map((b) => barRow(`${b.lo}–${b.hi}%`, Math.round(b.actual * 100), 100,
+        `${b.n} seat${b.n === 1 ? "" : "s"} · said ~${Math.round(b.predicted * 100)}%`))
+      .join("");
+    return (
+      `<div class="panel lie-col"><h3 class="sec-title">Model calibration ` +
+      `<span class="sec-note">${c.games} games · ${c.seats} seats scored</span></h3>` +
+      `<div class="statgrid">` +
+      tile(`<span class="${skillCls}">${skillPct > 0 ? "+" : ""}${skillPct}%</span>`, "Skill vs base rate") +
+      tile(pct(c.topAccuracy), "Top suspects correct") +
+      tile(c.brier.toFixed(3), "Brier (lower better)") +
+      tile(c.brierBase.toFixed(3), "Base-rate Brier") +
+      `</div>` +
+      `<p class="muted" style="margin:8px 0 0">The model is <b>${skillWord}</b> guessing the base rate ` +
+      `on your games. Reliability — when it said a bin, how many actually were fascist:</p>` +
+      `<div class="bar-list" style="margin-top:8px">${rows}</div></div>`
+    );
+  }
+
   function renderStatsInto(container) {
     const s = Stats.summary();
     const gid = container.id + "Games";
@@ -1842,6 +1989,7 @@
       `</div></div>` +
       `<div class="panel"><h3 class="sec-title">How games ended</h3>` +
       `<div class="kv-grid">${endings}</div></div>` +
+      calibrationHtml() +
       `<div class="panel"><h3 class="sec-title">Players ` +
       `<span class="sec-note">tap for the full breakdown</span></h3>` +
       `<div class="player-list">${Stats.playerStats().map(playerCard).join("")}</div></div>` +

@@ -938,3 +938,54 @@ currently under-detected). Higher-ceiling but costs data entry: **chancellor's c
 And the meta-move: **a calibration harness** — every saved game now stores the prediction beside
 the truth, so Brier/log-loss + a reliability diagram would tell us, from the user's own games,
 whether the model beats guessing. **Recommendation: nominations + calibration harness next.**
+
+---
+
+## Session 25 — all the fascist-odds improvements (Tiers 1–2 + calibration)
+
+**User's brief:** make all the improvements I think we should make, in order.
+
+Did every improvement that uses signals **already recorded** (no new table burden), plus the
+calibration harness. Deliberately deferred the two that need new in-game data capture — **votes**
+and the **chancellor's claim** — since those change the recording flow and are a product call; and
+EM parameter-fitting, which needs data volume the calibration harness now measures.
+
+**`honesty.js` — `analyzeGame` rewritten.** The assignment space is now every **(fascist-set,
+Hitler)** pair (≤360), and it outputs both `P(fascist)` and `P(Hitler)` per seat. New per-assignment
+likelihood factors, all from the existing event log:
+- **Nominations** — a fascist who knows allies (ordinary fascists always; Hitler only in 5–6p)
+  nominates one preferentially.
+- **Investigations** — a liberal investigator reports truth (μ slip), a fascist may lie; a liberal
+  investigator's report is therefore a near-hard constraint that collapses the assignment space.
+- **Executions** — a fascist rarely kills an ally.
+- **Special elections** — a fascist elevates an ally.
+- **Policy-peek vs. next hand** — the peek names the top 3, which the next government draws; a
+  disagreement between the peek and that government's claim implicates both seats.
+- **State-dependent β/γ** — push rates rise with fascist progress / liberal threat, so a forced
+  early fascist policy no longer implicates as hard as a late pushed one.
+- **Cautious Hitler (7+)** — blind to the fascists, plays liberal-safe; fixes the under-detection
+  of a well-played Hitler. Hard "not Hitler" deductions (chancellor past 3F, executed non-Hitler)
+  and exact reveals (Hitler elected/executed) feed in.
+
+**`app.js`** — `derive()` now records `facBefore/libBefore` per government; `analyzeRoles()` builds
+all the new inputs (powers → investigations/kills/specials, peek cross-checks, forced/not-Hitler)
+and returns the full result; games store both `roleOdds` and `roleHitler`.
+
+**Calibration harness** — a **Model calibration** panel on the Statistics screen (gated by lie
+detection): Brier skill vs the base rate, top-f suspect accuracy, and a reliability breakdown,
+computed from the stored predictions vs the recorded roles. Needs ≥3 games.
+
+**Verified:**
+- **64 Node assertions** (was 52), including a **from-scratch brute-force mirror** of the new
+  engine — both pFascist and pHitler, with every factor (nominations, investigations, kills,
+  specials, peeks) on multi-round games incl. chaos/conflict/veto, max diff < 1e-9 — plus
+  directional sanity for each new signal, and the invariants (marginals sum to f; pHitler sums to
+  1; a proven not-Hitler reads 0). Caught and fixed one real bug mid-build (a liberal chancellor's
+  γ was inverted).
+- Headless: an 8-assertion run (3 games → `roleHitler` stored, pHitler sums to 1, calibration panel
+  renders) and a 7-assertion run triggering a real **investigation** power in a 7-player game
+  (board odds + history render, no NaN/crash). Screenshot of the calibration panel confirmed.
+
+**Still deferred (with reason):** correlated fascist behaviour (costs the DP's clean factorisation);
+chancellor-claim capture + vote tracking (new data entry, product call); EM fitting + per-player
+tendencies (needs data — the calibration harness is the prerequisite); uncertainty ranges.

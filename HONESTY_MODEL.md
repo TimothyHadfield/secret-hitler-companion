@@ -691,50 +691,59 @@ recording the enacted policy directly (F3).
 
 ## 12. Improving the fascist/liberal odds — brainstorm (session 23)
 
+> **Session 25 update: Tiers 1–2 and the calibration harness (#10) are now BUILT.** Each item
+> below is tagged ✅ (shipped) or ⏳ (still open). The engine now consumes claims, enactments,
+> conflicts, nominations, investigations, executions, special elections, and policy-peek
+> cross-checks, with state-dependent push rates and a distinct cautious-Hitler role, and outputs
+> both `P(fascist)` and `P(Hitler)` per seat. All of it is exact (enumeration + DP) and checked by
+> a from-scratch brute-force mirror in `test/honesty.test.js` (max diff < 1e-9). Parameters are
+> still fixed defaults — fitting them (#11) waits on data, which the calibration harness now
+> measures.
+
 Ranked by value-per-effort. The current role model uses only **claim + enacted policy + conflict**,
 with fixed team-behaviour parameters. The biggest wins come from feeding it signals the app already
 records but currently ignores.
 
 ### Tier 1 — signals already in the event log, currently unused (cheap, high value)
 
-1. **Nomination choice — who picks whom as Chancellor.** This is arguably the single strongest
+1. ✅ **Nomination choice — who picks whom as Chancellor.** This is arguably the single strongest
    real-table tell and it costs nothing new to record: the president/chancellor pair is already in
    every `gov` event. Fascists disproportionately nominate fascists (to push policy and to dodge a
    liberal chancellor who'd enact the liberal). Model `P(pres nominates a chancellor of team X |
    pres team)` and fold it into each government's likelihood. Over a game, repeated fascist→fascist
    nominations compound fast. **I'd build this first.**
 
-2. **Investigation results.** When a president investigates and the table is told a party, that
+2. ✅ **Investigation results.** When a president investigates and the table is told a party, that
    report is *truth by construction* under any assignment where the investigator is liberal, and a
    possible lie under a fascist investigator (clearing a partner, or framing a liberal). This is a
    near-hard constraint: it collapses huge chunks of the assignment space. The app already records
    `{targetIdx, party}`. Likelihood: `P(reported party | true party of target under A, investigator
    team)`.
 
-3. **Policy Peek vs. the next hand.** A peek names the top 3; absent a reshuffle the next government
+3. ✅ **Policy Peek vs. the next hand.** A peek names the top 3; absent a reshuffle the next government
    draws exactly those cards. The honesty engine already flags the contradiction for *claims* — but
    it never feeds the role posterior. A president whose peek is contradicted by what actually came
    out is very likely fascist. Wire the existing cross-check into `analyzeGame` as evidence.
 
-4. **Execution & special-election targets.** Who a president kills or elevates is informative:
+4. ✅ **Execution & special-election targets.** Who a president kills or elevates is informative:
    fascists rarely execute a fellow fascist and preferentially special-elect one. Weak per-event,
    but free and it accumulates.
 
 ### Tier 2 — model-fidelity fixes (medium effort, fixes systematic errors)
 
-5. **State-dependent β and γ.** Right now the fascist push rates are constant, which *over-penalises
+5. ✅ **State-dependent β and γ.** Right now the fascist push rates are constant, which *over-penalises
    an early fascist policy* (often forced or unlucky) and *under-reacts late* (a fascist policy at
    4–5 F, or when liberals are one from winning, is far more telling). Make β, γ a function of the
    track state (fascist/liberal counts, election tracker, players alive). This is the biggest
    fidelity gain to the signals already in use.
 
-6. **Model Hitler as distinct from a vanilla fascist.** In 7+ player games Hitler doesn't know the
+6. ✅ **Model Hitler as distinct from a vanilla fascist.** In 7+ player games Hitler doesn't know the
    other fascists and *deliberately plays liberal-safe* to avoid execution — enacts liberals, avoids
    conflicts. The current model treats Hitler exactly like a fascist, so a well-played cautious
    Hitler is **systematically under-detected** — a real weakness. Splitting Hitler's behaviour out
    would fix that *and* let us output a separate, honest `P(Hitler)` per seat.
 
-7. **Correlated fascist behaviour.** The model treats governments as conditionally independent given
+7. ⏳ **Correlated fascist behaviour.** The model treats governments as conditionally independent given
    the assignment. Fascists who know each other coordinate — back each other's stories, nominate and
    vote for each other. A pairwise interaction term (fascist pairs nominate/cover each other more
    than chance) would exploit the team structure the independence assumption throws away. This is
@@ -742,37 +751,37 @@ records but currently ignores.
 
 ### Tier 3 — needs new data capture (higher ceiling, taxes the table)
 
-8. **Chancellor's claimed cards.** Capturing what the *chancellor* says they received turns a
+8. ⏳ **Chancellor's claimed cards.** Capturing what the *chancellor* says they received turns a
    one-sided conflict into two claims about the same two cards — it breaks the β/λ confound and is
    the highest-value *new* input. One extra tap per government.
 
-9. **Ja/Nein votes.** Not tracked at all today, and the richest identity signal in real play
+9. ⏳ **Ja/Nein votes.** Not tracked at all today, and the richest identity signal in real play
    (fascists vote up fascist governments, especially the tell-tale ones). Even a Ja/Nein *count* per
    election — one tap-pair — would identify a great deal; per-player votes far more, at a real data-
    entry cost. The standing product question.
 
 ### Tier 4 — inference & calibration (unlocks everything above)
 
-10. **Actually measure it.** Every recorded game now stores the model's `roleOdds` beside the true
+10. ✅ **Actually measure it.** Every recorded game now stores the model's `roleOdds` beside the true
     roles. That is a ready-made test set. Compute **Brier score and log-loss** of `P(fascist)`
     against the recorded roles, and a **reliability diagram** (of the seats it called 70%, were ~70%
     actually fascist?). Compare to the base-rate baseline. Until this exists we don't actually know
     the model is better than guessing `f/n` — this is the cheapest high-value thing to build next
     and it gates whether any of Tier 1–3 is worth it.
 
-11. **Fit the parameters (EM), then per-player tendencies.** Once there are enough games, stop
+11. ⏳ **Fit the parameters (EM), then per-player tendencies.** Once there are enough games, stop
     guessing β, γ, and the lie rates — fit them from the archive (§7), then let each regular player
     have their own shrinkage-estimated style (the timid Hitler, the always-push fascist). For a
     fixed friend group this is where the model stops being generic and starts being *about them*.
 
-12. **Report a range, not a point.** Sweep β, γ over a plausible band and show the resulting
+12. ⏳ **Report a range, not a point.** Sweep β, γ over a plausible band and show the resulting
     interval. "62%, stable across assumptions" and "62%, but anywhere from 45–78%" are different
     claims, and the user deserves to know which they have — especially before anyone acts on a
     number shown on the table.
 
 ### The one caveat that caps all of it
 
-13. **A fixed, public model is exploitable.** The moment players know what the app finds suspicious,
+13. ⏳ **A fixed, public model is exploitable.** The moment players know what the app finds suspicious,
     a strong fascist plays to look liberal, and the *behaviour* signals (β, γ, nominations) erode —
     a pooling equilibrium. Two defences: lean hardest on the **conservation-law hard constraints**
     (which cannot be gamed — a buried liberal is buried regardless of intent), and **fit per-group**

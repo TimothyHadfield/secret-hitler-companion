@@ -104,7 +104,7 @@ table game, not a game engine. Feature pillars:
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
-| `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) by exact enumeration of the ≤120 fascist-sets. Pure functions, Node-tested (incl. brute-force cross-checks). |
+| `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates** and a **distinct cautious-Hitler** role. Pure functions, Node-tested (64 assertions incl. a from-scratch brute-force mirror). |
 | `HONESTY_MODEL.md` | Derivation of the honesty posterior ("how likely is this claim a lie?") — hard-logic layer, generative model, exact inference, calibration plan, cited prior art, and **§11: the design review that decided what v1 ships**. |
 | `BACKEND_PLAN.md` | **Phases 0–3 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
 | `CHAT.md` | Session-by-session log (sessions 1–21). |
@@ -366,6 +366,26 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
     EITHER setting is on. The chip is hidden once roles are recorded (the circle is coloured then).
   - Parameters are fixed defaults, not fitted — EM calibration still deferred (too few games).
     See §11 update + the brainstorm in `HONESTY_MODEL.md` §12 for how to improve the odds.
+- **Role model improvements (session 25) — Tiers 1–2 of the §12 brainstorm, all shipped.** The
+  role posterior now consumes every signal already in the event log, not just claim+enact+conflict:
+  - **Nominations** (a fascist who knows allies nominates one preferentially), **investigations**
+    (a liberal investigator's report is near-truth → a strong constraint), **executions** (fascists
+    avoid killing allies), **special elections** (fascists elevate allies), and **policy-peek vs.
+    next-hand** cross-checks (disagreement implicates the peeker + next president).
+  - **State-dependent push rates:** β/γ rise as fascist policies pile up / liberals near a win, so
+    a *forced* early fascist policy no longer implicates as hard as a late pushed one.
+  - **Hitler is a distinct cautious role in 7+ games** (blind to the fascists, plays liberal-safe),
+    fixing the systematic under-detection of a well-played Hitler; the engine now also outputs
+    **`P(Hitler)` per seat**, stored as `game.roleHitler`.
+  - **Hard Hitler deductions** feed in: a chancellor seated past 3F (game continued) and an
+    executed non-Hitler are pinned as *not Hitler*; an elected/executed Hitler is pinned exactly.
+  - Exact throughout (≤360 assignments × the round DP); the from-scratch brute-force test mirrors
+    every factor (max diff < 1e-9).
+- **Calibration harness (session 25) — §12.10, shipped.** A **Model calibration** panel on the
+  Statistics screen (gated by lie detection) scores the stored `roleOdds` against the recorded true
+  roles across every game: **Brier skill vs the base rate**, **top-f suspect accuracy**, and a
+  **reliability breakdown** (of the seats it called each bin, how many were actually fascist).
+  Needs ≥3 recorded games; tells you — from your own games — whether the model beats guessing.
 
 ## Undo
 - **Full-state snapshots.** `pushUndo()` deep-copies the whole state before each gov / fail /

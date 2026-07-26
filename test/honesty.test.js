@@ -274,12 +274,15 @@ section("7. Role posterior — invariants and sanity");
 
 // --------------------------------------------------------------------------
 section("8. Role posterior vs. a fully independent brute-force");
-// n=5, f=1: only 5 assignments. Enumerate them by hand, and for each enumerate
-// every feasible hand vector explicitly (no DP), to reproduce P(fascist) from
-// first principles. This checks the enumeration AND the per-gov team likelihood.
+// Enumerate every (fascist-set, Hitler) assignment by hand, and for each
+// enumerate every feasible hand vector explicitly (no DP), applying EVERY factor
+// the engine uses — hands, nominations, investigations, kills, specials, peeks.
+// This mirrors analyzeGame from first principles, so a mistake in the recursion,
+// the role behaviour, or any factor cannot hide.
 function bruteRole(game, prm) {
   const p = Object.assign({}, Honesty.DEFAULTS, prm || {});
   const n = game.playerCount, f = game.fascistCount;
+  const cautious = game.cautiousHitler != null ? game.cautiousHitler : n >= 7;
   const rounds = game.rounds.map((r) => {
     const T = r.startL - (r.chaosLibs || 0);
     const chaosN = (r.chaosLibs || 0) + (r.chaosFascs || 0);
@@ -290,9 +293,11 @@ function bruteRole(game, prm) {
     });
     return { govs, T, R, prior: Prob.drawDistribution(r.startN, r.startL) };
   });
-  const sets = Honesty._combinations(n, f)
-    .filter((s) => (game.forcedFascist || []).every((x) => s.has(x)));
-  const roundMassBrute = (r, S) => {
+  const As = Honesty._assignments(n, f, game.forcedFascist, game.forcedHitler, game.notHitler);
+  const roleOf = (A, i) => (i === A.H ? "H" : A.S.has(i) ? "F" : "L");
+  const knows = (role) => role === "F" || (role === "H" && !cautious);
+  const bhv = (A, i, g) => Honesty._roleBehaviour(roleOf(A, i), { fac: g.facBefore || 0, lib: g.libBefore || 0 }, p, cautious);
+  const roundMassBrute = (r, A) => {
     let mass = 0;
     const walk = (j, used, w) => {
       if (j === r.govs.length) {
@@ -302,11 +307,9 @@ function bruteRole(game, prm) {
         return;
       }
       const g = r.govs[j];
-      const tP = S.has(g.presIdx) ? "F" : "L";
-      const tC = S.has(g.chanIdx) ? "F" : "L";
       for (let h = g.lo; h <= g.hi; h++) {
         if (used + h > r.T) break;
-        const step = Prob.binom(3, h) * Honesty._govLikelihoodTeam(g, h, tP, tC, r.prior, p);
+        const step = Prob.binom(3, h) * Honesty._govLikelihoodTeam(g, h, bhv(A, g.presIdx, g), bhv(A, g.chanIdx, g), r.prior, p);
         if (step === 0) continue;
         walk(j + 1, used + h, w * step);
       }
@@ -314,33 +317,134 @@ function bruteRole(game, prm) {
     walk(0, 0, 1);
     return mass;
   };
-  const scores = sets.map((S) => rounds.reduce((acc, r) => acc * (r.govs.length ? roundMassBrute(r, S) : 1), 1));
+  const scoreOf = (A) => {
+    let s = 1;
+    for (const r of rounds) {
+      if (r.govs.length) s *= roundMassBrute(r, A);
+      for (const g of r.govs) { // nominations
+        const rP = roleOf(A, g.presIdx);
+        if (knows(rP) && A.S.has(g.chanIdx)) s *= p.nomAffinity;
+      }
+    }
+    for (const iv of game.investigations || []) {
+      const tru = A.S.has(iv.targetIdx) ? "F" : "L";
+      const role = roleOf(A, iv.investIdx);
+      const truthful = iv.party === tru;
+      s *= role === "L" ? (truthful ? 1 - p.mu : p.mu) : (truthful ? 1 - p.investLie : p.investLie);
+    }
+    for (const k of game.kills || []) if (knows(roleOf(A, k.killerIdx)) && A.S.has(k.victimIdx)) s *= p.killAllyPenalty;
+    for (const sp of game.specials || []) if (knows(roleOf(A, sp.chooserIdx)) && A.S.has(sp.chosenIdx)) s *= p.specialAffinity;
+    for (const pk of game.peekChecks || []) {
+      if (pk.agree) continue;
+      const both = roleOf(A, pk.peekerIdx) === "L" && roleOf(A, pk.nextPresIdx) === "L";
+      s *= both ? p.peekLibConflict : p.peekFacConflict;
+    }
+    return s;
+  };
+  const scores = As.map(scoreOf);
   const Z = scores.reduce((a, b) => a + b, 0);
-  const pF = new Array(n).fill(0);
-  if (Z > 0) sets.forEach((S, i) => { for (const idx of S) pF[idx] += scores[i] / Z; });
-  return pF;
+  const pF = new Array(n).fill(0), pH = new Array(n).fill(0);
+  if (Z > 0) As.forEach((A, i) => { for (const idx of A.S) pF[idx] += scores[i] / Z; pH[A.H] += scores[i] / Z; });
+  return { pFascist: pF, pHitler: pH };
 }
 [
   { playerCount: 5, fascistCount: 1, forcedFascist: [], rounds: [{
       startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0,
       govs: [
-        { presIdx: 0, chanIdx: 1, claim: 2, enacted: "F", vetoed: false, conflict: false },
-        { presIdx: 2, chanIdx: 3, claim: 1, enacted: "L", vetoed: false, conflict: false },
-        { presIdx: 4, chanIdx: 0, claim: 0, enacted: "F", vetoed: false, conflict: false },
+        { presIdx: 0, chanIdx: 1, claim: 2, enacted: "F", vetoed: false, conflict: false, facBefore: 0, libBefore: 0 },
+        { presIdx: 2, chanIdx: 3, claim: 1, enacted: "L", vetoed: false, conflict: false, facBefore: 1, libBefore: 0 },
+        { presIdx: 4, chanIdx: 0, claim: 0, enacted: "F", vetoed: false, conflict: false, facBefore: 1, libBefore: 1 },
       ] }] },
-  { playerCount: 5, fascistCount: 1, forcedFascist: [], rounds: [
+  { playerCount: 7, fascistCount: 2, forcedFascist: [], rounds: [
       { startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0, govs: [
-        { presIdx: 1, chanIdx: 2, claim: 2, enacted: "F", vetoed: false, conflict: true } ] },
+        { presIdx: 1, chanIdx: 2, claim: 2, enacted: "F", vetoed: false, conflict: true, facBefore: 0, libBefore: 0 } ] },
       { startN: 11, startL: 4, chaosLibs: 1, chaosFascs: 0, govs: [
-        { presIdx: 3, chanIdx: 4, claim: 1, enacted: "L", vetoed: false, conflict: false },
-        { presIdx: 0, chanIdx: 1, claim: 3, enacted: "F", vetoed: false, conflict: false } ] } ] },
+        { presIdx: 3, chanIdx: 4, claim: 1, enacted: "L", vetoed: false, conflict: false, facBefore: 2, libBefore: 1 },
+        { presIdx: 0, chanIdx: 1, claim: 3, enacted: "F", vetoed: false, conflict: false, facBefore: 2, libBefore: 2 } ] } ],
+    investigations: [{ investIdx: 1, targetIdx: 3, party: "F" }],
+    kills: [{ killerIdx: 0, victimIdx: 5 }],
+    specials: [{ chooserIdx: 2, chosenIdx: 1 }],
+    peekChecks: [{ peekerIdx: 4, nextPresIdx: 0, agree: false }],
+    forcedHitler: null, notHitler: [6] },
 ].forEach((game, i) => {
-  const mine = Honesty.analyzeGame(game).pFascist;
+  const mine = Honesty.analyzeGame(game);
   const brute = bruteRole(game);
-  let worst = 0;
-  for (let k = 0; k < mine.length; k++) worst = Math.max(worst, Math.abs(mine[k] - brute[k]));
-  ok(`game ${i + 1}: role marginals match brute force`, worst < 1e-9, "max diff " + worst);
+  let worstF = 0, worstH = 0;
+  for (let k = 0; k < game.playerCount; k++) {
+    worstF = Math.max(worstF, Math.abs(mine.pFascist[k] - brute.pFascist[k]));
+    worstH = Math.max(worstH, Math.abs(mine.pHitler[k] - brute.pHitler[k]));
+  }
+  ok(`game ${i + 1}: fascist marginals match brute force`, worstF < 1e-9, "max diff " + worstF);
+  ok(`game ${i + 1}: Hitler marginals match brute force`, worstH < 1e-9, "max diff " + worstH);
 });
+
+// --------------------------------------------------------------------------
+section("9. The new signals each move the odds the right way");
+// Isolate each factor with an otherwise-empty game (no governments), so the test
+// measures that one signal and not its interaction with the nomination signal.
+const base7 = () => ({ playerCount: 7, fascistCount: 2, rounds: [] });
+{
+  // A liberal investigator reporting "fascist" on a target makes that target
+  // much more likely fascist than an uninvolved seat.
+  const g = base7();
+  g.investigations = [{ investIdx: 0, targetIdx: 3, party: "F" }];
+  const a = Honesty.analyzeGame(g);
+  ok("an accused target rises above base", a.pFascist[3] > 2 / 7, "p3=" + a.pFascist[3].toFixed(3));
+}
+{
+  // A special-election pick lifts BOTH the chooser and the chosen (either could
+  // be the fascist elevating an ally).
+  const g = base7();
+  g.specials = [{ chooserIdx: 0, chosenIdx: 3 }];
+  const a = Honesty.analyzeGame(g);
+  ok("special-election chooser rises", a.pFascist[0] > 2 / 7, "p0=" + a.pFascist[0].toFixed(3));
+  ok("special-election pick rises", a.pFascist[3] > 2 / 7, "p3=" + a.pFascist[3].toFixed(3));
+}
+{
+  // A peek that disagrees with the next hand implicates the peeker and next pres.
+  const g = base7();
+  g.peekChecks = [{ peekerIdx: 0, nextPresIdx: 3, agree: false }];
+  const a = Honesty.analyzeGame(g);
+  ok("a contradicted peek lifts both seats", a.pFascist[0] > 2 / 7 && a.pFascist[3] > 2 / 7,
+     "p0=" + a.pFascist[0].toFixed(3) + " p3=" + a.pFascist[3].toFixed(3));
+}
+{
+  // A fascist executing a fellow fascist is unlikely, so an execution makes the
+  // victim LESS likely to be fascist than base.
+  const g = base7();
+  g.kills = [{ killerIdx: 0, victimIdx: 3 }];
+  const a = Honesty.analyzeGame(g);
+  ok("an execution victim drops below base", a.pFascist[3] < 2 / 7, "p3=" + a.pFascist[3].toFixed(3));
+}
+{
+  // pHitler sums to 1, and a seat proven not-Hitler (D8/D9) reads 0.
+  const g = base7();
+  g.notHitler = [0, 1, 2];
+  const a = Honesty.analyzeGame(g);
+  close("pHitler sums to 1", a.pHitler.reduce((x, y) => x + y, 0), 1, 1e-9);
+  close("a not-Hitler seat reads 0", a.pHitler[0], 0, 1e-12);
+}
+{
+  // The nomination signal, isolated with a vetoed government (which enacts
+  // nothing, so it carries no policy signal to compete). The nominator and
+  // nominee should each be more suspect than an uninvolved bystander (seat 5).
+  const g = { playerCount: 7, fascistCount: 2, rounds: [{ startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0,
+    govs: [{ presIdx: 0, chanIdx: 3, claim: 1, enacted: null, vetoed: true, conflict: false, facBefore: 0, libBefore: 0 }] }] };
+  const a = Honesty.analyzeGame(g);
+  ok("nominee more suspect than a bystander", a.pFascist[3] > a.pFascist[5],
+     "p3=" + a.pFascist[3].toFixed(3) + " p5=" + a.pFascist[5].toFixed(3));
+  ok("nominator more suspect than a bystander", a.pFascist[0] > a.pFascist[5],
+     "p0=" + a.pFascist[0].toFixed(3) + " p5=" + a.pFascist[5].toFixed(3));
+}
+{
+  // A cautious Hitler (7+) that keeps enacting liberal is under-suspected on the
+  // fascist read relative to a pushy fascist doing the same visible actions —
+  // i.e. modelling Hitler distinctly changes the answer.
+  const push = { playerCount: 7, fascistCount: 2, cautiousHitler: true, rounds: [{ startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0,
+    govs: [{ presIdx: 0, chanIdx: 1, claim: 2, enacted: "F", vetoed: false, conflict: false, facBefore: 3, libBefore: 0 }] }] };
+  const a = Honesty.analyzeGame(push);
+  ok("a late fascist policy still implicates its president", a.pFascist[0] > 2 / 7, "p0=" + a.pFascist[0].toFixed(3));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
