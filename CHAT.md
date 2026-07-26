@@ -830,3 +830,21 @@ One test expectation was wrong on the first run (I predicted `minLies = 2` where
 
 **Wording rule adopted as load-bearing:** findings are about *claims*, never people, and always
 offer the recording-error alternative. The maths is certain; the data entry isn't.
+
+---
+
+## Session 22 — make lie detection visible: in-game gear + on by default
+
+Two small follow-ups from the user:
+- **The gear vanished mid-game.** The global `#topbar` (which holds ⚙) is deliberately hidden on
+  the game screen, which has its own tab bar — so Settings was unreachable once a game started.
+  Added a second gear, `#btnSettingsGame`, into the in-game tab bar (right side, before Quit);
+  both gears call `openSettings()`.
+- **Lie detection now defaults ON.** `settings.lieDetection` starts `true`, and `loadSettings()`
+  only overrides it when a boolean is actually stored — so a user who turned it off keeps it off,
+  but a fresh visitor sees it working with no setup. Updated the panel copy accordingly.
+
+**Verified:** 10-assertion headless-Chrome run — confirms the default is on with no stored choice,
+the global gear is hidden in-game while `#btnSettingsGame` is visible and opens Settings, verdicts
+(`95.9% | 88.8% | story impossible`) render immediately with no setup, and turning it off from
+inside a game hides everything and persists `{"lieDetection":false}`.

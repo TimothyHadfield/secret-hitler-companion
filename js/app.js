@@ -77,15 +77,17 @@
   const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
 
   // ------------------------------ settings -----------------------------------
-  // Opt-in extras. `lieDetection` gates EVERYTHING the honesty model adds: with
-  // it off the analysis is never run and nothing new is rendered anywhere.
+  // `lieDetection` gates EVERYTHING the honesty model adds: with it off the
+  // analysis is never run and nothing new is rendered anywhere. Defaults ON, but
+  // a stored choice (either way) is always respected — so someone who turned it
+  // off keeps it off across reloads.
   const SETTINGS_KEY = "secretHitler.settings.v1";
-  const settings = { lieDetection: false };
+  const settings = { lieDetection: true };
   function loadSettings() {
     try {
       const s = JSON.parse(lsGet(SETTINGS_KEY) || "{}");
-      settings.lieDetection = !!s.lieDetection;
-    } catch (e) { /* defaults */ }
+      if (typeof s.lieDetection === "boolean") settings.lieDetection = s.lieDetection;
+    } catch (e) { /* keep the default */ }
     applySettings();
   }
   function saveSettings() { lsSet(SETTINGS_KEY, JSON.stringify(settings)); }
@@ -2315,7 +2317,7 @@
       `<div class="set-name">Lie detection</div>` +
       `<div class="set-desc">Adds a <b>Claim</b> column to History: how likely each claimed hand is to be true, ` +
       `and which claims the round's cards make outright impossible. ` +
-      `<span class="muted">Off by default — a table that can see this plays a different game.</span></div>` +
+      `<span class="muted">A table that can all see this plays a different game — turn it off if you'd rather not.</span></div>` +
       `</div>` +
       `<button id="setLie" class="toggle-btn${on ? " on" : ""}" role="switch" aria-checked="${on}">${on ? "On" : "Off"}</button>` +
       `</div>`;
@@ -2391,6 +2393,7 @@
     };
     $("btnStats").onclick = renderStats;
     $("btnSettings").onclick = openSettings;
+    $("btnSettingsGame").onclick = openSettings;
     $("btnBackFromStats").onclick = () => show(state && !state.review ? "gameScreen" : "setupScreen");
     $("btnExportStats").onclick = exportStats;
     $("btnImportStats").onclick = () => $("importFile").click();

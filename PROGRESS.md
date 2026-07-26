@@ -316,10 +316,14 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   button of its own). Reviewing stashes the live game and restores it on the way out; review state
   never overwrites the saved active game.
 
-## Lie detection (session 21 — opt-in, off by default)
-- **A ⚙ Settings panel** (new, top bar) holds one switch: **Lie detection**. With it off the
-  analysis is never run and nothing new renders — every added element carries `.lie-col`, which
-  CSS shows only under `body.lie-on`. Stored in `secretHitler.settings.v1`.
+## Lie detection (session 21 — ON by default, one switch to disable)
+- **A ⚙ Settings panel holds one switch: **Lie detection**, **on by default**. A stored choice
+  either way is respected, so turning it off sticks across reloads. With it off the analysis is
+  never run and nothing new renders — every added element carries `.lie-col`, which CSS shows only
+  under `body.lie-on`. Stored in `secretHitler.settings.v1` (`{lieDetection:bool}`; absent ⇒ on).
+- **The gear is in TWO places** because the global top bar is hidden during a game: `#btnSettings`
+  in `#topbar` (setup/stats screens) and `#btnSettingsGame` in the in-game tab bar. Both call
+  `openSettings()`.
 - **Two layers on one dynamic program.** The round's conservation law
   (`Σ hands + chaosLibs + leftovers = pool liberals`) is walked once as a **min-plus** semiring to
   get the *fewest claims that must be false*, and once as **sum-product** to get
@@ -362,7 +366,7 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - **The backend plan is COMPLETE** (phases 0–3 shipped and live): accounts, cross-device
   sync, groups, invite links, invitations by person, guest-seat linking and revocable
   invites. **Real-time/online play stays descoped.**
-- **Honesty posterior — v1 SHIPPED (session 21), behind the Lie detection switch.** See
+- **Honesty posterior — v1 SHIPPED (session 21), on by default (Lie detection switch).** See
   `HONESTY_MODEL.md`. What's live: the min-lie hard-logic layer (which claims *must* be false),
   the "story impossible" contradiction, and a per-claim `P(this claim was true)`.
   What's deliberately **not** built, per the §11 review: per-player "% fascist" role posteriors
