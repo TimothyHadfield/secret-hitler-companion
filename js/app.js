@@ -97,6 +97,49 @@
   // The engine is only consulted when the switch is on AND the file loaded.
   const lieOn = () => settings.lieDetection && typeof Honesty !== "undefined";
 
+  // Build the role-posterior input from derived rounds/govs and run it. Shared by
+  // derive() (live, gated by the switch) and the game record (a permanent
+  // snapshot, computed regardless of the switch). Returns pFascist[] or null.
+  function analyzeRoles(rounds, gi, hitlerElected) {
+    if (typeof Honesty === "undefined" || !gi.length) return null;
+    const forcedFascist = [];
+    // Hitler elected Chancellor reveals that chancellor; an executed Hitler
+    // reveals the victim. Both are certain fascists.
+    if (hitlerElected && hitlerElected.chancellorIdx != null)
+      forcedFascist.push(hitlerElected.chancellorIdx);
+    gi.forEach((g) => {
+      if (g.power && g.power.type === "kill" && g.power.wasHitler && g.power.killedIdx != null)
+        forcedFascist.push(g.power.killedIdx);
+    });
+    const n = state.players.length;
+    return Honesty.analyzeGame({
+      playerCount: n,
+      fascistCount: Math.ceil(n / 2) - 1, // fascists incl. Hitler
+      forcedFascist,
+      rounds: rounds.map((r) => ({
+        startN: r.startN,
+        startL: r.startL,
+        chaosLibs: r.chaosLib,
+        chaosFascs: r.chaosFac,
+        govs: r.govs.map((idx) => ({
+          presIdx: gi[idx].presidentIdx,
+          chanIdx: gi[idx].chancellorIdx,
+          claim: gi[idx].libs,
+          enacted: gi[idx].enacted,
+          vetoed: gi[idx].vetoed,
+          conflict: gi[idx].conflict,
+        })),
+      })),
+    }).pFascist;
+  }
+
+  // A permanent snapshot for the saved game, computed even when the switch is off
+  // (so every recorded game carries the estimate). null if the engine is absent.
+  function computeRoleOdds() {
+    const d = derive();
+    return analyzeRoles(d.rounds, d.gi, d.hitlerElected);
+  }
+
   function saveActive() { if (state && !state.review) lsSet(ACTIVE_KEY, JSON.stringify(state)); }
   function clearActive() { lsDel(ACTIVE_KEY); }
   function saveSetup() { lsSet(SETUP_KEY, JSON.stringify(setupPlayers)); }
@@ -361,6 +404,10 @@
       }
     });
 
+    // Role posterior (opt-in): P(each player is fascist) from the same model,
+    // enumerated over assignments. Purely a read — never feeds gameplay.
+    const roleOdds = lieOn() ? analyzeRoles(rounds, gi, hitlerElected) : null;
+
     // current draw / discard composition
     const cur = rounds[round];
     const drawLibs = clamp(cur.effL - cur.claimSum - cur.chaosLib, 0, draw);
@@ -394,6 +441,7 @@
       aliveCount,
       investigated,
       hitlerElected,
+      roleOdds,
     };
   }
 
@@ -919,6 +967,11 @@
       events: state.events,
       roundMods: state.roundMods,
       result: { winner, hitlerIdx: state.roleDraft.hitlerIdx, fascistIdxs: state.roleDraft.fascistIdxs.slice() },
+      // The model's fascist-odds estimate from gameplay alone (the recorded roles
+      // above are the ground TRUTH — storing the prediction beside them is what
+      // lets the model be calibrated later; see HONESTY_MODEL.md §7). Computed
+      // unconditionally so the snapshot is permanent regardless of the setting.
+      roleOdds: computeRoleOdds(),
       date: new Date().toISOString(),
       // Which group this game belongs to. Null when signed out — sync assigns it
       // to whatever group is active when the game is eventually uploaded.
@@ -978,8 +1031,46 @@
       `<div class="review-stat">${govs} governments &middot; ${fails} failed elections</div>` +
       `<div class="review-stat">Hitler: <b class="c-hit">${g.players[r.hitlerIdx] ? escapeHtml(g.players[r.hitlerIdx].name) : "?"}</b></div>` +
       `<div class="review-stat">Fascists: <b class="c-fac">${facNames || "—"}</b></div>` +
+      roleOddsHtml(g.roleOdds, g.players, r) +
       `</div>`;
     // (leaving a review uses the shared top-left back arrow)
+  }
+
+  // The stored fascist-odds estimate as a ranked list. `truth` (a result with
+  // hitlerIdx/fascistIdxs) is optional — when present, each row is marked ✓/✗
+  // against who actually was fascist, which is the whole point of storing the
+  // prediction beside the ground truth. Wrapped in `.lie-col` so it only shows
+  // when lie detection is on. Wording stays about the MODEL, not accusations.
+  function roleOddsHtml(roleOdds, players, truth) {
+    if (!lieOn() || !Array.isArray(roleOdds) || !roleOdds.some((x) => x != null)) return "";
+    const rows = roleOdds
+      .map((p, i) => ({ i, p, name: players[i] ? players[i].name : "?" }))
+      .filter((x) => x.p != null)
+      .sort((a, b) => b.p - a.p);
+    const wasFascist = (i) =>
+      truth && (i === truth.hitlerIdx || (truth.fascistIdxs || []).includes(i));
+    const body = rows
+      .map((x) => {
+        const pct = Math.round(x.p * 100);
+        const cls = x.p >= 0.6 ? "lie-bad" : x.p >= 0.35 ? "lie-warn" : "lie-good";
+        const mark = truth
+          ? wasFascist(x.i)
+            ? ` <span class="ro-hit" title="was on the Fascist team">✓ fascist</span>`
+            : ` <span class="ro-miss" title="was a Liberal">✗ liberal</span>`
+          : "";
+        return (
+          `<div class="ro-row"><span class="ro-name">${escapeHtml(x.name)}</span>` +
+          `<span class="ro-bar"><span class="ro-fill ${cls}" style="width:${pct}%"></span></span>` +
+          `<span class="ro-pct ${cls}">${pct}%</span>${mark}</div>`
+        );
+      })
+      .join("");
+    return (
+      `<div class="role-odds lie-col">` +
+      `<div class="ro-title">Model’s fascist read <span class="muted">— from play alone, not the recorded roles</span></div>` +
+      body +
+      `</div>`
+    );
   }
 
   function renderGamesList(container) {

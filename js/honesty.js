@@ -43,6 +43,18 @@ const Honesty = (() => {
     // given the public pool. 0 = says whatever helps, 1 = perfectly mimics the
     // honest claim distribution. Controls the SIGN of the evidence from rarity.
     sophistication: 0.5,
+
+    // ---- team behaviour, used only by the ROLE posterior (analyzeGame). These
+    // are the least-identifiable parameters in the whole model (HONESTY_MODEL.md
+    // §11 F4/F6): documented priors, NOT measurements. The role posterior is
+    // therefore a soft read, and must be presented as one.
+    libLie: 0.05,   // a liberal misreporting their own hand (protecting a partner, a misplay)
+    facLie: 0.50,   // a fascist misreporting their hand
+    beta: 0.70,     // fascist PRESIDENT discards a liberal to push a fascist policy
+    gamma: 0.85,    // fascist CHANCELLOR enacts fascist from a mixed (1L1F) pass
+    mu: 0.03,       // honest-mistake floor, so nothing is ever exactly impossible on behaviour
+    falseAccuseFasc: 0.30, // fascist president raising a bogus conflict (framing the chancellor)
+    falseAccuseLib: 0.02,  // a liberal doing the same — essentially never
   };
 
   // ---------------------------------------------------------------- helpers --
@@ -288,14 +300,190 @@ const Honesty = (() => {
     };
   }
 
+  // ======================================================================== //
+  //  ROLE POSTERIOR  —  P(each player is fascist), from the same generative   //
+  //  model read the other way. See HONESTY_MODEL.md §4.                        //
+  //                                                                            //
+  //  Instead of marginalising over teams to price a claim, we ENUMERATE every  //
+  //  assignment of `f` fascists to `n` players (<=120 for a 10-player game),   //
+  //  score each by how well it explains the whole game, and sum the posterior  //
+  //  weight of the assignments that contain each player.                       //
+  // ======================================================================== //
+
+  // Total sum-product mass of a round under a per-(gov,hand) weight function:
+  //   Σ over feasible hand vectors of  ∏_j weight(j, h_j) · C(R, leftover)
+  // This is the round's data-likelihood (up to the assignment-independent
+  // C(N,L) normaliser, which cancels in the posterior over assignments).
+  function roundMass(govs, T, R, weightFn) {
+    if (T < 0) return 0;
+    if (!govs.length) return 1; // no governments constrain nothing
+    const fwd = forwardTable(govs, T, weightFn, SUMPROD);
+    const last = fwd[govs.length];
+    let mass = 0;
+    for (let s = 0; s <= T; s++) {
+      const r = T - s;
+      if (r >= 0 && r <= R) mass += last[s] * binom(R, r);
+    }
+    return mass;
+  }
+
+  // The president holds `h` liberals in 3 cards, discards 1, passes 2. The pass
+  // holds `p` liberals: either `h` (discarded a fascist) or `h-1` (discarded a
+  // liberal), clamped to what the hand actually allows.
+  function passOptions(h) {
+    if (h === 0) return [0];      // FFF: can only pass FF
+    if (h === 3) return [2];      // LLL: can only pass LL
+    return [h, h - 1];            // keep-liberals (p=h) or bury-one (p=h-1)
+  }
+  function passProb(p, h, teamP, prm) {
+    if (h === 0 || h === 3) return 1; // forced, no choice
+    const buried = p === h - 1;       // discarded a liberal
+    if (teamP === "F") return buried ? prm.beta : 1 - prm.beta;
+    return buried ? prm.mu : 1 - prm.mu; // a liberal keeps liberals, bar a slip
+  }
+  // Chancellor holds `p` liberals + (2-p) fascists; enacts one, observed as `e`.
+  function enactProb(e, p, teamC, prm) {
+    if (p === 2) return e === "L" ? 1 : 0;   // LL: must enact L
+    if (p === 0) return e === "F" ? 1 : 0;   // FF: must enact F
+    // p === 1 (one of each) — a real choice
+    if (teamC === "F") return e === "F" ? prm.gamma : 1 - prm.gamma;
+    return e === "L" ? 1 - prm.mu : prm.mu;   // a liberal enacts the liberal
+  }
+  // A conflict is the president publicly asserting they passed >=1 liberal while
+  // a fascist policy was enacted. Truthful when p>=1; a fabricated frame when p=0.
+  function conflictFactor(p, teamP, prm) {
+    if (p >= 1) return 1;
+    return teamP === "F" ? prm.falseAccuseFasc : prm.falseAccuseLib;
+  }
+  // Team-specific report model: P(claim | true hand h, team). Mirrors the
+  // marginal reportLikelihood but with a team-specific base lie rate.
+  function teamReport(c, h, team, priorClaim, prm) {
+    const lie = team === "F" ? prm.facLie : prm.libLie;
+    if (c === h) return 1 - lie;
+    let total = 0;
+    const w = [];
+    for (let k = 0; k <= 3; k++) {
+      if (k === h) { w.push(0); continue; }
+      const dir = k < h ? 1 : prm.upBias;
+      const mag = Math.pow(prm.decay, Math.abs(k - h) - 1);
+      const plaus = Math.pow(Math.max(priorClaim[k], 1e-9), prm.sophistication);
+      const ww = dir * mag * plaus;
+      w.push(ww);
+      total += ww;
+    }
+    if (total <= 0) return 0;
+    return lie * (w[c] / total);
+  }
+  // Likelihood of ONE government's public facts given the true hand and the two
+  // seats' teams: the president's report, and (unless vetoed) the pass→enact
+  // chain that produced the observed policy, plus any conflict.
+  function govLikelihoodTeam(g, h, teamP, teamC, priorClaim, prm) {
+    const report = teamReport(g.claim, h, teamP, priorClaim, prm);
+    if (g.vetoed || g.enacted == null) return report; // no pass/enact observed
+    let acc = 0;
+    for (const p of passOptions(h)) {
+      const pp = passProb(p, h, teamP, prm);
+      if (pp <= 0) continue;
+      const ep = enactProb(g.enacted, p, teamC, prm);
+      if (ep <= 0) continue;
+      const cf = g.conflict ? conflictFactor(p, teamP, prm) : 1;
+      acc += pp * ep * cf;
+    }
+    return report * acc;
+  }
+
+  // All size-k subsets of {0..n-1}, each as a Set. n<=10, k<=3 → <=120.
+  function combinations(n, k) {
+    const res = [];
+    const idx = [];
+    (function rec(start, need) {
+      if (need === 0) { res.push(new Set(idx)); return; }
+      for (let i = start; i <= n - need; i++) { idx.push(i); rec(i + 1, need - 1); idx.pop(); }
+    })(0, k);
+    return res;
+  }
+
+  /**
+   * P(each player is fascist) for a whole game.
+   *
+   * @param {object} game
+   *   {number} playerCount
+   *   {number} fascistCount   fascists incl. Hitler = ceil(n/2) - 1
+   *   {number[]} forcedFascist  players certainly fascist (Hitler elected/executed)
+   *   {object[]} rounds  each {startN, startL, chaosLibs, chaosFascs, govs:[…]}
+   *     gov = {presIdx, chanIdx, claim, enacted:'L'|'F'|null, vetoed, conflict}
+   * @returns {{pFascist:number[], assignments:number}}
+   *   pFascist[i] in [0,1]; Σ pFascist == fascistCount by construction.
+   */
+  function analyzeGame(game, params) {
+    const prm = Object.assign({}, DEFAULTS, params || {});
+    const n = game.playerCount;
+    const f = game.fascistCount;
+    const forced = new Set(game.forcedFascist || []);
+    const nullOut = { pFascist: new Array(n).fill(null), assignments: 0 };
+    if (!n || f == null || f < 0 || f > n) return nullOut;
+
+    // Pre-enrich rounds once (bounds + prior claim distribution are team-independent).
+    const rounds = (game.rounds || []).map((r) => {
+      const T = r.startL - (r.chaosLibs || 0);
+      const chaosN = (r.chaosLibs || 0) + (r.chaosFascs || 0);
+      const R = Math.max(0, r.startN - 3 * r.govs.length - chaosN);
+      const govs = r.govs.map((g) => {
+        const [lo, hi] = handBounds(g, Math.max(0, T));
+        return Object.assign({}, g, { lo, hi });
+      });
+      return { govs, T, R, priorClaim: P.drawDistribution(r.startN, r.startL) };
+    });
+
+    const sets = combinations(n, f).filter((s) => {
+      for (const x of forced) if (!s.has(x)) return false;
+      return true;
+    });
+    if (!sets.length) return { pFascist: new Array(n).fill(f / n), assignments: 0 };
+
+    // Score each assignment in log space (products across rounds underflow).
+    const logScores = sets.map((S) => {
+      let logL = 0;
+      for (const r of rounds) {
+        if (!r.govs.length) continue;
+        const weightFn = (j, h) => {
+          const g = r.govs[j];
+          const tP = S.has(g.presIdx) ? "F" : "L";
+          const tC = S.has(g.chanIdx) ? "F" : "L";
+          return binom(3, h) * govLikelihoodTeam(g, h, tP, tC, r.priorClaim, prm);
+        };
+        const mass = roundMass(r.govs, r.T, r.R, weightFn);
+        if (mass <= 0) return -Infinity;
+        logL += Math.log(mass);
+      }
+      return logL;
+    });
+
+    const maxLog = Math.max(...logScores);
+    if (!isFinite(maxLog)) return { pFascist: new Array(n).fill(f / n), assignments: sets.length };
+    let Z = 0;
+    const wts = logScores.map((l) => { const w = Math.exp(l - maxLog); Z += w; return w; });
+
+    const pF = new Array(n).fill(0);
+    sets.forEach((S, i) => {
+      const p = wts[i] / Z;
+      for (const idx of S) pF[idx] += p;
+    });
+    return { pFascist: pF, assignments: sets.length };
+  }
+
   return {
     DEFAULTS,
     analyzeRound,
+    analyzeGame,
     // exported for tests
     _minLies: minLies,
     _reportLikelihood: reportLikelihood,
     _handBounds: handBounds,
     _hasImpossibleStory: hasImpossibleStory,
+    _govLikelihoodTeam: govLikelihoodTeam,
+    _roundMass: roundMass,
+    _combinations: combinations,
   };
 })();
 

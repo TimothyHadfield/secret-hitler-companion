@@ -648,8 +648,16 @@ assert the degenerate case separately.
 it is also the part carrying the game-design risk of §10.4. Shipping "Tim is 72% fascist" on a
 shared table, computed from guessed parameters, is the worst version of this feature.
 
-**Fix:** v1 stops at **per-claim honesty**, which prices a *claim* rather than indicting a
-*person*. Role posteriors stay designed and unbuilt.
+**Fix (v1):** per-claim honesty only, pricing a *claim* not a *person*.
+
+**Update (session 23): the role posterior IS now built** — `Honesty.analyzeGame()` — but shipped
+in the safe shape the risk argued for. It enumerates the ≤120 fascist-sets exactly, scores each
+with the §4b DP under team-conditioned weights (`β`, `γ`, team-split lie rates), pins the certain
+fascists (Hitler elected/executed), and returns per-seat `P(fascist)`. It is **stored on every
+recorded game** beside the ground-truth roles (the §7 calibration substrate) and **displayed only
+in the post-game read-only review**, scored ✓/✗ against who was actually fascist. It is
+deliberately **not** shown live on the shared table — that remains the §10.4 open question. The
+behaviour parameters are still fixed-by-fiat defaults, not fitted (F4 stands).
 
 ### F7 — The min-lie DP as specified ignores veto and chaos
 

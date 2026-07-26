@@ -866,3 +866,46 @@ Verdicts now read "95.9% honest" / "must be true" / "can't be true" / "story imp
 **Verified:** phone (390px) and desktop (1100px) screenshots both show the badges clearly; a
 9-assertion headless run confirms three badges render and are on-screen, toggle off removes them
 and toggle on restores them; 39 Node unit tests still green.
+
+---
+
+## Session 23 — role posterior: P(each player is fascist), stored in stats
+
+**User's brief:** turn the lie-detection math into odds of each player being liberal or fascist;
+theory first, then build; **store the odds in game statistics for now**.
+
+This is the role posterior deferred as "v2" in the HONESTY_MODEL §11 review (F6). Built it in the
+safe shape that review argued for: compute + store + show post-game, but NOT live on the table.
+
+**Theory:** same generative model, read the other way. Enumerate every assignment of
+`f = ceil(n/2)−1` fascists to `n` players (≤120 for 10p — small enough to enumerate exactly, no
+belief propagation needed). Score each assignment by how well it explains the whole game, using
+team-conditioned weights on the SAME round-conservation DP the honesty engine already runs: a
+fascist president buries a liberal (rate β), a fascist chancellor enacts fascist from a mixed pass
+(rate γ), fascists lie about their hand more (facLie ≫ libLie), and a conflict splits blame between
+president (false accusation) and chancellor (buried the liberal) exactly per §5. Pin the certain
+fascists (Hitler elected Chancellor / Hitler executed). Marginalise → per-seat P(fascist).
+
+**Built:** `Honesty.analyzeGame()` in `honesty.js`. In `app.js`, `analyzeRoles()` builds its input
+from the derived rounds and runs it live (gated by the switch, on `derive().roleOdds`);
+`computeRoleOdds()` snapshots it onto every saved game **unconditionally** (so the record always
+carries it). Shown in the read-only review via `roleOddsHtml()` — a ranked bar list scored ✓/✗
+against the recorded roles (prediction beside ground truth = the calibration substrate for §7).
+**Not** shown live on the shared table; the public per-player readout stays the open §10.4 question.
+
+**Verified:**
+- 52 Node assertions (was 39): role invariants (marginals sum to the fascist count; no-evidence →
+  base rate f/n; a revealed fascist pins to 1; a fascist-enacting president rises above base while
+  a clean one drops; a conflict lifts BOTH participants), and a **fully independent brute-force
+  cross-check** of the role marginals (nested enumeration over assignments × hand-vectors, max diff
+  < 1e-9) on two multi-round games incl. chaos and conflict.
+- A 10-assertion headless-Chrome run playing a real game to a Liberal win, recording roles,
+  and confirming: `roleOdds` is stored on the record, sums to the fascist count (2 for 5p, incl.
+  Hitler — a test assertion I first got wrong by forgetting Hitler counts), the conflict president
+  reads ~100%, and the review renders the ranked read scored against the truth. Screenshot
+  confirmed: the model put both actual fascists (Cid 100%, Eve/Hitler 61%) on top with ✓, the
+  three liberals below with ✗ — a correct read from play alone.
+
+**Note for later:** cloud upload is unaffected — the Firestore rules require certain fields to
+exist but don't whitelist, so the extra `roleOdds` field is accepted. Whether cloud.js forwards it
+upward wasn't changed; local storage (the ask) carries it regardless.

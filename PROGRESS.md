@@ -104,7 +104,7 @@ table game, not a game engine. Feature pillars:
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
-| `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law. Pure functions, Node-tested. |
+| `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) by exact enumeration of the ≤120 fascist-sets. Pure functions, Node-tested (incl. brute-force cross-checks). |
 | `HONESTY_MODEL.md` | Derivation of the honesty posterior ("how likely is this claim a lie?") — hard-logic layer, generative model, exact inference, calibration plan, cited prior art, and **§11: the design review that decided what v1 ships**. |
 | `BACKEND_PLAN.md` | **Phases 0–3 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
 | `CHAT.md` | Session-by-session log (sessions 1–21). |
@@ -348,6 +348,19 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   remainder, so `R` was too big, the known colour of the chaos card was discarded, and
   `bottomLibs` disagreed with `drawLibs`. This corrupted the existing retrospective % in any round
   containing a chaos — fixed in `probability.js` + `derive()` regardless of the switch.
+- **Role posterior — P(each player is fascist), session 23.** `Honesty.analyzeGame()` enumerates
+  every assignment of `f = ceil(n/2)−1` fascists to the `n` players (≤120), scores each by how
+  well it explains all claims/enactments/conflicts (team-conditioned weights on the same
+  round-conservation DP: fascist president buries a liberal at rate `β`, fascist chancellor enacts
+  fascist from a mixed pass at rate `γ`, fascists lie more), pins certain fascists (Hitler elected
+  or executed), and marginalises to per-seat `P(fascist)`. Exact, no sampling.
+  - **Stored on every recorded game** as `game.roleOdds` (via `computeRoleOdds()`, computed
+    unconditionally so the snapshot is permanent even if the switch is off). It sits beside the
+    recorded true roles — prediction next to ground truth, which is the calibration substrate.
+  - **Displayed only in the read-only game review** (`roleOddsHtml()`), as a ranked bar list scored
+    ✓/✗ against who was actually fascist. **Deliberately NOT shown live on the shared table** —
+    a public per-player "% fascist" readout is the open product/game-design question (§10.4).
+  - Parameters are fixed defaults, not fitted — EM calibration still deferred (too few games).
 
 ## Undo
 - **Full-state snapshots.** `pushUndo()` deep-copies the whole state before each gov / fail /

@@ -224,5 +224,123 @@ section("6. Evidence strength tracks the unseen remainder");
   ok("no unseen cards is exact", Honesty.analyzeRound(mk(15, 5)).evidence === "exact");
 }
 
+// --------------------------------------------------------------------------
+section("7. Role posterior — invariants and sanity");
+{
+  // No governments at all: every player is fascist with the base rate f/n, and
+  // the marginals sum to exactly the fascist count.
+  const g = { playerCount: 7, fascistCount: 2, forcedFascist: [], rounds: [] };
+  const a = Honesty.analyzeGame(g);
+  const sum = a.pFascist.reduce((x, y) => x + y, 0);
+  close("no evidence -> everyone at base rate", a.pFascist[0], 2 / 7, 1e-9);
+  close("marginals sum to the fascist count", sum, 2, 1e-9);
+}
+{
+  // A forced fascist (e.g. Hitler was elected Chancellor) is pinned to 1.
+  const g = { playerCount: 7, fascistCount: 2, forcedFascist: [3], rounds: [] };
+  const a = Honesty.analyzeGame(g);
+  close("a revealed fascist reads 1.0", a.pFascist[3], 1, 1e-9);
+  close("marginals still sum to the fascist count", a.pFascist.reduce((x, y) => x + y, 0), 2, 1e-9);
+  ok("the pinned player pulls the others down", a.pFascist[0] < 2 / 7);
+}
+{
+  // A president who repeatedly enacts FASCIST from hands they CLAIM were
+  // liberal-heavy should end up more likely fascist than the base rate; a
+  // president who keeps enacting liberal should end up less.
+  const rounds = [{
+    startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0,
+    govs: [
+      { presIdx: 0, chanIdx: 1, claim: 2, enacted: "F", vetoed: false, conflict: false },
+      { presIdx: 2, chanIdx: 3, claim: 2, enacted: "L", vetoed: false, conflict: false },
+    ],
+  }];
+  const a = Honesty.analyzeGame({ playerCount: 5, fascistCount: 1, forcedFascist: [], rounds });
+  ok("the fascist-enacting president is above base rate", a.pFascist[0] > 1 / 5, "p0=" + a.pFascist[0].toFixed(3));
+  ok("the liberal-enacting president is below base rate", a.pFascist[2] < 1 / 5, "p2=" + a.pFascist[2].toFixed(3));
+  ok("the suspicious president outranks the clean one", a.pFascist[0] > a.pFascist[2]);
+}
+{
+  // A conflict should implicate the pair (president or chancellor), lifting both
+  // above the base rate relative to uninvolved players.
+  const rounds = [{
+    startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0,
+    govs: [{ presIdx: 0, chanIdx: 1, claim: 2, enacted: "F", vetoed: false, conflict: true }],
+  }];
+  const a = Honesty.analyzeGame({ playerCount: 7, fascistCount: 2, forcedFascist: [], rounds });
+  ok("conflict lifts the president above base", a.pFascist[0] > 2 / 7, "p0=" + a.pFascist[0].toFixed(3));
+  ok("conflict lifts the chancellor above base", a.pFascist[1] > 2 / 7, "p1=" + a.pFascist[1].toFixed(3));
+  ok("an uninvolved player stays at/under base", a.pFascist[5] <= 2 / 7 + 1e-9);
+}
+
+// --------------------------------------------------------------------------
+section("8. Role posterior vs. a fully independent brute-force");
+// n=5, f=1: only 5 assignments. Enumerate them by hand, and for each enumerate
+// every feasible hand vector explicitly (no DP), to reproduce P(fascist) from
+// first principles. This checks the enumeration AND the per-gov team likelihood.
+function bruteRole(game, prm) {
+  const p = Object.assign({}, Honesty.DEFAULTS, prm || {});
+  const n = game.playerCount, f = game.fascistCount;
+  const rounds = game.rounds.map((r) => {
+    const T = r.startL - (r.chaosLibs || 0);
+    const chaosN = (r.chaosLibs || 0) + (r.chaosFascs || 0);
+    const R = Math.max(0, r.startN - 3 * r.govs.length - chaosN);
+    const govs = r.govs.map((g) => {
+      const [lo, hi] = Honesty._handBounds(g, Math.max(0, T));
+      return Object.assign({}, g, { lo, hi });
+    });
+    return { govs, T, R, prior: Prob.drawDistribution(r.startN, r.startL) };
+  });
+  const sets = Honesty._combinations(n, f)
+    .filter((s) => (game.forcedFascist || []).every((x) => s.has(x)));
+  const roundMassBrute = (r, S) => {
+    let mass = 0;
+    const walk = (j, used, w) => {
+      if (j === r.govs.length) {
+        const leftover = r.T - used;
+        if (leftover < 0 || leftover > r.R) return;
+        mass += w * Prob.binom(r.R, leftover);
+        return;
+      }
+      const g = r.govs[j];
+      const tP = S.has(g.presIdx) ? "F" : "L";
+      const tC = S.has(g.chanIdx) ? "F" : "L";
+      for (let h = g.lo; h <= g.hi; h++) {
+        if (used + h > r.T) break;
+        const step = Prob.binom(3, h) * Honesty._govLikelihoodTeam(g, h, tP, tC, r.prior, p);
+        if (step === 0) continue;
+        walk(j + 1, used + h, w * step);
+      }
+    };
+    walk(0, 0, 1);
+    return mass;
+  };
+  const scores = sets.map((S) => rounds.reduce((acc, r) => acc * (r.govs.length ? roundMassBrute(r, S) : 1), 1));
+  const Z = scores.reduce((a, b) => a + b, 0);
+  const pF = new Array(n).fill(0);
+  if (Z > 0) sets.forEach((S, i) => { for (const idx of S) pF[idx] += scores[i] / Z; });
+  return pF;
+}
+[
+  { playerCount: 5, fascistCount: 1, forcedFascist: [], rounds: [{
+      startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0,
+      govs: [
+        { presIdx: 0, chanIdx: 1, claim: 2, enacted: "F", vetoed: false, conflict: false },
+        { presIdx: 2, chanIdx: 3, claim: 1, enacted: "L", vetoed: false, conflict: false },
+        { presIdx: 4, chanIdx: 0, claim: 0, enacted: "F", vetoed: false, conflict: false },
+      ] }] },
+  { playerCount: 5, fascistCount: 1, forcedFascist: [], rounds: [
+      { startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0, govs: [
+        { presIdx: 1, chanIdx: 2, claim: 2, enacted: "F", vetoed: false, conflict: true } ] },
+      { startN: 11, startL: 4, chaosLibs: 1, chaosFascs: 0, govs: [
+        { presIdx: 3, chanIdx: 4, claim: 1, enacted: "L", vetoed: false, conflict: false },
+        { presIdx: 0, chanIdx: 1, claim: 3, enacted: "F", vetoed: false, conflict: false } ] } ] },
+].forEach((game, i) => {
+  const mine = Honesty.analyzeGame(game).pFascist;
+  const brute = bruteRole(game);
+  let worst = 0;
+  for (let k = 0; k < mine.length; k++) worst = Math.max(worst, Math.abs(mine[k] - brute[k]));
+  ok(`game ${i + 1}: role marginals match brute force`, worst < 1e-9, "max diff " + worst);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
