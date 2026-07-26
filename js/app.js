@@ -82,20 +82,28 @@
   // a stored choice (either way) is always respected — so someone who turned it
   // off keeps it off across reloads.
   const SETTINGS_KEY = "secretHitler.settings.v1";
-  const settings = { lieDetection: true };
+  // `boardOdds` shows a live per-player fascist % ON the shared table — off by
+  // default on purpose: a table that can all see it plays a different game.
+  const settings = { lieDetection: true, boardOdds: false };
   function loadSettings() {
     try {
       const s = JSON.parse(lsGet(SETTINGS_KEY) || "{}");
       if (typeof s.lieDetection === "boolean") settings.lieDetection = s.lieDetection;
-    } catch (e) { /* keep the default */ }
+      if (typeof s.boardOdds === "boolean") settings.boardOdds = s.boardOdds;
+    } catch (e) { /* keep the defaults */ }
     applySettings();
   }
   function saveSettings() { lsSet(SETTINGS_KEY, JSON.stringify(settings)); }
   function applySettings() {
     document.body.classList.toggle("lie-on", settings.lieDetection);
+    document.body.classList.toggle("board-odds-on", settings.boardOdds);
   }
-  // The engine is only consulted when the switch is on AND the file loaded.
+  // The per-claim honesty layer is consulted only when lie detection is on.
   const lieOn = () => settings.lieDetection && typeof Honesty !== "undefined";
+  // The role posterior (per-player fascist odds) is needed when EITHER the lie
+  // detection review or the on-table odds are enabled.
+  const rolesOn = () =>
+    (settings.lieDetection || settings.boardOdds) && typeof Honesty !== "undefined";
 
   // Build the role-posterior input from derived rounds/govs and run it. Shared by
   // derive() (live, gated by the switch) and the game record (a permanent
@@ -406,7 +414,7 @@
 
     // Role posterior (opt-in): P(each player is fascist) from the same model,
     // enumerated over assignments. Purely a read — never feeds gameplay.
-    const roleOdds = lieOn() ? analyzeRoles(rounds, gi, hitlerElected) : null;
+    const roleOdds = rolesOn() ? analyzeRoles(rounds, gi, hitlerElected) : null;
 
     // current draw / discard composition
     const cur = rounds[round];
@@ -739,12 +747,22 @@
         else if (i === chanIdx) badge = `<span class="role-badge c" title="Chancellor">C</span>`;
       }
 
+      // Live fascist-odds chip on the circle (opt-in; only while roles are still
+      // hidden — once they're recorded/known the circle is coloured instead).
+      let oddsChip = "";
+      if (!roles && settings.boardOdds && d.roleOdds && d.roleOdds[i] != null) {
+        const p0 = d.roleOdds[i];
+        const cls = p0 >= 0.6 ? "hi" : p0 >= 0.35 ? "mid" : "lo";
+        oddsChip = `<span class="seat-odds ${cls}" title="Model estimate that ${escapeHtml(p.name)} is on the Fascist team, from play so far. Not a measurement.">${Math.round(p0 * 100)}%</span>`;
+      }
+
       node.innerHTML =
         `<div class="seat-head">` +
         `<div class="avatar">${escapeHtml(initials(p.name))}${badge}${
           p.dead ? `<span class="skull">💀</span>` : ""
         }</div>` +
         `<div class="name">${escapeHtml(p.name)}${i === state.firstPres ? " ·①" : ""}</div>` +
+        oddsChip +
         `</div>` +
         `<div class="seat-pres"><div class="pres-stack">${extra}</div></div>`;
       area.appendChild(node);
@@ -2407,21 +2425,32 @@
   }
   function renderSettings() {
     const on = settings.lieDetection;
+    const bo = settings.boardOdds;
+    const toggle = (id, val) =>
+      `<button id="${id}" class="toggle-btn${val ? " on" : ""}" role="switch" aria-checked="${val}">${val ? "On" : "Off"}</button>`;
     $("settingsBox").innerHTML =
       backBtn("setBack", "Back") +
       `<div class="power-title">Settings</div>` +
       `<div class="set-row">` +
       `<div class="set-text">` +
       `<div class="set-name">Lie detection</div>` +
-      `<div class="set-desc">Adds a <b>Claim</b> column to History: how likely each claimed hand is to be true, ` +
-      `and which claims the round's cards make outright impossible. ` +
+      `<div class="set-desc">Adds a <b>Claim</b> badge in History: how likely each claimed hand is to be true, ` +
+      `which claims the round's cards make outright impossible, and — in a finished game's review — ` +
+      `a fascist-odds read for each player. ` +
       `<span class="muted">A table that can all see this plays a different game — turn it off if you'd rather not.</span></div>` +
       `</div>` +
-      `<button id="setLie" class="toggle-btn${on ? " on" : ""}" role="switch" aria-checked="${on}">${on ? "On" : "Off"}</button>` +
+      toggle("setLie", on) +
+      `</div>` +
+      `<div class="set-row">` +
+      `<div class="set-text">` +
+      `<div class="set-name">Fascist odds on the table</div>` +
+      `<div class="set-desc">Shows a live <b>fascist %</b> beside every player's circle during the game. ` +
+      `<span class="muted">This is a strong nudge that the whole table can see — it changes how the game plays. Off by default.</span></div>` +
+      `</div>` +
+      toggle("setBoard", bo) +
       `</div>`;
     $("setBack").onclick = () => $("settingsModal").classList.add("hidden");
-    $("setLie").onclick = () => {
-      settings.lieDetection = !settings.lieDetection;
+    const apply = () => {
       saveSettings();
       applySettings();
       renderSettings();
@@ -2429,6 +2458,8 @@
       if (state && Array.isArray(state.players) && !$("gameScreen").classList.contains("hidden"))
         renderGame();
     };
+    $("setLie").onclick = () => { settings.lieDetection = !settings.lieDetection; apply(); };
+    $("setBoard").onclick = () => { settings.boardOdds = !settings.boardOdds; apply(); };
   }
 
   let toastTimer = null;

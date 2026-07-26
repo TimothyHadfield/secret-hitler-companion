@@ -764,3 +764,13 @@ body.lie-on span.lie-col { display: inline; }
 .ro-pct { flex: 0 0 34px; text-align: right; font-weight: 700; }
 .ro-hit { flex: 0 0 auto; color: var(--fac-2); font-weight: 700; font-size: 11px; }
 .ro-miss { flex: 0 0 auto; color: var(--lib-2); font-weight: 700; font-size: 11px; }
+
+/* live fascist-odds chip on a player's circle (opt-in board setting) */
+.seat-odds {
+  display: inline-block; margin-top: 2px; padding: 0 6px;
+  border-radius: 999px; font-size: 10.5px; font-weight: 700; line-height: 1.5;
+  border: 1px solid #3a3129; background: #241d16; white-space: nowrap;
+}
+.seat-odds.hi { color: #fff; background: var(--fac); border-color: var(--fac-2); }
+.seat-odds.mid { color: #241a08; background: var(--gold); border-color: var(--gold); }
+.seat-odds.lo { color: var(--lib-2); }

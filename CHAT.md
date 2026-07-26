@@ -909,3 +909,32 @@ against the recorded roles (prediction beside ground truth = the calibration sub
 **Note for later:** cloud upload is unaffected — the Firestore rules require certain fields to
 exist but don't whitelist, so the extra `roleOdds` field is accepted. Whether cloud.js forwards it
 upward wasn't changed; local storage (the ask) carries it regardless.
+
+---
+
+## Session 24 — fascist odds on the table (opt-in) + improvement brainstorm
+
+**User's brief:** add a setting to show fascist odds next to each player's circle; and brainstorm
+how the fascist/liberal odds math could be improved.
+
+**Built:** a second, independent setting **"Fascist odds on the table"** (`settings.boardOdds`,
+off by default) that renders a live fascist-% chip beside every circle during play (`.seat-odds`,
+coloured hi/mid/lo). It's separate from lie detection on purpose — this is the shared-table readout
+§10.4 warns changes the game — and `rolesOn()` now computes `roleOdds` when EITHER setting is on,
+so board odds work even with lie detection off. The chip hides once roles are recorded (the circle
+colours instead).
+
+**Verified:** 11-assertion headless run — off by default, no chips; both toggles present; turning
+board odds on puts a % chip on all five circles; persists; and still shows with lie detection off.
+Screenshot confirmed clean chips (Cid 89% red as the conflict president, others low/blue). 52 unit
+tests unchanged/green.
+
+**Brainstorm** written up as `HONESTY_MODEL.md` §12 (durable). Headline: the model currently uses
+only claim + enacted + conflict; the biggest cheap wins are signals already in the event log —
+**nominations (who picks whom as chancellor)**, **investigation results**, **policy-peek vs next
+hand**. Then model-fidelity fixes: **state-dependent β/γ** (stop over-penalising forced early
+fascist policies) and **modelling Hitler as a cautious distinct role** (a well-played Hitler is
+currently under-detected). Higher-ceiling but costs data entry: **chancellor's claim**, **votes**.
+And the meta-move: **a calibration harness** — every saved game now stores the prediction beside
+the truth, so Brier/log-loss + a reliability diagram would tell us, from the user's own games,
+whether the model beats guessing. **Recommendation: nominations + calibration harness next.**

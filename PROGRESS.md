@@ -357,10 +357,15 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   - **Stored on every recorded game** as `game.roleOdds` (via `computeRoleOdds()`, computed
     unconditionally so the snapshot is permanent even if the switch is off). It sits beside the
     recorded true roles — prediction next to ground truth, which is the calibration substrate.
-  - **Displayed only in the read-only game review** (`roleOddsHtml()`), as a ranked bar list scored
-    ✓/✗ against who was actually fascist. **Deliberately NOT shown live on the shared table** —
-    a public per-player "% fascist" readout is the open product/game-design question (§10.4).
+  - **Displayed in the read-only game review** (`roleOddsHtml()`), as a ranked bar list scored
+    ✓/✗ against who was actually fascist.
+  - **A second, separate setting "Fascist odds on the table"** (`settings.boardOdds`, off by
+    default) shows a live fascist-% chip beside every player's circle during play (`.seat-odds`,
+    coloured hi/mid/lo). This is the shared-table readout that §10.4 flags as game-changing, so it
+    is strictly opt-in and independent of lie detection — `rolesOn()` computes `roleOdds` when
+    EITHER setting is on. The chip is hidden once roles are recorded (the circle is coloured then).
   - Parameters are fixed defaults, not fitted — EM calibration still deferred (too few games).
+    See §11 update + the brainstorm in `HONESTY_MODEL.md` §12 for how to improve the odds.
 
 ## Undo
 - **Full-state snapshots.** `pushUndo()` deep-copies the whole state before each gov / fail /
