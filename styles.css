@@ -717,6 +717,18 @@ button.primary.on { outline: 2px solid var(--gold); outline-offset: 1px; font-we
 .lie-col { display: none; }
 body.lie-on th.lie-col, body.lie-on td.lie-col { display: table-cell; }
 body.lie-on div.lie-col:not(.hidden) { display: block; }
+body.lie-on span.lie-col { display: inline; }
+
+/* the inline verdict badge in the Event cell — always on screen, no side-scroll */
+.lie-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px;
+  border-radius: 999px; font-size: 11px; font-weight: 700;
+  background: #241d16; border: 1px solid #3a3129; white-space: nowrap;
+  vertical-align: middle;
+}
+.lie-badge .lie-bad,
+.lie-badge .lie-warn,
+.lie-badge .lie-good { border-bottom: none; }
 
 .lie-summary {
   margin: 0 0 8px; padding: 8px 10px; border-radius: 8px;

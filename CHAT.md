@@ -848,3 +848,21 @@ Two small follow-ups from the user:
 the global gear is hidden in-game while `#btnSettingsGame` is visible and opens Settings, verdicts
 (`95.9% | 88.8% | story impossible`) render immediately with no setup, and turning it off from
 inside a game hides everything and persists `{"lieDetection":false}`.
+
+---
+
+## Session 22b — make the verdict actually visible (inline badge, not a hidden column)
+
+User still couldn't see anything with the feature on. A headless screenshot showed why: the
+verdict was the LAST column of the History table, and that table scrolls horizontally on a phone —
+so the Claim column (like the pre-existing Odds column) was off the right edge. On desktop it was
+fine; on a narrow screen only the top summary bar showed.
+
+**Fix:** moved the per-claim verdict out of the trailing column and into an inline **badge in the
+Event cell** (`lieBadge()`), beside the ratio name where the conflict/veto badges already live —
+always on screen, no side-scroll. Dropped the standalone `.lie-col` table column and its header.
+Verdicts now read "95.9% honest" / "must be true" / "can't be true" / "story impossible".
+
+**Verified:** phone (390px) and desktop (1100px) screenshots both show the badges clearly; a
+9-assertion headless run confirms three badges render and are on-screen, toggle off removes them
+and toggle on restores them; 39 Node unit tests still green.

@@ -1018,17 +1018,26 @@
   // never about people. The maths is certain but the data entry is not — a
   // forgotten Conflict tap manufactures a contradiction, and the app must not
   // accuse a real person at a real table on the strength of a mis-tap.
+  // The verdict for one government's claim, or "" when there is nothing to say.
   function lieVerdict(h) {
-    if (!h) return "—";
+    if (!h) return "";
     if (h.provenFalse)
       return `<span class="lie-bad" title="No possible deal of this round's cards makes this claim true — so either it was false, or something was recorded wrong.">can’t be true</span>`;
     if (h.impossibleStory)
       return `<span class="lie-bad" title="This claims a 1F2L hand passed as two liberals, yet a fascist policy was enacted — a chancellor cannot enact a card they were never handed. The hand or the pass is misstated.">story impossible</span>`;
     if (h.provenTrue)
       return `<span class="lie-good" title="Every possible deal of this round's cards makes this claim true.">must be true</span>`;
-    if (h.pTrue == null) return "—";
+    if (h.pTrue == null) return "";
     const cls = h.pTrue < 0.4 ? "lie-bad" : h.pTrue < 0.7 ? "lie-warn" : "lie-good";
-    return `<span class="${cls}" title="Estimated chance this claim was true, given every claim in the round and the cards available. A model estimate, not a measurement.">${Prob.fmtPct(h.pTrue)}</span>`;
+    return `<span class="${cls}" title="Estimated chance this claim was true, given every claim in the round and the cards available. A model estimate, not a measurement.">${Prob.fmtPct(h.pTrue)} honest</span>`;
+  }
+
+  // The verdict as an inline badge for the always-visible Event column. Carries
+  // `.lie-col` so it is CSS-gated off when lie detection is disabled, on top of
+  // the fact that `h` is only ever populated when the feature is on.
+  function lieBadge(h) {
+    const v = lieVerdict(h);
+    return v ? ` <span class="lie-col lie-badge">${v}</span>` : "";
   }
 
   function renderLieSummary(d) {
@@ -1092,17 +1101,15 @@
             g.vetoed ? ` <span style="color:var(--gold)">⊘ vetoed</span>` : ""
           }${
             g.conflict ? ` <span style="color:var(--fac-2)">⚔ conflict ${escapeHtml(state.players[g.chancellorIdx].name)}</span>` : ""
-          }${powerAnnotation(g.power)}</td>` +
+          }${powerAnnotation(g.power)}${lieBadge(g.honesty)}</td>` +
           `<td>${escapeHtml(state.players[g.presidentIdx].name)}</td>` +
           `<td>${escapeHtml(state.players[g.chancellorIdx].name)}</td>` +
           `<td>${ratio.sub}</td>` +
           `<td>${g.vetoed ? "— (veto)" : g.enacted === "L" ? "🟦 Lib" : "🟥 Fac"}</td>` +
           `<td><b style="color:var(--gold)">${Prob.fmtPct(g.prob)}</b></td>`;
       }
-      // Honesty verdict (hidden by CSS unless lie detection is on).
-      tr.innerHTML += `<td class="lie-col">${
-        lieVerdict(ev.type === "gov" ? d.gi[ev.giIdx].honesty : null)
-      }</td>`;
+      // (The honesty verdict now rides inline in the Event cell above, so it is
+      // visible without scrolling the table sideways on a phone.)
       // Correcting a mis-tap noticed several turns later — Undo only steps back
       // from the end, so without this the whole game has to be unwound.
       const canEdit = !state.review && !state.recordingRoles && ev.n != null;
