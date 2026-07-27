@@ -145,17 +145,33 @@
         specials.push({ chooserIdx: g.presidentIdx, chosenIdx: p.chosenIdx });
     });
 
-    // Policy Peek: the peek names the top 3, which the NEXT government in the same
-    // round then draws (no reshuffle between). Model it as the peeker reporting
-    // that government's hand, so their honesty is tied to the actual cards.
+    // Policy Peek: the peek names the top 3 cards, which are a real 3-card sample
+    // of the round pool. Two cases:
+    //  • the NEXT government in the same round drew exactly those cards → the peek
+    //    is a second report of that government's hand (tie them);
+    //  • no government has drawn them yet (or a reshuffle carried them off) → the
+    //    peek is still a report of 3 real cards, so add a PHANTOM hand to its round
+    //    so the conservation law can catch an impossible claim right away (e.g.
+    //    claiming 3 liberals when the round pool holds only 2).
+    const phantomByRound = {};
     rounds.forEach((r) => {
-      for (let k = 0; k < r.govs.length - 1; k++) {
+      for (let k = 0; k < r.govs.length; k++) {
         const g = gi[r.govs[k]];
-        if (g.power && g.power.type === "peek" && Array.isArray(g.power.order)) {
-          peekByGov[r.govs[k + 1]] = {
-            peekerIdx: g.presidentIdx,
-            peekLibs: g.power.order.filter((c) => c === "L").length,
-          };
+        if (!(g.power && g.power.type === "peek" && Array.isArray(g.power.order))) continue;
+        const peekLibs = g.power.order.filter((c) => c === "L").length;
+        if (k + 1 < r.govs.length) {
+          peekByGov[r.govs[k + 1]] = { peekerIdx: g.presidentIdx, peekLibs };
+        } else {
+          (phantomByRound[r.index] = phantomByRound[r.index] || []).push({
+            presIdx: g.presidentIdx,
+            claim: peekLibs,
+            enacted: null,
+            vetoed: true, // no enacted-card constraint; still a 3-card sample
+            conflict: false,
+            facBefore: g.facBefore,
+            libBefore: g.libBefore,
+            phantom: true,
+          });
         }
       }
     });
@@ -175,17 +191,20 @@
         startL: r.startL,
         chaosLibs: r.chaosLib,
         chaosFascs: r.chaosFac,
-        govs: r.govs.map((idx) => ({
-          presIdx: gi[idx].presidentIdx,
-          chanIdx: gi[idx].chancellorIdx,
-          claim: gi[idx].libs,
-          enacted: gi[idx].enacted,
-          vetoed: gi[idx].vetoed,
-          conflict: gi[idx].conflict,
-          facBefore: gi[idx].facBefore,
-          libBefore: gi[idx].libBefore,
-          peek: peekByGov[idx] || undefined,
-        })),
+        govs: r.govs
+          .map((idx) => ({
+            presIdx: gi[idx].presidentIdx,
+            chanIdx: gi[idx].chancellorIdx,
+            claim: gi[idx].libs,
+            enacted: gi[idx].enacted,
+            vetoed: gi[idx].vetoed,
+            conflict: gi[idx].conflict,
+            facBefore: gi[idx].facBefore,
+            libBefore: gi[idx].libBefore,
+            peek: peekByGov[idx] || undefined,
+          }))
+          // append any phantom peek "hands" for peeks nobody has drawn yet
+          .concat((phantomByRound[r.index] || []).map((pg) => ({ chanIdx: pg.presIdx, ...pg }))),
       })),
     });
   }
@@ -1232,15 +1251,24 @@
         "Chance this investigation call is false — i.e. the target’s true party is not the one that was announced. Model estimate.");
     }
     if (p.type === "peek" && Array.isArray(p.order)) {
-      const govList = (d.rounds[g.round] || {}).govs || [];
-      const myIdx = govList.find((idx) => d.gi[idx] === g);
-      const pos = govList.indexOf(myIdx);
-      const next = pos >= 0 && pos + 1 < govList.length ? d.gi[govList[pos + 1]] : null;
-      const hp = next && next.honesty ? next.honesty.handPosterior : null;
-      if (!hp) return lieClaimChip(null, "The peeked cards were reshuffled before anyone drew them, so the peek can’t be checked.");
       const peekLibs = p.order.filter((c) => c === "L").length;
-      return lieClaimChip(Math.max(0, 1 - (hp[peekLibs] || 0)),
-        "Chance the peek was false — i.e. the top three cards did not hold the claimed number of liberals, judged against the hand the next government actually drew. Model estimate.");
+      const r = d.rounds[g.round] || {};
+      const govList = r.govs || [];
+      const pos = govList.findIndex((idx) => d.gi[idx] === g);
+      const next = pos >= 0 && pos + 1 < govList.length ? d.gi[govList[pos + 1]] : null;
+      if (next && next.honesty && next.honesty.handPosterior) {
+        // the next government drew the peeked cards — check against its actual hand
+        return lieClaimChip(Math.max(0, 1 - (next.honesty.handPosterior[peekLibs] || 0)),
+          "Chance the peek was false, judged against the hand the next government actually drew. Model estimate.");
+      }
+      // nobody has drawn them yet — check the claim against the round pool by
+      // conservation (catches an impossible claim, e.g. 3 liberals from a 2-liberal pool)
+      const claims = govList.map((idx) => d.gi[idx].libs).concat(peekLibs);
+      const chaosN = (r.chaosLib || 0) + (r.chaosFac || 0);
+      const pt = Prob.retrospectiveProb(r.startN, r.startL, claims, claims.length - 1, chaosN, r.chaosLib || 0);
+      const pLie = pt == null || Number.isNaN(pt) ? 1 : Math.max(0, 1 - pt);
+      return lieClaimChip(pLie,
+        "Chance the peek was false, checked against the cards left in the round pool. Sharpens once the next government draws. Model estimate.");
     }
     return "";
   }

@@ -409,6 +409,21 @@ const base7 = () => ({ playerCount: 7, fascistCount: 2, rounds: [] });
      "p0=" + a.pFascist[0].toFixed(3) + " p2(bystander)=" + a.pFascist[2].toFixed(3));
 }
 {
+  // A "phantom" peek — the peeker reports a 3-card sample (a vetoed pseudo-gov)
+  // BEFORE any government draws those cards. Claiming 3 liberals from a round pool
+  // that holds only 2 is a provable lie, so the peeker (seat 0) must jump above
+  // base immediately — no next government required.
+  const pool2 = { playerCount: 5, fascistCount: 2, rounds: [{ startN: 8, startL: 2, chaosLibs: 0, chaosFascs: 0, govs: [
+    { presIdx: 1, chanIdx: 2, claim: 0, enacted: "F", vetoed: false, conflict: false, facBefore: 0, libBefore: 0 },
+    { presIdx: 0, chanIdx: 0, claim: 3, enacted: null, vetoed: true, conflict: false, facBefore: 1, libBefore: 0, phantom: true },
+  ] }] };
+  const a = Honesty.analyzeGame(pool2);
+  ok("an impossible phantom peek outs the peeker", a.pFascist[0] > 0.6, "p0=" + a.pFascist[0].toFixed(3));
+  const plaus = JSON.parse(JSON.stringify(pool2)); plaus.rounds[0].govs[1].claim = 1;
+  ok("a plausible phantom peek moves the peeker far less",
+     Honesty.analyzeGame(plaus).pFascist[0] < a.pFascist[0], "p0=" + Honesty.analyzeGame(plaus).pFascist[0].toFixed(3));
+}
+{
   // A fascist executing a fellow fascist is unlikely, so an execution makes the
   // victim LESS likely to be fascist than base.
   const g = base7();

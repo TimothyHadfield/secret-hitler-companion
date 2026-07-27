@@ -1038,3 +1038,31 @@ contradicted reads more fascist than a bystander). Headless E2E (6 assertions): 
 investigation shows "🔍 …, Fascist · 29% likely a lie · 46% fascist", and a real 5-player peek that
 claimed all-fascist top cards then saw the next government draw 3 liberals shows
 "👁 F·F·F · 100% likely a lie · 89% fascist" — the peeker correctly outed as a near-certain liar.
+
+---
+
+## Session 28 — fix: policy peek wasn't scored until the next hand was drawn
+
+**User bug report:** set up a round with only 2 liberals in the pool (known, post-reshuffle), then
+the peeking president claimed the top 3 were all liberal — a provable lie — but their fascist odds
+didn't move at all, and "the recording of the power decision got removed."
+
+**Root cause.** The peek was only scored by tying it to the NEXT government's hand (the cards it
+describes). Until that government was played — the live case, and the reshuffled case — the peek was
+"unverified" and contributed nothing. So a peek claiming more liberals than the pool can hold, a
+certain lie by conservation, moved nothing. (The "removed" was the same thing surfacing as the
+board's "(reshuffled)" strike-through on an unscored peek.)
+
+**Fix.** A peek that no government has drawn is now added to its round as a **phantom hand** — a
+vetoed pseudo-government reported by the peeker that consumes 3 real cards — so the round
+conservation law prices it right away. `analyzeRoles` classifies each peek: a next government in the
+same round ⇒ attach as a second report of that hand (unchanged); otherwise ⇒ phantom. The History
+lie chip matches: checked against the drawn hand when available, else against the round pool by
+conservation (so an impossible claim reads ~100% immediately). Phantom "governments" are excluded
+from the nomination signal.
+
+**Verified:** engine — an impossible phantom peek (claim 3L from a 2-liberal pool) lifts the peeker
+0.34 → **0.84**; a plausible one moves far less; the from-scratch brute-force mirror + all invariants
+still hold (**66 assertions**, up from 64). App — after recording the peek, the History row now shows
+a real lie estimate ("64% likely a lie") immediately instead of "unverified", with the 👁 recording
+intact.

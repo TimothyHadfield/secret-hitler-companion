@@ -342,9 +342,16 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   - **Policy Peek** — the peeked top-3 cards are exactly what the NEXT government draws, so the peek
     is modelled *inside the role DP* as the peeker **reporting that hand** (same lie model as a
     normal claim, using the peeker's rate) — a peek contradicted by the drawn hand pushes the
-    peeker's fascist odds up. The History lie estimate is `1 − P(next hand had the claimed liberal
-    count)`, an independent check against the cards actually drawn; "unverified" if reshuffled
-    before anyone drew them. This replaced the older agreement-only `peekChecks` factor.
+    peeker's fascist odds up. This replaced the older agreement-only `peekChecks` factor.
+  - **Peek scored even before/without a next hand (session 28 fix).** If no government has drawn the
+    peeked cards yet — the live case, and the reshuffled case — the peek is added to its round as a
+    **phantom "hand"** (`phantom:true`, a vetoed pseudo-government reported by the peeker that
+    consumes 3 cards), so the round's **conservation law catches an impossible claim immediately**:
+    peeking "3 liberals" from a pool that holds only 2 jumps the peeker to ~0.84 fascist the moment
+    it's recorded, instead of doing nothing until the next hand. `analyzeRoles` classifies each
+    peek: next-gov-in-same-round ⇒ attach; otherwise ⇒ phantom. The History lie chip mirrors this —
+    checked against the drawn hand when available, else against the round pool by conservation
+    (`retrospectiveProb` with the peek appended). Phantom govs are skipped by the nomination factor.
 - **Two layers on one dynamic program.** The round's conservation law
   (`Σ hands + chaosLibs + leftovers = pool liberals`) is walked once as a **min-plus** semiring to
   get the *fewest claims that must be false*, and once as **sum-product** to get

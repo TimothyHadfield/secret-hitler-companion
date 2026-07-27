@@ -547,8 +547,10 @@ const Honesty = (() => {
         const mass = roundMass(r.govs, r.T, r.R, weightFn);
         if (mass <= 0) { logL = -Infinity; break; }
         logL += Math.log(mass);
-        // nominations (§12.1): a fascist who knows allies picks one preferentially
+        // nominations (§12.1): a fascist who knows allies picks one preferentially.
+        // Phantom peek "governments" have no real nomination — skip them.
         for (const g of r.govs) {
+          if (g.phantom) continue;
           const rP = roleOf(A, g.presIdx);
           logL += Math.log(affinityFactor(knowsAllies(rP), A.S.has(g.chanIdx), prm.nomAffinity));
         }
