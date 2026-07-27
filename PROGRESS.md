@@ -324,12 +324,15 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - **The gear is in TWO places** because the global top bar is hidden during a game: `#btnSettings`
   in `#topbar` (setup/stats screens) and `#btnSettingsGame` in the in-game tab bar. Both call
   `openSettings()`.
-- **The per-claim verdict is an inline badge in the History "Event" cell** (`lieBadge()`), NOT a
-  trailing column — the History table scrolls horizontally on phones, so a far-right column (like
-  the pre-existing Odds one) sits off-screen. The badge reads e.g. "95.9% honest", "must be true",
-  "can't be true", or "story impossible", beside the ratio name where it's always visible. A
-  full-width **summary bar** (`#lieSummary`) above the table carries the round-level notes
-  (min-lies, the early-round "too many cards unseen" caveat).
+- **The History "Event" cell carries an inline badge** (`lieBadge()`), NOT a trailing column — the
+  History table scrolls horizontally on phones, so a far-right column (like the pre-existing Odds
+  one) sits off-screen. The badge shows the **President's fascist odds** ("82% fascist", coloured
+  hi/mid/lo), plus a red **"claim can't be true" / "story impossible"** flag when the round's cards
+  make that government's claim provably false. (It used to show "% honest"; the user asked for
+  fascist odds instead — the per-claim honesty still drives the hard flags and the summary bar.)
+  A full-width **summary bar** (`#lieSummary`) above the table carries the round-level notes
+  (min-lies, the early-round "too many cards unseen" caveat). Note the fascist % is game-level, so
+  the same President reads the same number on each of their rows.
 - **Two layers on one dynamic program.** The round's conservation law
   (`Σ hands + chaosLibs + leftovers = pool liberals`) is walked once as a **min-plus** semiring to
   get the *fewest claims that must be false*, and once as **sum-product** to get

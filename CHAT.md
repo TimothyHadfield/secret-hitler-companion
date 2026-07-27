@@ -989,3 +989,22 @@ computed from the stored predictions vs the recorded roles. Needs ≥3 games.
 **Still deferred (with reason):** correlated fascist behaviour (costs the DP's clean factorisation);
 chancellor-claim capture + vote tracking (new data entry, product call); EM fitting + per-player
 tendencies (needs data — the calibration harness is the prerequisite); uncertainty ranges.
+
+---
+
+## Session 26 — History badge now shows fascist %, not honesty %
+
+**User's brief:** the percentage in History should be percent fascist, not percent honest/liberal.
+
+Changed the History "Event"-cell badge (`lieBadge`) from the per-claim "X% honest" to the
+**President's fascist odds** ("82% fascist", coloured hi/mid/lo like the board chips). The hard
+claim-certainties still surface as a red flag ("claim can't be true" / "story impossible") since
+those are prior-free facts worth keeping; dropped "must be true" and the "% honest" number. The
+per-claim honesty engine still drives those flags and the round summary bar — only the badge's
+number changed to the role model's P(fascist) for that government's president.
+
+Note the fascist % is game-level, so a President reads the same number on each of their rows.
+
+Verified: 4-assertion headless run (every gov row shows "% fascist", none say "honest"/"liberal",
+the impossible-claim flag is preserved) + screenshot (Bob 82% / Dee 2% / Cid 96%, two flagged
+"story impossible"). 64 unit tests unchanged.

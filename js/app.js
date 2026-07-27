@@ -1184,30 +1184,28 @@
   // Everything here renders into elements carrying `.lie-col`, which CSS hides
   // unless the body has `.lie-on` — so the feature leaves no trace when off.
   //
-  // WORDING RULE (HONESTY_MODEL.md §11 F8): these are statements about CLAIMS,
-  // never about people. The maths is certain but the data entry is not — a
-  // forgotten Conflict tap manufactures a contradiction, and the app must not
-  // accuse a real person at a real table on the strength of a mis-tap.
-  // The verdict for one government's claim, or "" when there is nothing to say.
-  function lieVerdict(h) {
-    if (!h) return "";
-    if (h.provenFalse)
-      return `<span class="lie-bad" title="No possible deal of this round's cards makes this claim true — so either it was false, or something was recorded wrong.">can’t be true</span>`;
-    if (h.impossibleStory)
-      return `<span class="lie-bad" title="This claims a 1F2L hand passed as two liberals, yet a fascist policy was enacted — a chancellor cannot enact a card they were never handed. The hand or the pass is misstated.">story impossible</span>`;
-    if (h.provenTrue)
-      return `<span class="lie-good" title="Every possible deal of this round's cards makes this claim true.">must be true</span>`;
-    if (h.pTrue == null) return "";
-    const cls = h.pTrue < 0.4 ? "lie-bad" : h.pTrue < 0.7 ? "lie-warn" : "lie-good";
-    return `<span class="${cls}" title="Estimated chance this claim was true, given every claim in the round and the cards available. A model estimate, not a measurement.">${Prob.fmtPct(h.pTrue)} honest</span>`;
-  }
-
-  // The verdict as an inline badge for the always-visible Event column. Carries
-  // `.lie-col` so it is CSS-gated off when lie detection is disabled, on top of
-  // the fact that `h` is only ever populated when the feature is on.
-  function lieBadge(h) {
-    const v = lieVerdict(h);
-    return v ? ` <span class="lie-col lie-badge">${v}</span>` : "";
+  // WORDING RULE (HONESTY_MODEL.md §11 F8): these are statements about the MODEL
+  // and about CLAIMS, never a flat accusation. The maths is certain but the data
+  // entry is not — a forgotten Conflict tap manufactures a contradiction, and the
+  // app must not accuse a real person at a real table on the strength of a mis-tap.
+  //
+  // The History badge shows the PRESIDENT's fascist odds (the "% fascist" the user
+  // asked for), plus a red flag when the round's cards make the claim provably
+  // false. `presFasc` is that seat's P(fascist) from the role model (or null).
+  function lieBadge(h, presFasc) {
+    const parts = [];
+    if (presFasc != null) {
+      const cls = presFasc >= 0.6 ? "lie-bad" : presFasc >= 0.35 ? "lie-warn" : "lie-good";
+      parts.push(
+        `<span class="${cls}" title="Model estimate that this government's President is on the Fascist team, from play so far. Not a measurement.">${Math.round(presFasc * 100)}% fascist</span>`
+      );
+    }
+    // hard claim-certainties still surface — a proven-false claim is prior-free.
+    if (h && h.provenFalse)
+      parts.push(`<span class="lie-bad" title="No possible deal of this round's cards makes this claim true — so it was false, or something was recorded wrong.">claim can’t be true</span>`);
+    else if (h && h.impossibleStory)
+      parts.push(`<span class="lie-bad" title="This claims a 1F2L hand passed as two liberals, yet a fascist policy was enacted — impossible. The hand or the pass is misstated.">story impossible</span>`);
+    return parts.length ? ` <span class="lie-col lie-badge">${parts.join(" · ")}</span>` : "";
   }
 
   function renderLieSummary(d) {
@@ -1271,7 +1269,7 @@
             g.vetoed ? ` <span style="color:var(--gold)">⊘ vetoed</span>` : ""
           }${
             g.conflict ? ` <span style="color:var(--fac-2)">⚔ conflict ${escapeHtml(state.players[g.chancellorIdx].name)}</span>` : ""
-          }${powerAnnotation(g.power)}${lieBadge(g.honesty)}</td>` +
+          }${powerAnnotation(g.power)}${lieBadge(g.honesty, d.roleOdds ? d.roleOdds[g.presidentIdx] : null)}</td>` +
           `<td>${escapeHtml(state.players[g.presidentIdx].name)}</td>` +
           `<td>${escapeHtml(state.players[g.chancellorIdx].name)}</td>` +
           `<td>${ratio.sub}</td>` +
