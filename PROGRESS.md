@@ -333,6 +333,18 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   A full-width **summary bar** (`#lieSummary`) above the table carries the round-level notes
   (min-lies, the early-round "too many cards unseen" caveat). Note the fascist % is game-level, so
   the same President reads the same number on each of their rows.
+- **Powers are claims too (session 27).** Investigation and Policy Peek are the president privately
+  seeing something and announcing it, so each has a lie estimate shown in History (`powerLieChip`):
+  - **Investigation** — the president announces a target's party. `P(claim is a lie) = P(target's
+    true party ≠ announced)`, which is just the target's fascist odds read the right way round
+    (announced Fascist ⇒ lie iff target is Liberal). Already feeds the role model via
+    `investigationFactor` (a liberal investigator's report is near-truth).
+  - **Policy Peek** — the peeked top-3 cards are exactly what the NEXT government draws, so the peek
+    is modelled *inside the role DP* as the peeker **reporting that hand** (same lie model as a
+    normal claim, using the peeker's rate) — a peek contradicted by the drawn hand pushes the
+    peeker's fascist odds up. The History lie estimate is `1 − P(next hand had the claimed liberal
+    count)`, an independent check against the cards actually drawn; "unverified" if reshuffled
+    before anyone drew them. This replaced the older agreement-only `peekChecks` factor.
 - **Two layers on one dynamic program.** The round's conservation law
   (`Σ hands + chaosLibs + leftovers = pool liberals`) is walked once as a **min-plus** semiring to
   get the *fewest claims that must be false*, and once as **sum-product** to get

@@ -77,8 +77,8 @@ const Honesty = (() => {
     specialAffinity: 2.5, // ditto for a Special-Election pick
     killAllyPenalty: 0.2, // a fascist executing a fellow fascist: relative weight vs a non-ally
     investLie: 0.45,      // a fascist investigator misreporting the party they saw
-    peekLibConflict: 0.02,// two liberals disagreeing on a peek vs the next hand (~never)
-    peekFacConflict: 0.6, // at least one fascist in such a disagreement (plausible)
+    // (a Policy Peek is modelled as the peeker REPORTING the next government's true
+    //  hand — same report model as a normal claim, using the peeker's lie rate.)
   };
 
   // ---------------------------------------------------------------- helpers --
@@ -447,14 +447,6 @@ const Honesty = (() => {
     if (role === "L") return truthful ? 1 - prm.mu : prm.mu;
     return truthful ? 1 - prm.investLie : prm.investLie; // fascist/Hitler
   }
-  // A peek claim and the next government's claim describe the SAME three cards.
-  // If they disagree, at least one lied — near-impossible for two liberals.
-  function peekFactor(agree, peekerRole, nextRole, prm) {
-    if (agree) return 1;
-    const bothLiberal = peekerRole === "L" && nextRole === "L";
-    return bothLiberal ? prm.peekLibConflict : prm.peekFacConflict;
-  }
-
   // All size-k subsets of {0..n-1}, each as a Set. n<=10, k<=3 → <=120.
   function combinations(n, k) {
     const res = [];
@@ -495,11 +487,13 @@ const Honesty = (() => {
    *   {boolean}  cautiousHitler  true in 7+ games (Hitler is blind & plays hidden)
    *   {object[]} rounds  each {startN, startL, chaosLibs, chaosFascs, govs:[…]}
    *     gov = {presIdx, chanIdx, claim, enacted:'L'|'F'|null, vetoed, conflict,
-   *            facBefore, libBefore}
+   *            facBefore, libBefore,
+   *            peek?: {peekerIdx, peekLibs}}  // a peek of THIS gov's cards by a
+   *                                           // prior president, treated as their
+   *                                           // report of this hand
    *   {object[]} investigations  [{investIdx, targetIdx, party:'L'|'F'}]
    *   {object[]} kills           [{killerIdx, victimIdx}]  (non-Hitler executions)
    *   {object[]} specials        [{chooserIdx, chosenIdx}]
-   *   {object[]} peekChecks      [{peekerIdx, nextPresIdx, agree:boolean}]
    * @returns {{pFascist:number[], pHitler:number[], assignments:number}}
    */
   function analyzeGame(game, params) {
@@ -544,7 +538,11 @@ const Honesty = (() => {
         };
         const weightFn = (j, h) => {
           const g = r.govs[j];
-          return binom(3, h) * govLikelihoodTeam(g, h, bhv(g.presIdx, g), bhv(g.chanIdx, g), r.priorClaim, prm);
+          let w = binom(3, h) * govLikelihoodTeam(g, h, bhv(g.presIdx, g), bhv(g.chanIdx, g), r.priorClaim, prm);
+          // a Policy Peek of these exact cards is the peeker reporting this hand —
+          // scored with the peeker's own lie model, tying their honesty to the cards
+          if (g.peek) w *= teamReport(g.peek.peekLibs, h, bhv(g.peek.peekerIdx, g), r.priorClaim, prm);
+          return w;
         };
         const mass = roundMass(r.govs, r.T, r.R, weightFn);
         if (mass <= 0) { logL = -Infinity; break; }
@@ -571,10 +569,8 @@ const Honesty = (() => {
         const rS = roleOf(A, sp.chooserIdx);
         logL += Math.log(affinityFactor(knowsAllies(rS), A.S.has(sp.chosenIdx), prm.specialAffinity));
       }
-      // policy peek vs the next hand (§12.3)
-      for (const pk of game.peekChecks || []) {
-        logL += Math.log(peekFactor(pk.agree, roleOf(A, pk.peekerIdx), roleOf(A, pk.nextPresIdx), prm));
-      }
+      // (Policy Peek is applied inside the round DP above, as the peeker's report
+      //  of the next government's hand — see weightFn.)
       return logL;
     });
 
@@ -604,6 +600,7 @@ const Honesty = (() => {
     _handBounds: handBounds,
     _hasImpossibleStory: hasImpossibleStory,
     _govLikelihoodTeam: govLikelihoodTeam,
+    _teamReport: teamReport,
     _roleBehaviour: roleBehaviour,
     _roundMass: roundMass,
     _combinations: combinations,

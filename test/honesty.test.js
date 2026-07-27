@@ -309,7 +309,8 @@ function bruteRole(game, prm) {
       const g = r.govs[j];
       for (let h = g.lo; h <= g.hi; h++) {
         if (used + h > r.T) break;
-        const step = Prob.binom(3, h) * Honesty._govLikelihoodTeam(g, h, bhv(A, g.presIdx, g), bhv(A, g.chanIdx, g), r.prior, p);
+        let step = Prob.binom(3, h) * Honesty._govLikelihoodTeam(g, h, bhv(A, g.presIdx, g), bhv(A, g.chanIdx, g), r.prior, p);
+        if (g.peek) step *= Honesty._teamReport(g.peek.peekLibs, h, bhv(A, g.peek.peekerIdx, g), r.prior, p);
         if (step === 0) continue;
         walk(j + 1, used + h, w * step);
       }
@@ -334,11 +335,6 @@ function bruteRole(game, prm) {
     }
     for (const k of game.kills || []) if (knows(roleOf(A, k.killerIdx)) && A.S.has(k.victimIdx)) s *= p.killAllyPenalty;
     for (const sp of game.specials || []) if (knows(roleOf(A, sp.chooserIdx)) && A.S.has(sp.chosenIdx)) s *= p.specialAffinity;
-    for (const pk of game.peekChecks || []) {
-      if (pk.agree) continue;
-      const both = roleOf(A, pk.peekerIdx) === "L" && roleOf(A, pk.nextPresIdx) === "L";
-      s *= both ? p.peekLibConflict : p.peekFacConflict;
-    }
     return s;
   };
   const scores = As.map(scoreOf);
@@ -360,11 +356,11 @@ function bruteRole(game, prm) {
         { presIdx: 1, chanIdx: 2, claim: 2, enacted: "F", vetoed: false, conflict: true, facBefore: 0, libBefore: 0 } ] },
       { startN: 11, startL: 4, chaosLibs: 1, chaosFascs: 0, govs: [
         { presIdx: 3, chanIdx: 4, claim: 1, enacted: "L", vetoed: false, conflict: false, facBefore: 2, libBefore: 1 },
-        { presIdx: 0, chanIdx: 1, claim: 3, enacted: "F", vetoed: false, conflict: false, facBefore: 2, libBefore: 2 } ] } ],
+        { presIdx: 0, chanIdx: 1, claim: 3, enacted: "F", vetoed: false, conflict: false, facBefore: 2, libBefore: 2,
+          peek: { peekerIdx: 3, peekLibs: 1 } } ] } ],
     investigations: [{ investIdx: 1, targetIdx: 3, party: "F" }],
     kills: [{ killerIdx: 0, victimIdx: 5 }],
     specials: [{ chooserIdx: 2, chosenIdx: 1 }],
-    peekChecks: [{ peekerIdx: 4, nextPresIdx: 0, agree: false }],
     forcedHitler: null, notHitler: [6] },
 ].forEach((game, i) => {
   const mine = Honesty.analyzeGame(game);
@@ -401,12 +397,16 @@ const base7 = () => ({ playerCount: 7, fascistCount: 2, rounds: [] });
   ok("special-election pick rises", a.pFascist[3] > 2 / 7, "p3=" + a.pFascist[3].toFixed(3));
 }
 {
-  // A peek that disagrees with the next hand implicates the peeker and next pres.
-  const g = base7();
-  g.peekChecks = [{ peekerIdx: 0, nextPresIdx: 3, agree: false }];
+  // A peek by seat 0 that wildly over-claims liberals (says 3L) on cards that a
+  // clean follow-up government reveals to be fascist-heavy makes the PEEKER look
+  // like a liar → more likely fascist than a bystander.
+  const g = { playerCount: 7, fascistCount: 2, rounds: [{ startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0, govs: [
+    { presIdx: 4, chanIdx: 5, claim: 1, enacted: "L", vetoed: false, conflict: false, facBefore: 0, libBefore: 0 },
+    { presIdx: 3, chanIdx: 6, claim: 0, enacted: "F", vetoed: false, conflict: false, facBefore: 1, libBefore: 1,
+      peek: { peekerIdx: 0, peekLibs: 3 } } ] }] };
   const a = Honesty.analyzeGame(g);
-  ok("a contradicted peek lifts both seats", a.pFascist[0] > 2 / 7 && a.pFascist[3] > 2 / 7,
-     "p0=" + a.pFascist[0].toFixed(3) + " p3=" + a.pFascist[3].toFixed(3));
+  ok("a peeker whose peek is contradicted looks fascist", a.pFascist[0] > a.pFascist[2],
+     "p0=" + a.pFascist[0].toFixed(3) + " p2(bystander)=" + a.pFascist[2].toFixed(3));
 }
 {
   // A fascist executing a fellow fascist is unlikely, so an execution makes the

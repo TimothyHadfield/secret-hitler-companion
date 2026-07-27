@@ -1008,3 +1008,33 @@ Note the fascist % is game-level, so a President reads the same number on each o
 Verified: 4-assertion headless run (every gov row shows "% fascist", none say "honest"/"liberal",
 the impossible-claim flag is preserved) + screenshot (Bob 82% / Dee 2% / Cid 96%, two flagged
 "story impossible"). 64 unit tests unchanged.
+
+---
+
+## Session 27 — powers as claims: investigation & policy-peek lie math
+
+**User's brief:** treat Policy Peek and Investigation as claims — do the lie math on them, and let
+that inform the fascist/liberal odds.
+
+Both powers are the president privately seeing something and publicly announcing it, so each is a
+claim that can be a lie:
+
+- **Investigation** — the president sees a target's party card and announces a party. Under any role
+  assignment the target's true party is fixed, so `P(claim is a lie) = P(target's true party ≠
+  announced)` = the target's fascist odds read the right way (announced Fascist ⇒ lie iff the target
+  is Liberal). Surfaced in History as "NN% likely a lie". The role model already consumed it
+  (`investigationFactor`): a liberal investigator's report is near-truth, so it both moves the
+  target's odds and — if the call looks false — the president's.
+- **Policy Peek** — the peeked top-3 cards are exactly the next government's hand, so I upgraded it
+  from the old agreement-only `peekChecks` to a proper **in-DP report**: the peek is scored as the
+  peeker *reporting that hand* with their own lie model, inside the round conservation DP. A peek
+  contradicted by the drawn hand pushes the peeker's fascist odds up. History shows `1 − P(next hand
+  had the claimed liberal count)`, an independent check against the cards actually drawn
+  ("unverified" if reshuffled first).
+
+**Verified:** 64 Node assertions still green — the from-scratch brute-force mirror now includes the
+in-DP peek report (max diff < 1e-9), and a rewritten peek sanity test (a peeker whose peek is
+contradicted reads more fascist than a bystander). Headless E2E (6 assertions): a real 7-player
+investigation shows "🔍 …, Fascist · 29% likely a lie · 46% fascist", and a real 5-player peek that
+claimed all-fascist top cards then saw the next government draw 3 liberals shows
+"👁 F·F·F · 100% likely a lie · 89% fascist" — the peeker correctly outed as a near-certain liar.

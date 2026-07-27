@@ -120,7 +120,9 @@
     const investigations = [];
     const kills = [];
     const specials = [];
-    const peekChecks = [];
+    // Policy Peek attaches to the NEXT government (the one that draws the peeked
+    // cards); filled in below, keyed by that government's gi index.
+    const peekByGov = {};
 
     // Hitler elected Chancellor, or an executed Hitler, reveals Hitler exactly.
     if (hitlerElected && hitlerElected.chancellorIdx != null) {
@@ -143,21 +145,17 @@
         specials.push({ chooserIdx: g.presidentIdx, chosenIdx: p.chosenIdx });
     });
 
-    // Policy Peek vs. the next hand: the peek names the top 3, which the next
-    // government in the SAME round then draws (no reshuffle between). Comparing
-    // the peek's liberal count to that government's claim is a cross-check on the
-    // same three cards — disagreement means one of the two lied.
+    // Policy Peek: the peek names the top 3, which the NEXT government in the same
+    // round then draws (no reshuffle between). Model it as the peeker reporting
+    // that government's hand, so their honesty is tied to the actual cards.
     rounds.forEach((r) => {
       for (let k = 0; k < r.govs.length - 1; k++) {
         const g = gi[r.govs[k]];
         if (g.power && g.power.type === "peek" && Array.isArray(g.power.order)) {
-          const peekLibs = g.power.order.filter((c) => c === "L").length;
-          const next = gi[r.govs[k + 1]];
-          peekChecks.push({
+          peekByGov[r.govs[k + 1]] = {
             peekerIdx: g.presidentIdx,
-            nextPresIdx: next.presidentIdx,
-            agree: peekLibs === next.libs,
-          });
+            peekLibs: g.power.order.filter((c) => c === "L").length,
+          };
         }
       }
     });
@@ -172,7 +170,6 @@
       investigations,
       kills,
       specials,
-      peekChecks,
       rounds: rounds.map((r) => ({
         startN: r.startN,
         startL: r.startL,
@@ -187,6 +184,7 @@
           conflict: gi[idx].conflict,
           facBefore: gi[idx].facBefore,
           libBefore: gi[idx].libBefore,
+          peek: peekByGov[idx] || undefined,
         })),
       })),
     });
@@ -1208,6 +1206,45 @@
     return parts.length ? ` <span class="lie-col lie-badge">${parts.join(" · ")}</span>` : "";
   }
 
+  // A lie chip for a POWER claim (investigation / policy peek). The powers are
+  // claims too: the president privately sees something (a party card, the top 3
+  // cards) and announces it — and can lie. `pLie` in [0,1], or null = unverifiable.
+  function lieClaimChip(pLie, title) {
+    if (pLie == null)
+      return ` <span class="lie-col lie-badge"><span class="muted" title="${title}">unverified</span></span>`;
+    const cls = pLie >= 0.6 ? "lie-bad" : pLie >= 0.35 ? "lie-warn" : "lie-good";
+    return ` <span class="lie-col lie-badge"><span class="${cls}" title="${title}">${Math.round(pLie * 100)}% likely a lie</span></span>`;
+  }
+
+  // The per-power lie estimate for a government's power claim, shown in History.
+  //  • Investigation: P(target's true party ≠ the announced party) — which is just
+  //    the target's fascist odds read the right way round.
+  //  • Policy Peek: P(the peeked cards ≠ the claimed count) = 1 − P(the next
+  //    government's hand had that many liberals), an independent check of the peek
+  //    against the cards that were actually drawn.
+  function powerLieChip(g, d) {
+    if (!lieOn() || !g.power) return "";
+    const p = g.power;
+    if (p.type === "invest" && p.party && p.targetIdx != null && d.roleOdds && d.roleOdds[p.targetIdx] != null) {
+      const tf = d.roleOdds[p.targetIdx];
+      const pLie = p.party === "F" ? 1 - tf : tf; // announced F ⇒ lie iff target is Liberal
+      return lieClaimChip(pLie,
+        "Chance this investigation call is false — i.e. the target’s true party is not the one that was announced. Model estimate.");
+    }
+    if (p.type === "peek" && Array.isArray(p.order)) {
+      const govList = (d.rounds[g.round] || {}).govs || [];
+      const myIdx = govList.find((idx) => d.gi[idx] === g);
+      const pos = govList.indexOf(myIdx);
+      const next = pos >= 0 && pos + 1 < govList.length ? d.gi[govList[pos + 1]] : null;
+      const hp = next && next.honesty ? next.honesty.handPosterior : null;
+      if (!hp) return lieClaimChip(null, "The peeked cards were reshuffled before anyone drew them, so the peek can’t be checked.");
+      const peekLibs = p.order.filter((c) => c === "L").length;
+      return lieClaimChip(Math.max(0, 1 - (hp[peekLibs] || 0)),
+        "Chance the peek was false — i.e. the top three cards did not hold the claimed number of liberals, judged against the hand the next government actually drew. Model estimate.");
+    }
+    return "";
+  }
+
   function renderLieSummary(d) {
     const el = $("lieSummary");
     if (!el) return;
@@ -1269,7 +1306,7 @@
             g.vetoed ? ` <span style="color:var(--gold)">⊘ vetoed</span>` : ""
           }${
             g.conflict ? ` <span style="color:var(--fac-2)">⚔ conflict ${escapeHtml(state.players[g.chancellorIdx].name)}</span>` : ""
-          }${powerAnnotation(g.power)}${lieBadge(g.honesty, d.roleOdds ? d.roleOdds[g.presidentIdx] : null)}</td>` +
+          }${powerAnnotation(g.power)}${powerLieChip(g, d)}${lieBadge(g.honesty, d.roleOdds ? d.roleOdds[g.presidentIdx] : null)}</td>` +
           `<td>${escapeHtml(state.players[g.presidentIdx].name)}</td>` +
           `<td>${escapeHtml(state.players[g.chancellorIdx].name)}</td>` +
           `<td>${ratio.sub}</td>` +
