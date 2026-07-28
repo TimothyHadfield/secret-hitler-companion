@@ -542,12 +542,45 @@
 
   // ------------------------------ screens ------------------------------------
   function show(id) {
-    ["setupScreen", "gameScreen", "statsScreen"].forEach((s) =>
+    ["menuScreen", "setupScreen", "gameScreen", "statsScreen"].forEach((s) =>
       $(s).classList.toggle("hidden", s !== id)
     );
-    // the game screen carries its own top row (tabs + New/End); hide the global topbar there
-    $("topbar").classList.toggle("hidden", id === "gameScreen");
+    if (id === "menuScreen") renderMenu();
   }
+
+  // Navigation. The main menu is home; Players and Statistics are pages you step
+  // INTO, and the top-left ← returns to whatever you came from (a small stack, so
+  // it behaves like a back button everywhere). The game screen has its own exit
+  // (undo while playing, Quit/New), so it isn't part of this stack.
+  const NAV_SCREENS = ["menuScreen", "setupScreen", "statsScreen"];
+  let navStack = [];
+  function currentTopScreen() {
+    return NAV_SCREENS.find((s) => !$(s).classList.contains("hidden")) || null;
+  }
+  function navTo(id) {
+    const cur = currentTopScreen();
+    if (cur && cur !== id) navStack.push(cur);
+    show(id);
+  }
+  function navBack() {
+    const prev = navStack.pop() || "menuScreen";
+    show(prev);
+  }
+  // Home = the main menu. Clears ONLY the in-progress game autosave (recorded
+  // games — local or synced — are never touched here) and empties the stack.
+  function goHome() {
+    state = null;
+    clearActive();
+    navStack = [];
+    show("menuScreen");
+  }
+  function renderMenu() {
+    renderAcctChip(); // the profile corner doubles as the sync-status chip
+    const el = $("menuGroupName");
+    if (el) el.textContent = activeGroupLabel();
+  }
+  function openSetup() { renderSetup(); navTo("setupScreen"); }
+  function openStats() { renderStatsInto($("statsBody")); navTo("statsScreen"); }
 
   // ------------------------------ SETUP --------------------------------------
   function renderSetup() {
@@ -1097,7 +1130,7 @@
       groupId: (cloud() && cloud().groupId) || null,
     };
     Stats.recordGame(record);
-    resetToSetup();
+    goHome(); // back to the main menu, not the players list
     showToast("Game saved to statistics.");
     // cloud.js listens for this and syncs; a no-op when signed out or offline.
     document.dispatchEvent(new CustomEvent("game:recorded", { detail: { id: record.id } }));
@@ -1155,7 +1188,9 @@
   function closeReview() {
     state = stashedState;
     stashedState = null;
-    renderStats();
+    // a review is always opened from the Statistics page — return to it
+    renderStatsInto($("statsBody"));
+    show("statsScreen");
   }
 
   function renderReviewPanel(cp, d) {
@@ -2216,9 +2251,11 @@
     });
   }
 
+  // Re-render the Statistics page in place (after an import, a clear, or a group
+  // switch). Navigation to the page is handled by openStats(); this never shows
+  // or hides a screen, so it's safe to call whether or not Stats is on screen.
   function renderStats() {
     renderStatsInto($("statsBody"));
-    show("statsScreen");
   }
 
   // in-game tab switching (Play / History / Stats)
@@ -2233,9 +2270,13 @@
   }
 
   // ------------------------------ misc ---------------------------------------
+  // Go to the players list ready to start again (used by "New game"). Only the
+  // in-progress autosave is cleared — recorded games are untouched. Seed the nav
+  // stack with the menu so the back arrow here returns home.
   function resetToSetup() {
     state = null;
-    clearActive(); // the game is finished/abandoned; only the roster is kept
+    clearActive();
+    navStack = ["menuScreen"];
     show("setupScreen");
     renderSetup();
   }
@@ -2321,6 +2362,10 @@
   }
 
   function renderAcctChip() {
+    // keep the menu's group box in sync too — it sits behind the account modal,
+    // so switching/renaming/leaving a group there must refresh it underneath.
+    const gn = $("menuGroupName");
+    if (gn) gn.textContent = activeGroupLabel();
     const dot = $("acctDot"), label = $("acctLabel");
     if (!dot || !label) return;
     const c = cloud();
@@ -2430,7 +2475,7 @@
         "Rename group", `Currently "${activeGroupLabel()}".`, "New name", async (name) => {
           const r = await c.renameGroup(name);
           acctMsg = r.ok ? { text: "Renamed.", bad: false } : { text: r.message, bad: true };
-          renderAccount(); renderSetup();
+          renderAccount(); renderAcctChip(); renderSetup();
         });
       if ($("acLeave")) $("acLeave").onclick = () => askConfirm(
         {
@@ -2705,6 +2750,7 @@
     const refresh = () => {
       applyScope();
       renderAcctChip();
+      if (!$("menuScreen").classList.contains("hidden")) renderMenu();
       if (!$("accountModal").classList.contains("hidden")) renderAccount();
     };
     document.addEventListener("cloud:auth", refresh);
@@ -2869,7 +2915,7 @@
           cancel: "Keep playing",
           danger: true,
         },
-        resetToSetup
+        goHome // abandon the game and return to the main menu
       );
     };
     $("btnBackTop").onclick = () => {
@@ -2884,10 +2930,14 @@
       if (e.key === "ArrowLeft") { reviewGoto((state.reviewStep || 0) - 1); e.preventDefault(); }
       else if (e.key === "ArrowRight") { reviewGoto((state.reviewStep || 0) + 1); e.preventDefault(); }
     });
-    $("btnStats").onclick = renderStats;
+    // main menu
+    $("btnMenuStart").onclick = openSetup;
+    $("btnMenuStats").onclick = openStats;
+    $("btnGroupBox").onclick = openAccount; // group box is a shortcut to the switcher
+    $("btnBackFromSetup").onclick = navBack;
     $("btnSettings").onclick = openSettings;
     $("btnSettingsGame").onclick = openSettings;
-    $("btnBackFromStats").onclick = () => show(state && !state.review ? "gameScreen" : "setupScreen");
+    $("btnBackFromStats").onclick = navBack;
     $("btnExportStats").onclick = exportStats;
     $("btnImportStats").onclick = () => $("importFile").click();
     $("importFile").onchange = (e) => {
@@ -2962,11 +3012,12 @@
     switchTab("play");
     renderGame();
   } else {
-    // no active game — restore any previously entered roster
+    // no active game — open the main menu. The roster is restored lazily when
+    // the player opens "Start game" (renderSetup runs then).
     try {
       const saved = JSON.parse(lsGet(SETUP_KEY));
       if (Array.isArray(saved)) setupPlayers = saved;
     } catch (e) {}
-    renderSetup();
+    show("menuScreen");
   }
 })();

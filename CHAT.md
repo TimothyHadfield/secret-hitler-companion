@@ -1099,3 +1099,37 @@ list moves from ~base-rate at step 1 to a sharp read by step 7 and re-sorts, rou
 reshuffle, back-stepping + arrow keys work, and the final step still reveals roles. Desktop + phone
 screenshots confirm the stepper fits the right control column and the below-table strip respectively.
 Files touched: `js/app.js`, `styles.css` only (no engine/test changes; the site stays dependency-free).
+
+## Session 30 — main-menu hub + back-anywhere navigation
+
+**User ask:** after finishing a game it dumped them back on the players list. Redesign the flow so
+movement through the app is clearer. Specifically: a **main menu** with the title big up top, settings
+in one corner and profile in the other, a **group box** (tap to switch), and **option boxes** —
+initially **Statistics** and **Start game** (→ players). Every page you click into should have a
+**top-left back arrow** to the previous page, like everywhere else. **Hard constraint (mid-turn):
+don't delete any recorded game history from any account while doing this.**
+
+**What shipped:**
+- **New `#menuScreen` home hub** (replaces the global `#topbar`): big **Secret Hitler** title +
+  `companion` tagline; **profile/sign-in** chip top-left, **⚙ settings** top-right (both reuse the old
+  `#btnAccount` / `#btnSettings` ids); a **group box** ("This device" or the group name → opens the
+  group switcher); and two **option cards**, Start game (red) and Statistics.
+- **Nav stack for back-anywhere.** `navTo(id)` pushes the current top-level screen; `navBack()` pops
+  (default → menu). The **Players** screen gained a `screen-head` back arrow; **Statistics**' existing
+  back arrow now routes through the stack. Game screen keeps its own undo/Quit/New exits.
+- **Cleaner flow.** Finish (save roles) → **`goHome()` = main menu** (the actual fix). **Quit → menu.**
+  **New game → players** (quick replay). **Closing a review → the Statistics page** it came from.
+- **History-safe.** `goHome()` / `resetToSetup()` only `clearActive()` (the in-progress autosave) —
+  the same call the old `resetToSetup` already made. No recorded-game store or cloud data is touched.
+- **Menu ⇄ group label sync:** folded a `menuGroupName` refresh into `renderAcctChip()` so switching /
+  renaming / leaving a group behind the account modal updates the box underneath.
+
+**Verified** with the headless-Chrome recipe, driving the *real* UI end-to-end — **25/25 assertions**:
+boots on the menu; Statistics and Start-game round-trips return to the menu via the back arrows; open
+a review then close it back to Stats; and a **full game played from the menu** (add 5 players →
+randomize → enact 5 Liberal policies → record roles) **lands on the main menu**, with the games store
+going **1 → 2** (the finished game appended, the pre-seeded game **preserved** — the no-deletion
+guarantee, checked in code). Desktop screenshot confirms the layout; a DOM measurement at the headless
+512-px viewport confirms no horizontal overflow and both corner buttons in-bounds (the phone
+screenshot's cropped gear was just the image crop, not a layout bug). Files: `index.html`, `js/app.js`,
+`styles.css`.

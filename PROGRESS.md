@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-27 (after session 29)._
+_Last updated: 2026-07-28 (after session 30)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -101,7 +101,7 @@ table game, not a game engine. Feature pillars:
 ## File map
 | File | Purpose |
 |------|---------|
-| `index.html` | App shell. Screens: **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over, **confirm dialog**; plus a **toast**. (No separate end screen — role recording is in-place.) |
+| `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over, **confirm dialog**; plus a **toast**. (No separate end screen — role recording is in-place.) |
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
 | `js/stats.js` | localStorage read/write + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. |
@@ -197,10 +197,31 @@ table game, not a game engine. Feature pillars:
   `schema` newer than it understands, and any record missing `result`/`events`. This is the
   backup, the device-transfer path, and the payload that seeds a cloud account later.
 
+## Navigation & the main menu (session 30)
+- **The app opens on a MAIN MENU (home hub)**, `#menuScreen` — not the players list. It has the big
+  **Secret Hitler** title, a **profile/sign-in** chip in the top-left corner and a **⚙ settings** gear
+  in the top-right, a **group box** ("This device" / the group name — tap to open the group switcher),
+  and two **option boxes**: **Start game** (→ players/setup) and **Statistics**. The two corner
+  buttons reuse the old top-bar `#btnAccount` / `#btnSettings` (the global `#topbar` was removed).
+- **Back-anywhere via a nav stack.** `navTo(id)` pushes the current top-level screen and shows the
+  new one; the top-left **← on Players and Statistics** calls `navBack()` to return to wherever you
+  came from (default: the menu). `NAV_SCREENS = [menu, setup, stats]`; the game screen has its own
+  exit so it isn't on the stack. `goHome()` clears the stack and shows the menu.
+- **Flow after a game:** recording roles → **`goHome()` (main menu)**, *not* the players list (the
+  session-29-era complaint). **Quit game → menu**; **New game (in-game) → players** (quick replay,
+  `resetToSetup()` seeds the stack with the menu so its back arrow returns home). Closing a review
+  returns to the **Statistics** page it was opened from.
+- **Nothing here deletes recorded games.** `goHome()`/`resetToSetup()` only `clearActive()` — the
+  in-progress *autosave* — exactly as before. `secretHitler.games.v1` and any synced history are
+  untouched. (Verified: a full game recorded from the menu appended one game and preserved the rest.)
+- **Menu ⇄ group sync:** `renderAcctChip()` also refreshes the menu's group label, so switching /
+  renaming / leaving a group in the account modal updates the box sitting behind it.
+
 ## Interaction model (mobile-first, no-scroll)
-- **Top row:** a **back arrow (←)** at the far upper-left, then Play / History / Stats tabs;
+- **In-game top row:** a **back arrow (←)** at the far upper-left, then Play / History / Stats tabs;
   **Quit game + New game** on the right (short "Quit"/"New" labels on phones).
-  No page title. Footer removed.
+  No page title. Footer removed. (The global top bar is gone — its account/settings buttons moved to
+  the main menu; the game screen keeps its own `#btnSettingsGame` gear.)
 - **Table dominates.** Wide screens: policy controls stacked **vertically on the right**; phones:
   controls **below** the table.
 - **Table is a rounded rectangle** (not a circle). Seats sit around its **edges**, placed by
@@ -292,7 +313,7 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   Fascists** (1 in 5–6, 2 in 7–8, 3 in 9–10); a player can't be both; **no "who won" question**
   (the winner is always known, since role recording is only ever reached from a game-over).
   Selecting recolors the circles live: **black = Hitler, red = Fascist, blue = Liberal**. Save →
-  stats, then back to setup.
+  records the game to statistics, then returns to the **main menu** (session 30; was the players list).
 
 ## Statistics + game review
 - **One renderer, two mounts:** `renderStatsInto(container)` builds the whole section into

@@ -18,18 +18,40 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="topbar" id="topbar">
-      <h1>Secret&nbsp;Hitler <span class="muted brand-sub">companion</span></h1>
-      <div class="spacer"></div>
-      <button id="btnAccount" class="ghost acct-btn">
-        <span class="acct-dot" id="acctDot"></span><span id="acctLabel">Sign in</span>
+    <!-- ===================== MAIN MENU ===================== -->
+    <section id="menuScreen" class="menu-screen">
+      <div class="menu-top">
+        <button id="btnAccount" class="menu-corner acct-btn" aria-label="Profile and account">
+          <span class="acct-dot" id="acctDot"></span><span id="acctLabel">Sign in</span>
+        </button>
+        <button id="btnSettings" class="menu-corner icon" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+      <div class="menu-hero">
+        <h1 class="menu-title">Secret<br>Hitler</h1>
+        <div class="menu-tagline">companion</div>
+      </div>
+      <button id="btnGroupBox" class="menu-group" aria-label="Current group — tap to switch">
+        <span class="mg-top">Group</span>
+        <span class="mg-name" id="menuGroupName">This device</span>
+        <span class="mg-hint">tap to switch ▸</span>
       </button>
-      <button id="btnSettings" class="ghost" title="Settings" aria-label="Settings">⚙</button>
-      <button id="btnStats" class="ghost">Statistics</button>
-    </div>
+      <div class="menu-options">
+        <button id="btnMenuStart" class="menu-option start">
+          <span class="mo-icon">▶</span>
+          <span class="mo-text"><span class="mo-title">Start game</span><span class="mo-sub">set up players &amp; play</span></span>
+        </button>
+        <button id="btnMenuStats" class="menu-option">
+          <span class="mo-icon">📊</span>
+          <span class="mo-text"><span class="mo-title">Statistics</span><span class="mo-sub">games &amp; player stats</span></span>
+        </button>
+      </div>
+    </section>
 
     <!-- ===================== SETUP SCREEN ===================== -->
-    <section id="setupScreen" class="panel">
+    <section id="setupScreen" class="panel hidden">
+      <div class="screen-head">
+        <button id="btnBackFromSetup" class="backbtn" title="Back"><span class="arw">←</span></button>
+      </div>
       <h2>Players</h2>
       <p class="muted">Add 5–10 players. Seating and the first President are randomized when you start.</p>
       <div id="groupBanner" class="group-banner hidden"></div>
