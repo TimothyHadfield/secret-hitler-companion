@@ -101,9 +101,13 @@
   // The per-claim honesty layer is consulted only when lie detection is on.
   const lieOn = () => settings.lieDetection && typeof Honesty !== "undefined";
   // The role posterior (per-player fascist odds) is needed when EITHER the lie
-  // detection review or the on-table odds are enabled.
+  // detection review or the on-table odds are enabled — and always during a
+  // review PLAYBACK (the chronological stepper shows the live odds regardless of
+  // the two switches, because the user explicitly asked to watch them evolve).
+  const pbActive = () => !!(state && state.review && state.playback);
   const rolesOn = () =>
-    (settings.lieDetection || settings.boardOdds) && typeof Honesty !== "undefined";
+    typeof Honesty !== "undefined" &&
+    (settings.lieDetection || settings.boardOdds || pbActive());
 
   // Build the role-posterior input from derived rounds/govs and run it. Feeds the
   // engine every signal the app records (claims, enactments, conflicts,
@@ -767,8 +771,20 @@
     const seats = computeSeats(n);
 
     const chanIdx = effChan(d);
-    // known/assigned roles color the circles (recording, review, or saved game)
-    const roles = state.result || (state.recordingRoles ? state.roleDraft : null);
+    // During a review PLAYBACK we deliberately hide the true roles (so the live
+    // fascist odds can be watched evolving) and instead highlight the President
+    // and Chancellor of the step just revealed — the last event in the slice.
+    const pb = !!state.playback;
+    let pbPres = null, pbChan = null;
+    if (pb && state.events.length) {
+      const e = state.events[state.events.length - 1];
+      const t = e.type || "gov";
+      if (t === "gov" || t === "hitler") { pbPres = e.presidentIdx; pbChan = e.chancellorIdx; }
+      else if (t === "fail") pbPres = e.presidentIdx; // chaos has no actors
+    }
+    // known/assigned roles color the circles (recording, review, or saved game).
+    // Suppressed during playback — the reveal is the final step.
+    const roles = pb ? null : (state.result || (state.recordingRoles ? state.roleDraft : null));
     state.players.forEach((p, i) => {
       const { x, y, edge } = seats[i];
       const node = document.createElement("div");
@@ -779,11 +795,14 @@
         else if ((roles.fascistIdxs || []).includes(i)) node.classList.add("role-fascist");
         else node.classList.add("role-liberal");
       } else {
-        if (i === d.presIdx) node.classList.add("pres");
-        if (i === chanIdx) node.classList.add("chan");
+        const presHi = pb ? pbPres : d.presIdx;
+        const chanHi = pb ? pbChan : chanIdx;
+        if (i === presHi) node.classList.add("pres");
+        if (i === chanHi) node.classList.add("chan");
         // ineligible as Chancellor this turn (term-limited by the last government).
         // The sitting President is never marked — they can't be Chancellor regardless.
-        if (d.termLimited.has(i) && i !== d.presIdx) node.classList.add("termed");
+        // Term-limit dashes describe the NEXT turn, so they're irrelevant mid-replay.
+        if (!pb && d.termLimited.has(i) && i !== d.presIdx) node.classList.add("termed");
       }
       if (p.dead) node.classList.add("dead");
       node.style.left = x + "%";
@@ -819,14 +838,18 @@
 
       let badge = "";
       if (!roles) {
-        if (i === d.presIdx) badge = `<span class="role-badge p" title="President">P</span>`;
-        else if (i === chanIdx) badge = `<span class="role-badge c" title="Chancellor">C</span>`;
+        const presHi = pb ? pbPres : d.presIdx;
+        const chanHi = pb ? pbChan : chanIdx;
+        if (i === presHi) badge = `<span class="role-badge p" title="President">P</span>`;
+        else if (i === chanHi) badge = `<span class="role-badge c" title="Chancellor">C</span>`;
       }
 
-      // Live fascist-odds chip on the circle (opt-in; only while roles are still
-      // hidden — once they're recorded/known the circle is coloured instead).
+      // Live fascist-odds chip on the circle: opt-in on the live table
+      // (`boardOdds`), but always shown while replaying a review, since the
+      // point of the stepper is to watch the odds move. Only while roles are
+      // hidden — a revealed circle is coloured instead.
       let oddsChip = "";
-      if (!roles && settings.boardOdds && d.roleOdds && d.roleOdds[i] != null) {
+      if (!roles && (settings.boardOdds || pb) && d.roleOdds && d.roleOdds[i] != null) {
         const p0 = d.roleOdds[i];
         const cls = p0 >= 0.6 ? "hi" : p0 >= 0.35 ? "mid" : "lo";
         oddsChip = `<span class="seat-odds ${cls}" title="Model estimate that ${escapeHtml(p.name)} is on the Fascist team, from play so far. Not a measurement.">${Math.round(p0 * 100)}%</span>`;
@@ -1101,9 +1124,31 @@
       roleDraft: { hitlerIdx: null, fascistIdxs: [] },
       undoStack: [],
       _reviewGame: g,
+      // Chronological playback: `reviewStep` = how many events are revealed
+      // (0..N). It opens at the end (the reveal — true roles + who won, the
+      // review's original behaviour); the stepper walks it back and forth.
+      // `playback` is true whenever we're short of the end, which is what
+      // switches the table from role colours to the live P(fascist) read.
+      _reviewEvents: g.events || [],
+      reviewStep: (g.events || []).length,
+      playback: false,
     };
     show("gameScreen");
     switchTab("play");
+    renderGame();
+  }
+
+  // Move the review to a given step (number of events revealed). Everything is
+  // derived from `state.events`, so truncating it and re-rendering rewinds the
+  // whole board — table, policy tracks, piles, history and the role model — to
+  // that moment. The saved game is never touched (review never persists).
+  function reviewGoto(step) {
+    if (!state || !state.review) return;
+    const full = state._reviewEvents || [];
+    step = clamp(step, 0, full.length);
+    state.reviewStep = step;
+    state.playback = step < full.length; // at the end ⇒ reveal the true roles
+    state.events = full.slice(0, step);
     renderGame();
   }
 
@@ -1115,21 +1160,121 @@
 
   function renderReviewPanel(cp, d) {
     const g = state._reviewGame;
-    const r = g.result;
-    const events = g.events || [];
-    const govs = events.filter((e) => (e.type || "gov") === "gov").length;
-    const fails = events.filter((e) => e.type === "fail").length;
-    const facNames = (r.fascistIdxs || []).map((i) => (g.players[i] ? escapeHtml(g.players[i].name) : "?")).join(", ");
-    cp.innerHTML =
-      `<div class="review-panel">` +
-      `<div class="role-winner ${r.winner === "Fascist" ? "c-fac" : "c-lib"}">${r.winner}s won</div>` +
-      `<div class="review-stat"><b>${d.lib}</b> Liberal &middot; <b>${d.fac}</b> Fascist policies</div>` +
-      `<div class="review-stat">${govs} governments &middot; ${fails} failed elections</div>` +
-      `<div class="review-stat">Hitler: <b class="c-hit">${g.players[r.hitlerIdx] ? escapeHtml(g.players[r.hitlerIdx].name) : "?"}</b></div>` +
-      `<div class="review-stat">Fascists: <b class="c-fac">${facNames || "—"}</b></div>` +
-      roleOddsHtml(g.roleOdds, g.players, r) +
+    const full = state._reviewEvents || [];
+    const N = full.length;
+    const step = state.reviewStep;
+    const atStart = step <= 0, atEnd = step >= N;
+
+    // Playback controls: ⏮ ◀  k / N  ▶ ⏭  (arrow keys work too — see wire()).
+    const controls =
+      `<div class="pb-controls">` +
+      `<button class="pb-btn" id="pbFirst" ${atStart ? "disabled" : ""} title="Jump to the start">⏮</button>` +
+      `<button class="pb-btn" id="pbPrev" ${atStart ? "disabled" : ""} title="Previous turn (←)">◀</button>` +
+      `<span class="pb-step">${step} / ${N}</span>` +
+      `<button class="pb-btn" id="pbNext" ${atEnd ? "disabled" : ""} title="Next turn (→)">▶</button>` +
+      `<button class="pb-btn" id="pbLast" ${atEnd ? "disabled" : ""} title="Jump to the end (reveal roles)">⏭</button>` +
       `</div>`;
+
+    let body;
+    if (atEnd) {
+      // The reveal — the review's original summary (winner + true roles), plus
+      // the stored model read scored against them.
+      const r = g.result;
+      const govs = full.filter((e) => (e.type || "gov") === "gov").length;
+      const fails = full.filter((e) => e.type === "fail").length;
+      const facNames = (r.fascistIdxs || []).map((i) => (g.players[i] ? escapeHtml(g.players[i].name) : "?")).join(", ");
+      body =
+        `<div class="role-winner ${r.winner === "Fascist" ? "c-fac" : "c-lib"}">${r.winner}s won</div>` +
+        `<div class="review-stat"><b>${d.lib}</b> Liberal &middot; <b>${d.fac}</b> Fascist policies</div>` +
+        `<div class="review-stat">${govs} governments &middot; ${fails} failed elections</div>` +
+        `<div class="review-stat">Hitler: <b class="c-hit">${g.players[r.hitlerIdx] ? escapeHtml(g.players[r.hitlerIdx].name) : "?"}</b></div>` +
+        `<div class="review-stat">Fascists: <b class="c-fac">${facNames || "—"}</b></div>` +
+        roleOddsHtml(g.roleOdds, g.players, r) +
+        `<div class="pb-hint">Step back with ◀ to replay the game turn by turn.</div>`;
+    } else {
+      // Mid-replay — describe the step just revealed and show the live read.
+      body = reviewStepCaption(d) + livePlayerOdds(d);
+    }
+
+    cp.innerHTML = `<div class="review-panel">${controls}${body}</div>`;
+    const go = (s) => reviewGoto(s);
+    if ($("pbFirst")) $("pbFirst").onclick = () => go(0);
+    if ($("pbPrev")) $("pbPrev").onclick = () => go(step - 1);
+    if ($("pbNext")) $("pbNext").onclick = () => go(step + 1);
+    if ($("pbLast")) $("pbLast").onclick = () => go(N);
     // (leaving a review uses the shared top-left back arrow)
+  }
+
+  // A one-line description of the step just revealed: who governed, what they
+  // enacted, and any power they used. Reuses powerAnnotation for the power text.
+  function reviewStepCaption(d) {
+    const step = state.reviewStep;
+    const full = state._reviewEvents || [];
+    if (step <= 0)
+      return `<div class="pb-caption"><span class="muted">Game start — before the first government.</span></div>`;
+    const ev = full[step - 1];
+    const type = ev.type || "gov";
+    const nm = (i) => (state.players[i] ? escapeHtml(state.players[i].name) : "?");
+    let round = d.round + 1, line;
+    if (type === "fail") {
+      line = `<b>${nm(ev.presidentIdx)}</b>’s government <span class="c-fac">failed</span> to be elected.`;
+    } else if (type === "chaos") {
+      line = `⚠ <b>Chaos top-deck</b> — ${
+        ev.enacted === "L" ? `<span class="c-lib">🟦 Liberal</span>` : `<span class="c-fac">🟥 Fascist</span>`
+      } policy enacted.`;
+    } else if (type === "hitler") {
+      line = `⚑ <b>Hitler elected Chancellor</b>: ${nm(ev.presidentIdx)} → ${nm(ev.chancellorIdx)}. <span class="c-fac">Fascists win.</span>`;
+    } else {
+      // a gov: use its own round (a reshuffle may have advanced d.round since)
+      const gInfo = d.gi.length ? d.gi[d.gi.length - 1] : null;
+      if (gInfo) round = gInfo.round + 1;
+      const ratio = RATIOS[ev.claimLibs];
+      const enact = ev.vetoed
+        ? `<span class="c-gold">⊘ vetoed — no policy</span>`
+        : ev.enacted === "L"
+        ? `<span class="c-lib">🟦 Liberal</span>`
+        : `<span class="c-fac">🟥 Fascist</span>`;
+      line =
+        `<b>${nm(ev.presidentIdx)}</b> <span class="pb-role">P</span> → <b>${nm(ev.chancellorIdx)}</b> <span class="pb-role">C</span>: ` +
+        `claimed <span class="ratio-name ${ratio.cls}">${ratio.name}</span> <span class="muted">(${ratio.sub})</span>, ` +
+        `enacted ${enact}.${ev.conflict ? ` <span class="c-fac">⚔ conflict</span>` : ""}${powerAnnotation(ev.power)}`;
+    }
+    return `<div class="pb-caption"><span class="pb-round">Round ${round}</span> ${line}</div>`;
+  }
+
+  // The live model read at the current step: P(fascist) and its complement
+  // P(liberal) per player, sorted most-suspect first, with a ♛ Hitler flag when
+  // the Hitler suspicion is notable. NOT wrapped in `.lie-col` — the playback
+  // always shows it, independent of the lie-detection switch (the user asked to
+  // watch the odds move). Reuses the .ro-* styling of the stored role list.
+  function livePlayerOdds(d) {
+    if (!Array.isArray(d.roleOdds) || !d.roleOdds.some((x) => x != null))
+      return `<div class="pb-hint muted">Role odds appear once there’s something to read.</div>`;
+    const rows = state.players
+      .map((p, i) => ({ i, name: p.name, f: d.roleOdds[i], h: d.roleHitler ? d.roleHitler[i] : null }))
+      .filter((x) => x.f != null)
+      .sort((a, b) => b.f - a.f);
+    const body = rows
+      .map((x) => {
+        const pf = Math.round(x.f * 100), pl = 100 - pf;
+        const cls = x.f >= 0.6 ? "lie-bad" : x.f >= 0.35 ? "lie-warn" : "lie-good";
+        const hit =
+          x.h != null && x.h >= 0.35
+            ? ` <span class="ro-hit" title="Model’s suspicion this player is Hitler">♛${Math.round(x.h * 100)}%</span>`
+            : "";
+        return (
+          `<div class="ro-row"><span class="ro-name">${escapeHtml(x.name)}</span>` +
+          `<span class="ro-bar"><span class="ro-fill ${cls}" style="width:${pf}%"></span></span>` +
+          `<span class="ro-pct ${cls}">${pf}%F</span><span class="ro-lib">${pl}%L</span>${hit}</div>`
+        );
+      })
+      .join("");
+    return (
+      `<div class="role-odds">` +
+      `<div class="ro-title">Model’s read after this turn <span class="muted">— fascist vs liberal, from play alone</span></div>` +
+      body +
+      `</div>`
+    );
   }
 
   // The stored fascist-odds estimate as a ranked list. `truth` (a result with
@@ -2731,6 +2876,14 @@
       if (state && state.review) { closeReview(); return; }
       undoLast();
     };
+    // Arrow keys scrub a review playback back and forth.
+    document.addEventListener("keydown", (e) => {
+      if (!state || !state.review) return;
+      const t = e.target && e.target.tagName;
+      if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+      if (e.key === "ArrowLeft") { reviewGoto((state.reviewStep || 0) - 1); e.preventDefault(); }
+      else if (e.key === "ArrowRight") { reviewGoto((state.reviewStep || 0) + 1); e.preventDefault(); }
+    });
     $("btnStats").onclick = renderStats;
     $("btnSettings").onclick = openSettings;
     $("btnSettingsGame").onclick = openSettings;

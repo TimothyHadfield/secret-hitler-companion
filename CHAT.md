@@ -1066,3 +1066,36 @@ from the nomination signal.
 still hold (**66 assertions**, up from 64). App — after recording the peek, the History row now shows
 a real lie estimate ("64% likely a lie") immediately instead of "unverified", with the 👁 recording
 intact.
+
+## Session 29 — chronological game replay in the review (with live role odds)
+
+**User ask:** step through a saved game in the Stats section with back/forth arrows to "follow what
+happened throughout the game" — showing the President + Chancellor + what they enacted + any power
+plays, and watching **P(liberal)/P(fascist)** for each player evolve as the game goes on.
+
+**Design — reuse the derive-from-events architecture.** The whole board is a pure function of
+`state.events`, so a replay is just "truncate the event log to step *k* and re-render." No new engine
+code: `reviewGoto(k)` sets `state.events = _reviewEvents.slice(0, k)` and calls the normal
+`renderGame()`, so the table, policy tracks, piles, History and the role posterior all recompute for
+that moment. The saved game is never touched (review never persists).
+
+**What's new:**
+- `openReview()` seeds `_reviewEvents`, `reviewStep` (opens at the end = the existing reveal), and a
+  `playback` flag (true whenever short of the end). `rolesOn()` now also fires during a playback, so
+  the role model runs regardless of the two settings switches — the user explicitly asked to watch it.
+- **Stepper** in the review panel: `⏮ ◀ k / N ▶ ⏭` + **← / → arrow keys** (a first for the app — it
+  had no key handlers). A one-line **caption** per step (round, `Pres P → Chan C`, ratio claimed,
+  policy enacted, and any power via the existing `powerAnnotation`; fail/chaos/Hitler variants).
+- **`renderTable` playback mode:** while short of the end it **hides the true roles** (the reveal is
+  the final step) and instead badges the P/C of the step just revealed and shows every seat's live
+  fascist-% chip. The final step is the unchanged reveal (role colours + who won + stored odds ✓/✗).
+- **`livePlayerOdds()`** — the panel's per-player read at the current step: `NN%F` + its complement
+  `NN%L`, sorted most-suspect first, with a `♛` Hitler-suspicion flag. Reuses the `.ro-*` styling.
+
+**Verified** with the headless-Chrome recipe (seed a completed 7-player Fascist-win game into
+localStorage, drive the *real* Stats → review UI): all 13 assertions pass — captions carry the right
+actors/policy/powers (🔍 invest, ⚡→ special, 💀 kill), P/C badges track the revealed step, the odds
+list moves from ~base-rate at step 1 to a sharp read by step 7 and re-sorts, round advances across the
+reshuffle, back-stepping + arrow keys work, and the final step still reveals roles. Desktop + phone
+screenshots confirm the stepper fits the right control column and the below-table strip respectively.
+Files touched: `js/app.js`, `styles.css` only (no engine/test changes; the site stays dependency-free).

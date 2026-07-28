@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-27 (after session 28)._
+_Last updated: 2026-07-27 (after session 29)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -325,6 +325,17 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   the policy options normally sit. Leave via the shared **top-left ← arrow** (the review has no
   button of its own). Reviewing stashes the live game and restores it on the way out; review state
   never overwrites the saved active game.
+- **Chronological replay inside the review (session 29).** The review panel carries a **stepper**
+  (`⏮ ◀ k / N ▶ ⏭`, plus **← / → arrow keys**) that walks the game turn by turn. It works by
+  truncating `state.events` to step *k* and re-rendering — everything is derived, so the whole board
+  rewinds for free (`reviewGoto()` / `_reviewEvents` / `reviewStep` / `playback` in `app.js`). Each
+  step shows a **caption** (round, `Pres P → Chan C`, ratio claimed, policy enacted, any power) and,
+  while short of the end, **hides the true roles** and shows the model's **live P(fascist)/P(liberal)
+  per player** (sorted, with a `♛` Hitler flag) both as a panel list and as seat chips + P/C badges.
+  The **final step is the unchanged reveal** (role colours + who won + stored odds scored ✓/✗). The
+  live odds run **regardless of the two settings switches** during a playback (`rolesOn()` honours it),
+  since the whole point is to watch them evolve. Opens at the end so the plain "who won" review is
+  unchanged; step back to replay.
 
 ## Lie detection (session 21 — ON by default, one switch to disable)
 - **A ⚙ Settings panel holds one switch: **Lie detection**, **on by default**. A stored choice
@@ -464,7 +475,8 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - **Tests:** `derive()` is trapped inside the IIFE; exporting it for Node would give the rules
   logic (term limits, veto, nested special elections, reshuffles) real regression coverage.
   `js/stats.js` and `js/honesty.js`/`js/probability.js` are already Node-tested.
-- Accessibility: no `aria-*`, `tabindex` or key handlers anywhere; seats are `div`s with `onclick`.
+- Accessibility: no `aria-*` or `tabindex` anywhere; seats are `div`s with `onclick`. The only key
+  handler is the review playback's ← / → scrubbing (session 29).
 - Further statistics ideas: favourite chancellor pairings, per-round trends.
 
 ## Groups (phase 2 — live)
