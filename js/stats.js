@@ -134,6 +134,22 @@ const Stats = (() => {
     localStorage.removeItem(KEY);
   }
 
+  /**
+   * Delete a single recorded game by id. Operates on the FULL array (never a
+   * scoped view — removing from a filtered list would drop other groups' games)
+   * and writes the rest back. Returns true if a game was removed. The cloud copy
+   * (if any) is deleted separately by cloud.js so it can't re-download.
+   */
+  function deleteGame(id) {
+    if (!id) return false;
+    const games = loadAllGames();
+    const idx = games.findIndex((g) => g && g.id === id);
+    if (idx < 0) return false;
+    games.splice(idx, 1);
+    saveGames(games);
+    return true;
+  }
+
   const eventsOf = (g) => g.events || g.governments || [];
   const typeOf = (ev) => ev.type || "gov";
 
@@ -368,6 +384,7 @@ const Stats = (() => {
     loadAllGames,
     setScope,
     recordGame,
+    deleteGame,
     clearAll,
     exportData,
     importData,

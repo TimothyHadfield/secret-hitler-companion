@@ -1133,3 +1133,35 @@ guarantee, checked in code). Desktop screenshot confirms the layout; a DOM measu
 512-px viewport confirms no horizontal overflow and both corner buttons in-bounds (the phone
 screenshot's cropped gear was just the image crop, not a layout bug). Files: `index.html`, `js/app.js`,
 `styles.css`.
+
+## Session 31 — delete a recorded game
+
+**User ask:** allow deleting recorded games. **Hard constraint (repeated):** don't delete any current
+game history from any account while building this.
+
+**Design.** A **Delete game** button (outlined danger) sits at the bottom of the review panel, so you
+open a game and remove it from there, with a confirm. The subtle part is a synced game: deleting only
+locally would just re-download on the next sync. So `deleteReviewedGame()` removes the **cloud copy
+first, then the local copy** — and if the cloud delete fails (offline, or not permitted) it **aborts**,
+leaving the game intact everywhere rather than half-deleted.
+- **`Stats.deleteGame(id)`** splices the game out of the FULL array (never a scoped view — a filtered
+  write would drop other groups' games) and writes the rest back.
+- **`Cloud.deleteGame(id, gid)`** `deleteDoc`s `groups/{gid}/games/{id}` **only when the id is in the
+  synced set** (a purely-local game just clears its synced bookkeeping; offline returns an error and
+  aborts). Then it drops the id from the synced set.
+- **Rules change (deployed):** games were `update, delete: if false` (append-only). Now **`update`
+  stays false** (history is never rewritten) but **`delete`** is allowed for the game's **author
+  (`createdBy`) or the group owner** — a member can delete their own mis-record, an owner can moderate,
+  and nobody can wipe another member's games. Deployed with `firebase deploy --only firestore:rules`
+  (compiles + releases rules only — **touches no data**).
+
+**On the constraint / testing.** `test/rules.prod.test.js` was updated to match the new rule (§3 is now
+edit-only; new **§7b**: author ✓, owner ✓, other member ✗, non-member ✗) but **deliberately NOT run** —
+its teardown does `firestore:delete --all-collections`, which would wipe the user's real games. Instead
+the whole feature was verified **offline** with the headless-Chrome recipe (cloud module dropped from
+the test build, so deletion takes the local path): **14/14 assertions** — two seeded games; open a
+review; **Cancel** keeps the game (count stays 2, still in the review); **Delete → confirm** drops it
+(count 2→1, back on Stats, the *other* game survives by id); delete the last one → the empty-state
+renders; back arrow still returns to the menu. The confirm copy switches to "removes it for everyone in
+the group" when signed in with a synced game. Screenshot confirms the button placement. Files:
+`js/stats.js`, `js/cloud.js`, `js/app.js`, `styles.css`, `firestore.rules`, `test/rules.prod.test.js`.

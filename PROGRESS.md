@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-28 (after session 30)._
+_Last updated: 2026-07-28 (after session 31)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -104,12 +104,12 @@ table game, not a game engine. Feature pillars:
 | `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over, **confirm dialog**; plus a **toast**. (No separate end screen — role recording is in-place.) |
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
-| `js/stats.js` | localStorage read/write + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. |
+| `js/stats.js` | localStorage read/write (record / **delete** / clear) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. |
 | `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring, **account UI**. |
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, and groups. Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `rules.prod.test.js` = 49 adversarial assertions against the **deployed** rules (real accounts on the live project, torn down at the end). `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
+| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **Its teardown empties ALL collections — running it DESTROYS real recorded games. Do not run it while the live DB holds games you care about.** It now also covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not); those assertions were added in session 31 but **not executed** for exactly that reason. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
@@ -357,6 +357,22 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   live odds run **regardless of the two settings switches** during a playback (`rolesOn()` honours it),
   since the whole point is to watch them evolve. Opens at the end so the plain "who won" review is
   unchanged; step back to replay.
+- **Deleting a recorded game (session 31).** The review panel has a **Delete game** button (outlined
+  danger, bottom of the panel, step-independent). It confirms first (`deleteReviewedGame()`), then —
+  crucially in this order — removes the **cloud copy first** so a later sync can't resurrect it, and
+  only then the **local copy**, before returning to the Statistics list. A failed cloud delete aborts
+  the whole thing (the game stays intact everywhere rather than half-removed).
+  - `Stats.deleteGame(id)` splices the game out of the **full** array (never a scoped view) and writes
+    the rest back. `Cloud.deleteGame(id, gid)` `deleteDoc`s `groups/{gid}/games/{id}` **only when the
+    id is in the synced set** (a purely-local game just clears its synced bookkeeping; offline aborts).
+  - **Rules changed + deployed:** the games rule was `update, delete: if false` (append-only). Now
+    `update: if false` still (history is never rewritten) but **`delete`** is allowed for the game's
+    **author (`createdBy`) or the group owner** — so a member can remove their own mis-record and an
+    owner can moderate, but nobody can wipe another member's games. `firestore.rules` deployed to the
+    live project; `test/rules.prod.test.js` updated to match (§3 now edit-only, new **§7b** covers
+    author/owner/other-member/non-member delete) — **NOT run**, because its teardown wipes the whole
+    live DB, which would destroy real recorded history. Deleting a synced game removes it for the whole
+    group; the confirm dialog says so when signed in.
 
 ## Lie detection (session 21 — ON by default, one switch to disable)
 - **A ⚙ Settings panel holds one switch: **Lie detection**, **on by default**. A stored choice

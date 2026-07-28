@@ -512,6 +512,10 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .review-panel .review-stat { margin: 5px 0; font-size: 14px; }
 .review-panel .c-fac { color: var(--fac-2); }
 .review-panel .c-hit { color: #e8e8e8; }
+.review-actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid #3a3129; display: flex; }
+/* a quieter, outlined danger button — deletion is deliberate but not the focus */
+.ghost-danger { background: transparent; border-color: var(--fac-2); color: var(--fac-2); font-weight: 600; width: 100%; }
+.ghost-danger:hover { background: var(--fac); border-color: var(--fac-2); color: #fff; }
 
 /* ---------- Review playback stepper ---------- */
 .pb-controls { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 10px; }

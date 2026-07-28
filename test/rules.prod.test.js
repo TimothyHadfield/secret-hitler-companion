@@ -101,17 +101,17 @@ function makeUser(name) {
   await denied("member CANNOT record a game as someone else", () =>
     addDoc(collection(bob.db, `groups/${GID}/games`), GAME(alice.uid)));
 
-  log("\n3. Recorded history is append-only");
+  log("\n3. A recorded game can never be REWRITTEN (delete is allowed — see 7b)");
   await denied("CANNOT edit a recorded game", () =>
     updateDoc(doc(bob.db, `groups/${GID}/games/game1`), { result: { winner: "Fascist" } }));
-  await denied("CANNOT delete a recorded game", () =>
-    deleteDoc(doc(bob.db, `groups/${GID}/games/game1`)));
 
   log("\n4. A stranger cannot reach a group's data");
   await denied("non-member CANNOT read a game", () => getDoc(doc(alice.db, `groups/${GID}/games/game1`)));
   await denied("non-member CANNOT list games", () => getDocs(collection(alice.db, `groups/${GID}/games`)));
   await denied("non-member CANNOT write a game", () =>
     setDoc(doc(alice.db, `groups/${GID}/games/evil`), GAME(alice.uid)));
+  await denied("non-member CANNOT delete a game", () =>
+    deleteDoc(doc(alice.db, `groups/${GID}/games/game1`)));
   await denied("non-member CANNOT read the roster", () => getDocs(collection(alice.db, `groups/${GID}/members`)));
 
   log("\n5. Groups cannot be enumerated (invite links are the only way in)");
@@ -142,6 +142,16 @@ function makeUser(name) {
   await allowed("after joining, they CAN read games", () => getDoc(doc(alice.db, `groups/${GID}/games/game1`)));
   await allowed("after joining, they CAN record a game", () =>
     setDoc(doc(alice.db, `groups/${GID}/games/game2`), GAME(alice.uid)));
+
+  log("\n7b. A recorded game may be DELETED only by its author or the group owner");
+  await denied("a member CANNOT delete another member's game", () =>
+    deleteDoc(doc(alice.db, `groups/${GID}/games/game1`)));   // alice didn't record game1 and isn't the owner
+  await allowed("the AUTHOR can delete their own game", () =>
+    deleteDoc(doc(alice.db, `groups/${GID}/games/game2`)));   // alice recorded game2
+  await allowed("alice re-records a game (to test owner moderation)", () =>
+    setDoc(doc(alice.db, `groups/${GID}/games/game3`), GAME(alice.uid)));
+  await allowed("the group OWNER can delete any member's game", () =>
+    deleteDoc(doc(bob.db, `groups/${GID}/games/game3`)));     // bob owns the group, so may moderate
 
   log("\n8. Profiles");
   await allowed("CAN write their own profile", () =>

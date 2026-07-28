@@ -124,8 +124,16 @@ service cloud.firestore {
                       && request.resource.data.events is list
                       && request.resource.data.seats is list
                       && request.resource.data.result is map;
-        // Recorded history is append-only and never rewritten.
-        allow update, delete: if false;
+        // Recorded history is never REWRITTEN (an edit could silently change a
+        // game other members already saw).
+        allow update: if false;
+        // …but it may be DELETED — by the member who recorded it, or by the
+        // group's owner (moderation). Anyone else in the group is denied, so a
+        // member can't wipe another member's games. resource.data is the game
+        // doc; the owner comes from the parent group document.
+        allow delete: if isMember(groupId)
+                      && (resource.data.createdBy == uid()
+                          || group(groupId).ownerUid == uid());
       }
     }
 

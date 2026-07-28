@@ -1193,6 +1193,38 @@
     show("statsScreen");
   }
 
+  // Delete the game currently being reviewed. Removes the cloud copy first (so a
+  // sync can't bring it back), then the local copy, then returns to Statistics.
+  // Nothing is deleted until the user confirms, and a failed cloud delete aborts
+  // the whole thing — the game stays intact everywhere rather than half-removed.
+  function deleteReviewedGame() {
+    const g = state && state._reviewGame;
+    if (!g || !g.id) return;
+    const c = cloud();
+    const shared = !!(c && c.user && g.groupId);
+    askConfirm(
+      {
+        title: "Delete this game?",
+        body: shared
+          ? "This removes the game from “" + escapeHtml(activeGroupLabel()) +
+            "” for everyone in the group, and from your statistics. This can’t be undone."
+          : "This permanently deletes this game from your statistics. This can’t be undone.",
+        confirm: "Delete game",
+        cancel: "Keep it",
+        danger: true,
+      },
+      async () => {
+        if (c && c.user) {
+          const r = await c.deleteGame(g.id, g.groupId);
+          if (!r || !r.ok) { showToast((r && r.message) || "Couldn’t delete this game — try again."); return; }
+        }
+        Stats.deleteGame(g.id);
+        closeReview();
+        showToast("Game deleted.");
+      }
+    );
+  }
+
   function renderReviewPanel(cp, d) {
     const g = state._reviewGame;
     const full = state._reviewEvents || [];
@@ -1231,12 +1263,18 @@
       body = reviewStepCaption(d) + livePlayerOdds(d);
     }
 
-    cp.innerHTML = `<div class="review-panel">${controls}${body}</div>`;
+    // A game can be removed from here (with confirmation). Sits at the bottom,
+    // step-independent, so it's reachable whether reviewing or replaying.
+    const actions =
+      `<div class="review-actions"><button id="btnDeleteGame" class="ghost-danger">Delete game</button></div>`;
+
+    cp.innerHTML = `<div class="review-panel">${controls}${body}${actions}</div>`;
     const go = (s) => reviewGoto(s);
     if ($("pbFirst")) $("pbFirst").onclick = () => go(0);
     if ($("pbPrev")) $("pbPrev").onclick = () => go(step - 1);
     if ($("pbNext")) $("pbNext").onclick = () => go(step + 1);
     if ($("pbLast")) $("pbLast").onclick = () => go(N);
+    if ($("btnDeleteGame")) $("btnDeleteGame").onclick = deleteReviewedGame;
     // (leaving a review uses the shared top-left back arrow)
   }
 

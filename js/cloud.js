@@ -549,6 +549,31 @@ async function sync() {
   return syncing;
 }
 
+/**
+ * Delete a recorded game's CLOUD copy so it can't re-download on the next sync.
+ * Only touches the network when the game is actually known to be in the cloud
+ * (its id is in the synced set) — a purely-local game just needs its synced
+ * bookkeeping cleared. The security rules allow this only for the game's creator
+ * or the group owner; anyone else gets a permission error surfaced to the app.
+ * The localStorage copy is removed by the app (Stats.deleteGame) after this
+ * resolves ok, so a failed cloud delete leaves the game intact everywhere.
+ */
+async function deleteGame(id, gid) {
+  if (!id) return { ok: false, message: "No game id." };
+  const synced = readSynced();
+  if (currentUser && gid && synced.has(id)) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false)
+      return { ok: false, message: "You're offline — reconnect to delete this game from your account." };
+    try {
+      await deleteDoc(doc(db, "groups", gid, "games", id));
+    } catch (e) {
+      return { ok: false, message: humanError(e) };
+    }
+  }
+  if (synced.delete(id)) writeSynced(synced);
+  return { ok: true };
+}
+
 // ------------------------------------------------- invite links (?join=…)
 // Captured immediately, because the visitor may not be signed in yet: the id is
 // held until an account exists, then the join happens automatically.
@@ -628,6 +653,10 @@ window.Cloud = {
 
   pendingCount,
   sync,
+  async deleteGame(id, gid) {
+    try { return await deleteGame(id, gid); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
   uploadAllowed,
   setUploadAllowed,
 
