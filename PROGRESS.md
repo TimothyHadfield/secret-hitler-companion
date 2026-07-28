@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-23 (after session 21 — theory-only session, no code changed)._
+_Last updated: 2026-07-27 (after session 28)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -72,14 +72,24 @@ table game, not a game engine. Feature pillars:
 3. **Game statistics** — per-player + cross-game data, plus a reviewable per-game archive.
 4. **Accounts + groups** — live: sign in, sync across devices, share an archive with a group.
 
-## Current status: ✅ live and working (as of session 20)
+## Current status: ✅ live and working (as of session 28)
 - Static site (HTML/CSS/vanilla JS), auto-deployed via **GitHub Pages** on push to `main`.
 - All features below verified with headless-Chrome smoke tests + screenshots (no build step).
 - **All four pillars are shipped.** The full backend plan (accounts → cross-device sync →
   groups → guest-linking/invitations) is **done and live**; nothing there needs the user.
-- **Biggest open idea:** the *honesty posterior* (P(claim honest) via a prior on lying) — the
-  one change that would alter what the headline number means; see the last section. Everything
-  else pending is refinement (vote tracking — undecided; accessibility — untouched).
+- **The honesty + role model is now BUILT and live** (sessions 21–28), behind two settings:
+  - **Lie detection** (⚙ Settings, **on by default**): per-claim honesty (hard-logic "can't be
+    true" flags + a per-government **fascist %** badge in History), a **role posterior** that infers
+    `P(each player is fascist)` and `P(Hitler)` from every signal in the log (claims, enactments,
+    conflicts, nominations, investigations, executions, special elections, policy peeks), the
+    powers-as-claims lie estimates, and a **Model calibration** panel scoring stored predictions
+    against recorded roles. Engine: `js/honesty.js` (+`test/honesty.test.js`, 66 assertions). Theory
+    + design review + improvement brainstorm in `HONESTY_MODEL.md`.
+  - **Fascist odds on the table** (⚙ Settings, **off by default**): live fascist-% chip on each
+    player's circle. Deliberately opt-in — it changes how the table plays.
+- **Still open (deliberately):** vote tracking and chancellor-claim capture (both need new in-game
+  data entry — a product call), EM parameter fitting (needs game volume; the calibration panel is
+  the prerequisite), correlated-fascist modelling. See `HONESTY_MODEL.md` §12 (⏳-tagged).
 - **The user periodically wipes the chat and relies entirely on this file + `CHAT.md`.** Keep
   both current after every meaningful change.
 
@@ -104,7 +114,7 @@ table game, not a game engine. Feature pillars:
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
-| `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates** and a **distinct cautious-Hitler** role. Pure functions, Node-tested (64 assertions incl. a from-scratch brute-force mirror). |
+| `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates** and a **distinct cautious-Hitler** role. Pure functions, Node-tested (66 assertions incl. a from-scratch brute-force mirror). |
 | `HONESTY_MODEL.md` | Derivation of the honesty posterior ("how likely is this claim a lie?") — hard-logic layer, generative model, exact inference, calibration plan, cited prior art, and **§11: the design review that decided what v1 ships**. |
 | `BACKEND_PLAN.md` | **Phases 0–3 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
 | `CHAT.md` | Session-by-session log (sessions 1–21). |
@@ -425,34 +435,37 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - **Votes are not tracked** (Ja/Nein counts, ties failing, dead players not voting). The table
   votes and tells the app the outcome — the one election rule still left to honest play.
 - The app records what the table *tells* it (claims, conflicts, vetoes, power outcomes); it can't
-  detect a lie about those, only price the claim.
-- No posterior on *whether* a claim was honest — the model computes P(hand | assumed lies).
+  *know* a lie, only estimate its probability (which the lie-detection model now does — see above).
+- The role model's behaviour parameters (β/γ/lie-rates) are **fixed defaults, not fitted** — the
+  odds are honest but generic until there are enough recorded games to calibrate (see §12 / the
+  Model calibration panel).
 
 ## Next candidate steps
 - **The backend plan is COMPLETE** (phases 0–3 shipped and live): accounts, cross-device
   sync, groups, invite links, invitations by person, guest-seat linking and revocable
   invites. **Real-time/online play stays descoped.**
-- **Honesty posterior — v1 SHIPPED (session 21), on by default (Lie detection switch).** See
-  `HONESTY_MODEL.md`. What's live: the min-lie hard-logic layer (which claims *must* be false),
-  the "story impossible" contradiction, and a per-claim `P(this claim was true)`.
-  What's deliberately **not** built, per the §11 review: per-player "% fascist" role posteriors
-  (needs the least-identifiable parameters and changes the social game), EM calibration from the
-  archive (too few games for 9 parameters — when it lands it fits 2), and capturing the
-  chancellor's claim (the single highest-value missing input).
-  Still true and still the goal: this eventually retires the round-modifier stepper, which is a
-  hand-set point estimate of the very quantity the posterior integrates out.
-- Editable/deletable history entries (Undo only steps back from the end, so a mis-tap noticed
-  three governments later means unwinding everything).
-- **Reliability:** cap the undo stack — `pushUndo()` stores a full-state snapshot per action and
-  `saveActive()` re-serialises all of them on every render (O(n²) growth); and `lsSet()`
-  silently swallows `QuotaExceededError`, so a failed save is invisible.
+- **Honesty + role model — SHIPPED and iterated (sessions 21–28).** The full picture (per-claim
+  honesty, `P(fascist)`/`P(Hitler)` role posterior fed by every logged signal, powers-as-claims,
+  calibration harness) is in the **"Current status"** section above and detailed in the lie-detection
+  sections below + `HONESTY_MODEL.md`. What's still open is only the ⏳ items:
+  - **Vote tracking** (asked, undecided): a Ja/Nein *count* per election is one extra tap-pair and
+    gets most of the analytical value; per-player votes tax every election. Needs a product call.
+  - **Chancellor-claim capture** — the highest-value *new* input (breaks the β/λ confound); one
+    extra tap per government, so also a product call.
+  - **EM parameter fitting + per-player lie tendencies** — the role model's β/γ/lie-rates are fixed
+    defaults; fit them once the archive is big enough. The **Model calibration** panel is the
+    prerequisite (it measures whether the model beats the base rate).
+  - **Correlated-fascist modelling** (fascists coordinate stories/votes) — costs the DP's clean
+    factorisation; deferred.
+  - Long-noted goal: this eventually retires the round-modifier stepper (a hand-set point estimate
+    of what the posterior integrates out).
+- **Reliability:** `lsSet()` now surfaces quota errors and the undo stack is capped (session 19), but
+  `saveActive()` still re-serialises the whole undo stack on every render (O(n²) in a long game).
 - **Tests:** `derive()` is trapped inside the IIFE; exporting it for Node would give the rules
   logic (term limits, veto, nested special elections, reshuffles) real regression coverage.
-  `js/stats.js` is already Node-testable and has been driven that way.
+  `js/stats.js` and `js/honesty.js`/`js/probability.js` are already Node-tested.
 - Accessibility: no `aria-*`, `tabindex` or key handlers anywhere; seats are `div`s with `onclick`.
-- **Vote tracking** (asked, undecided): a Ja/Nein *count* per election is one extra tap-pair and
-  gets most of the analytical value; per-player votes tax every election. Needs a product call.
-- Further statistics ideas: favourite chancellor pairings, lie tendency, per-round trends.
+- Further statistics ideas: favourite chancellor pairings, per-round trends.
 
 ## Groups (phase 2 — live)
 - **A group is the unit of sharing.** Create one, invite people with a link, and every member

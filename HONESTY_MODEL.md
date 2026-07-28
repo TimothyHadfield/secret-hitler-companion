@@ -1,10 +1,13 @@
 # Honesty Model — theory & derivation
 
-> **Status: theory only.** No code, no UI, no data-model decisions. This file works out *what*
-> quantity we want, *why* the current model does not compute it, and *how* to compute it exactly.
+> **Status: LARGELY IMPLEMENTED (as of session 28).** This file is both the derivation and the
+> running commentary on what shipped. Written session 21 as theory-only; §11 is the design review
+> that scoped v1; §12 is the improvement brainstorm with ✅/⏳ tags for what's built. The engine is
+> `js/honesty.js` (per-claim honesty + `analyzeGame` role posterior), wired through `app.js`
+> `derive()`/`analyzeRoles`, gated by the **Lie detection** / **Fascist odds on the table** settings,
+> and covered by `test/honesty.test.js` (66 assertions incl. a from-scratch brute-force mirror).
 > Companion to `PROBABILITY_MODEL.md` (which stays correct — this strictly generalises it).
->
-> Written session 21. Nothing here is implemented.
+> Still-open items (votes, chancellor-claim capture, EM parameter fitting) are tagged ⏳ in §12.
 
 ---
 
