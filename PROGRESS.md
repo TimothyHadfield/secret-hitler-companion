@@ -72,11 +72,23 @@ table game, not a game engine. Feature pillars:
 3. **Game statistics** — per-player + cross-game data, plus a reviewable per-game archive.
 4. **Accounts + groups** — live: sign in, sync across devices, share an archive with a group.
 
-## Current status: ✅ live and working (as of session 28)
+## Current status: ✅ live and working (as of session 35)
 - Static site (HTML/CSS/vanilla JS), auto-deployed via **GitHub Pages** on push to `main`.
 - All features below verified with headless-Chrome smoke tests + screenshots (no build step).
 - **All four pillars are shipped.** The full backend plan (accounts → cross-device sync →
   groups → guest-linking/invitations) is **done and live**; nothing there needs the user.
+- **Shipped since session 28 (see the dedicated sections + `CHAT.md` for each):**
+  - **Main-menu hub + back-anywhere navigation** (session 30): the app opens on a home menu (title,
+    profile, settings, group box, Start game / Statistics cards); Players & Stats have a top-left ←
+    that returns to where you came from; finishing/quitting a game returns to the menu.
+  - **Chronological game replay** in the Statistics review (session 29): a `⏮ ◀ k/N ▶ ⏭` + arrow-key
+    stepper that walks a saved game turn by turn, showing each government + power and the model's live
+    P(fascist)/P(liberal) per player; the box stays locked in place while scrubbing (session 32).
+  - **Delete a recorded game** (session 31): a Delete button in the review; removes the cloud copy
+    first (author/owner only), then the local one.
+  - **"In the night" narration** (sessions 33–35): a start-of-game 🌙 button that reads the fascist
+    reveal aloud — two scripts auto-picked by player count, device-speech default voices, and
+    record/upload your own; custom voices can be **shared with the group** (base64 in Firestore).
 - **The honesty + role model is now BUILT and live** (sessions 21–28), behind two settings:
   - **Lie detection** (⚙ Settings, **on by default**): per-claim honesty (hard-logic "can't be
     true" flags + a per-government **fascist %** badge in History), a **role posterior** that infers

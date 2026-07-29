@@ -1,8 +1,9 @@
 # Secret Hitler — Companion
 
 A web companion & analyzer for the board game **Secret Hitler**. Use it alongside a real
-table game for **randomization**, live **probability** analysis, and **statistics**.
-Online play is planned for a later phase.
+table game for **randomization**, live **probability** analysis, **statistics**, an optional
+**"in the night" narration**, and — with a free account — **cross-device sync and shared group
+stats**. Real-time online play is intentionally out of scope; this is a table companion.
 
 🔗 **Live site:** https://timothyhadfield.github.io/secret-hitler-companion/
 📦 **Repo:** https://github.com/TimothyHadfield/secret-hitler-companion
@@ -28,11 +29,21 @@ Online play is planned for a later phase.
   presidential rotation through (even nested) Special Elections.
 - **Undo & resume** — full-state undo of any action, and the in-progress game is saved locally
   so a refresh, a closed tab or a redeploy picks up exactly where you left off.
-- **Statistics** — in-depth per-player and cross-game stats saved in your browser, plus a
-  read-only review of every finished game.
+- **Statistics** — in-depth per-player and cross-game stats, plus a review of every finished game
+  you can **replay turn by turn** (◀ ▶) or **delete**.
+- **Lie & role modeling** (optional, in ⚙ Settings) — a per-claim honesty read in History and, in a
+  finished game's review, the model's estimate of each player's chance of being Fascist/Hitler from
+  play alone; a separate opt-in shows live fascist odds on the table.
+- **"In the night" narration** — a start-of-game 🌙 button reads the fascist-reveal aloud (the right
+  5–6 vs 7+ script is chosen automatically). Use a built-in voice or record/upload your own.
+- **Accounts & groups** (optional) — sign in to sync your games across devices and share a group's
+  stats; the app works fully offline and signed-out. A shared night voice syncs to your group too.
 
 ## How to use
-1. Add 5–10 players and press **Randomize seating & start**.
+0. The app opens on a **main menu** — pick **Start game** (or **Statistics**). Optional: sign in from
+   the profile corner to sync across devices, and tap the group box to switch groups.
+1. Add 5–10 players and press **Randomize seating & start**. Before the first presidency, the **🌙**
+   button can play the "in the night" fascist reveal.
 2. Each round: the President is fixed (gold **P**). **Tap a player** to set the Chancellor
    (blue **C**), then **tap the hand the President claims they drew** — that submits the
    government. The enacted policy is inferred, so you're never asked for it.
@@ -53,8 +64,10 @@ The **←** arrow at the top-left is always the way back (labelled *undo* during
 - [`CHAT.md`](CHAT.md) — session-by-session log of changes.
 
 ## Tech
-Plain static site — HTML + CSS + vanilla JavaScript, no build step, no dependencies.
-Deployed via GitHub Pages. All data stays in your browser (`localStorage`).
+Plain static site — HTML + CSS + vanilla JavaScript, **no build step, no bundler**. Deployed via
+GitHub Pages. Data lives in your browser (`localStorage`, plus IndexedDB for custom night-voice
+audio); signing in adds optional **Firebase** sync (auth + Firestore, loaded from a CDN so there's
+still no build step). The app works fully offline and without an account.
 
 ## Local development
 Serve the folder over HTTP (needed for `localStorage`):
