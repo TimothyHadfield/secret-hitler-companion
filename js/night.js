@@ -29,7 +29,7 @@ const Night = (() => {
       { say: "Everyone, close your eyes.", wait: 3000 },
       { say: "Fascists, open your eyes. See who the other fascist is.", wait: 3000 },
       { say: "Fascists, close your eyes.", wait: 3000 },
-      { say: "Everyone, open your eyes. If anyone had any problems in the night, bring them up now.", wait: 0 },
+      { say: "Everyone, open your eyes.", wait: 0 },
     ],
     large: [
       { say: "Everyone, put your fist on the table with your thumb on top. Everyone, close your eyes.", wait: 3000 },

@@ -1272,6 +1272,7 @@ accounts to confirm end-to-end. Files: `js/night.js`, `js/cloud.js`, `js/app.js`
 script + audio, and shorten the pauses from 5s to 3s. Data-only change in `js/night.js` `SEGMENTS`:
 the small script's second line is now just "Fascists, open your eyes. See who the other fascist is.",
 and every `wait: 5000` → `3000` (the 2.5s Hitler-thumb beat in the large script is unchanged). The
-display cues ("( pause about 3 seconds )") and the TTS pacing both follow automatically. `night.test.js`
-updated (now **41 assertions**: 3s pacing, no 5s pauses remain, small no longer names Hitler). One code
-file: `js/night.js`.
+display cues ("( pause about 3 seconds )") and the TTS pacing both follow automatically. A follow-up
+also dropped the "if anyone had any problems in the night, bring them up now" tail, so the small script
+now ends simply "Everyone, open your eyes." (same as the large one). `night.test.js` updated (now **42
+assertions**). One code file: `js/night.js`.

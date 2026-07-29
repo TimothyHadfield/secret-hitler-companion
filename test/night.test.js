@@ -31,6 +31,8 @@ ok(!Night.SEGMENTS.large.some((s) => /fascists, open your eyes.*hitler.*open/i.t
   "large never tells Hitler to open their eyes");
 ok(!Night.SEGMENTS.small.some((s) => /if you.?re hitler|you now know who the other fascist/i.test(s.say)),
   "small no longer calls out Hitler after the fascists open their eyes");
+ok(!Night.SEGMENTS.small.some((s) => /problems in the night/i.test(s.say)),
+  "small no longer has the 'problems in the night' line");
 eq(Night.SEGMENTS.small[Night.SEGMENTS.small.length - 1].wait, 0, "small ends with no trailing pause");
 eq(Night.SEGMENTS.large[Night.SEGMENTS.large.length - 1].wait, 0, "large ends with no trailing pause");
 
