@@ -221,8 +221,9 @@ table game, not a game engine. Feature pillars:
 ## "In the night" narration (session 33)
 - **What it is:** a start-of-game helper that reads the classic fascist-reveal narration aloud so
   nobody at the table has to. Opened from a **🌙 Night button in the in-game tabbar** (next to the ⚙
-  gear; hidden during a review or role-recording). It's a `#nightModal` overlay — the game underneath
-  is untouched.
+  gear). It shows only **before the first presidency** (empty event log) — the night phase is a
+  start-of-game thing — and is hidden once anything is recorded, and during a review or role-recording
+  (session 35). It's a `#nightModal` overlay — the game underneath is untouched.
 - **Two scripts, auto-chosen by player count** (`Night.scriptKeyFor`): **5–6 ⇒ "small"** (Hitler opens
   their eyes with the fascists), **7+ ⇒ "large"** (Hitler stays hidden and signals with a raised
   thumb). Scripts live as `Night.SEGMENTS[key]` — speakable lines each with a trailing pause (3s, one

@@ -680,10 +680,11 @@
     renderGameOver();
     renderHistory(d);
     renderBackTop();
-    // the night narration only makes sense during a live game, not while
-    // reviewing a saved one or recording roles at the end
+    // the night narration only makes sense at the very start of a live game —
+    // before the first presidency (empty event log). Once anything is recorded,
+    // or while reviewing / recording roles, hide it.
     const nb = $("btnNight");
-    if (nb) nb.classList.toggle("hidden", !!(state.review || state.recordingRoles));
+    if (nb) nb.classList.toggle("hidden", !!(state.review || state.recordingRoles || (state.events && state.events.length > 0)));
     fitCenterBoards();
     $("chaosPrompt").classList.toggle("hidden", !(state.pendingChaos && !state.gameOver));
     saveActive(); // persist the full game state after every change
