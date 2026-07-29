@@ -45,21 +45,32 @@ _Last updated: 2026-07-29 (after session 35)._
   `onAuthStateChanged` never fires and the page hangs. Instead drive the page over **real time
   via CDP**: launch `chrome --headless --remote-debugging-port=<port> --user-data-dir=<fresh>`,
   connect with Node 24's built-in `WebSocket` (no dependency), navigate, and poll a result
-  `<div>`/`document.title`. The reusable driver is `cdp.js` in the session scratchpad. Use a
-  **fresh `--user-data-dir` per run** (a stale one throws "Device or resource busy" and IndexedDB
-  keeps the previous session). The test writes real accounts (`claude-*@example.com`) and docs
-  into the **live** Firebase project.
-- **ALWAYS clean up after a cloud test — it mutates production.** Delete every test account and
-  empty the database, then confirm only `timhadfield7@gmail.com` remains:
-  `firebase auth:export <tmp>.json --format=json` to enumerate, delete each `claude-*@example.com`
-  by signing in (its password is derived from the email — see `purge-users.js` in the scratchpad)
-  and calling `accounts:delete`, then
-  `firebase firestore:delete --all-collections --force --project secret-hitler-companion-th`
-  (run twice; the second must list nothing). Also `Stop-Process` any leftover `--headless` Chrome.
+  `<div>`/`document.title`. Rebuild the ~40-line `cdp.js` driver from this pattern (a copy lives in
+  the session scratchpad, which does **not** persist to a new chat). Use a **fresh `--user-data-dir`
+  per run** (a stale one throws "Device or resource busy" and IndexedDB keeps the previous session).
+  **Preferred approach: inject a mock `window.Cloud`** (an in-memory "remote") so the test drives the
+  real app glue but never authenticates or writes to the live project — this is how session 34's
+  night-voice sharing was verified. Only sign in / write to the live project as an absolute last
+  resort, and then heed the ⚠️ warning below.
+- **⚠️ THE LIVE FIREBASE PROJECT NOW HOLDS THE USER'S REAL DATA** — their own recorded games,
+  groups, and shared night voices. This changes the old cloud-test advice: **any wholesale wipe of
+  the database will permanently destroy the user's game history.** In particular, DO **NOT** run:
+  - `firebase firestore:delete --all-collections …` (deletes everyone's games), or
+  - **`test/rules.prod.test.js`** — its teardown runs exactly that wipe. It is effectively
+    **unrunnable now; treat it as documentation only** (its assertions mirror the deployed rules).
+- **Verify cloud / rules changes WITHOUT touching the live project.** Drive the real UI with a
+  **mock `window.Cloud`** over CDP (see the session-34 night-voice test: an in-memory "remote", no
+  auth, no Firestore writes). That exercises all the app-side glue safely. Deploying rules
+  (`firebase deploy --only firestore:rules`) is safe — it's config only, no data touched. If you
+  ever genuinely must write to the live project, delete ONLY the exact artifacts you created (each
+  `claude-*@example.com` account via `purge-users.js` in the scratchpad + the specific doc/group ids
+  from that run) and confirm only `timhadfield7@gmail.com` remains — **never a collection-wide
+  delete.** Also `Stop-Process` any leftover `--headless` Chrome.
 - **Live backend facts + the ~5-min one-time setup a user must do are in `BACKEND_PLAN.md`.**
   Firebase CLI is logged in as `timhadfield7@gmail.com`; deploy rules with
-  `firebase deploy --only firestore:rules`. The Firestore emulator will NOT start on this machine,
-  so `rules.prod.test.js` tests the **deployed** rules against the live project (49 assertions).
+  `firebase deploy --only firestore:rules` (safe — config only). The Firestore emulator will NOT
+  start on this machine, which is why `rules.prod.test.js` was written against the live project —
+  but see the warning above: it now wipes real data on teardown, so don't run it.
 - **Style:** match the existing code (vanilla JS in one IIFE in `app.js`, full-redraw rendering,
   original stylised CSS for the board — never reproduce the real game's printed artwork/logo).
 
