@@ -1165,3 +1165,28 @@ review; **Cancel** keeps the game (count stays 2, still in the review); **Delete
 renders; back arrow still returns to the menu. The confirm copy switches to "removes it for everyone in
 the group" when signed in with a synced game. Screenshot confirms the button placement. Files:
 `js/stats.js`, `js/cloud.js`, `js/app.js`, `styles.css`, `firestore.rules`, `test/rules.prod.test.js`.
+
+## Session 32 — lock the review playback box so it doesn't jump while scrubbing
+
+**User report:** clicking the review's back/forward arrows fast is annoying because going back far
+enough removes the Round 2/3 boxes, which (on desktop) shrinks the rounds strip and slides the
+`◀ ▶` box up under the cursor. Wants the box **locked in place** — the round boxes may still
+disappear, but the arrow box must not move — and the **varying-length step caption** must not cause
+the same jump.
+
+**Cause.** Desktop puts the rounds strip in the right control column *above* the playback panel; its
+height is content-driven (`max-height:116px`, scrolls). Fewer rounds ⇒ shorter strip ⇒ everything
+below shifts up. (Phones are unaffected — the strip is a horizontal row there, constant height.)
+
+**Fix — `lockReviewRoundsBar()`** (in `app.js`, called from `placeRoundsBar`): during a review it pins
+the strip to the **full game's height**, measured once at the full step (`bar.clientHeight`, which
+already honours the CSS cap) and stored on `state._roundsReserve`, then re-applied as a `min-height`
+on every step. Blocks still disappear as you step back, but the reserved space keeps the box fixed.
+The step caption renders *below* the box, so its changing length can't move the box. Cleared when not
+reviewing (normal play untouched) and on phones.
+
+**Verified** with the headless recipe driven at desktop width (`--window-size=1200`, innerWidth 1178):
+the `.pb-controls` top was **156px at every one of the 9 steps (spread 0)** while the round-block count
+went 1↔2 and the caption length ranged 41→76 chars — so neither the disappearing round boxes nor the
+varying presidency description moves the box. Screenshot confirms the reserved gap looks clean. One
+file: `js/app.js`.

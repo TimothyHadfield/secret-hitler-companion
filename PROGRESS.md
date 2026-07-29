@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-28 (after session 31)._
+_Last updated: 2026-07-29 (after session 32)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -357,6 +357,17 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   live odds run **regardless of the two settings switches** during a playback (`rolesOn()` honours it),
   since the whole point is to watch them evolve. Opens at the end so the plain "who won" review is
   unchanged; step back to replay.
+- **Stepper stays put while scrubbing (session 32).** On desktop the rounds strip is a vertical
+  column directly above the playback controls, so stepping back — which removes later rounds' blocks —
+  used to shrink the strip and slide the `◀ ▶` box under the cursor (miserable when clicking fast).
+  `lockReviewRoundsBar()` (called from `placeRoundsBar`) now **pins the strip to the full game's
+  height during a review** — measured once at the full step via `clientHeight` (which already respects
+  the CSS `max-height:116px`) and stored on `state._roundsReserve`, then applied as a `min-height` on
+  every step. Round blocks still disappear as you step back, but the box beneath never moves; the
+  varying-length step caption sits *below* the box so it can't shift it either. Cleared outside a
+  review (normal play unchanged) and on phones (the strip is horizontal there, so its height is already
+  constant). Verified: box top constant to <1px across all 9 steps while block count went 1↔2 and
+  caption length ranged 41–76 chars.
 - **Deleting a recorded game (session 31).** The review panel has a **Delete game** button (outlined
   danger, bottom of the panel, step-independent). It confirms first (`deleteReviewedGame()`), then —
   crucially in this order — removes the **cloud copy first** so a later sync can't resurrect it, and

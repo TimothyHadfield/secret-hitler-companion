@@ -749,13 +749,34 @@
     const desktop = window.innerWidth > 640;
     if (desktop) {
       if (bar.parentElement !== slot) slot.appendChild(bar);
+      lockReviewRoundsBar(bar); // reserve a stable height BEFORE reading scrollHeight
       bar.scrollTop = bar.scrollHeight; // keep the current (last) round in view
     } else {
+      bar.style.minHeight = ""; // phone strip is horizontal — no vertical reserve
       if (bar.parentElement !== playTab || playTab.firstElementChild !== bar) {
         playTab.insertBefore(bar, playTab.firstElementChild);
       }
       bar.scrollLeft = bar.scrollWidth; // current round in view on the phone's top strip
     }
+  }
+
+  // During a review, stepping back/forward adds or removes round blocks. On
+  // desktop the rounds strip is a VERTICAL column sitting above the playback
+  // controls, so that height change would shift the ◀ ▶ box under the cursor —
+  // exactly the jitter that makes rapid clicking miss. Pin the strip to the FULL
+  // game's height (measured once at the full step, where it's as tall as it ever
+  // gets, and capped by the CSS max-height). Blocks still disappear as you step
+  // back, but the box beneath never moves. Outside a review we clear the reserve,
+  // so normal play is unchanged; phones are handled by placeRoundsBar (a
+  // horizontal strip, whose height doesn't change with the number of rounds).
+  function lockReviewRoundsBar(bar) {
+    if (!state || !state.review) { bar.style.minHeight = ""; return; }
+    const full = (state._reviewEvents || []).length;
+    if (state.reviewStep >= full) {
+      bar.style.minHeight = "";               // measure the natural full-extent height
+      state._roundsReserve = bar.clientHeight; // clientHeight already respects max-height
+    }
+    if (state._roundsReserve) bar.style.minHeight = state._roundsReserve + "px";
   }
 
   // Seat placement around a rectangular table.
