@@ -8,6 +8,19 @@ rules_version = '2';
 // allowed to any signed-in user on the internet. Deploy with:
 //     firebase deploy --only firestore:rules
 // Design notes live in BACKEND_PLAN.md.
+//
+// DATA-SAFETY INVARIANT (do not weaken — see DATA_SAFETY.md):
+//   No client can ever bulk-delete recorded history.
+//     • The Firestore client SDK has no "delete a collection" operation, so the
+//       app can only ever delete ONE document per call.
+//     • `games` and `voices` allow `delete` solely to a document's own author
+//       (createdBy) or the group's owner — never to another member — and `update`
+//       is `if false`, so history can be removed one item at a time but never
+//       silently rewritten.
+//   The only way to mass-delete is admin/CLI tooling (firebase firestore:delete),
+//   which BYPASSES these rules entirely. That is exactly what DATA_SAFETY.md
+//   forbids and why the destructive test is hard-gated. Rules cannot police the
+//   project owner's terminal — a backup discipline does.
 // ============================================================================
 
 service cloud.firestore {

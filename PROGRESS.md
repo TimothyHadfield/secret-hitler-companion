@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-29 (after session 35)._
+_Last updated: 2026-07-29 (after session 36 — data-safety hardening)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -52,12 +52,21 @@ _Last updated: 2026-07-29 (after session 35)._
   real app glue but never authenticates or writes to the live project — this is how session 34's
   night-voice sharing was verified. Only sign in / write to the live project as an absolute last
   resort, and then heed the ⚠️ warning below.
-- **⚠️ THE LIVE FIREBASE PROJECT NOW HOLDS THE USER'S REAL DATA** — their own recorded games,
-  groups, and shared night voices. This changes the old cloud-test advice: **any wholesale wipe of
-  the database will permanently destroy the user's game history.** In particular, DO **NOT** run:
-  - `firebase firestore:delete --all-collections …` (deletes everyone's games), or
-  - **`test/rules.prod.test.js`** — its teardown runs exactly that wipe. It is effectively
-    **unrunnable now; treat it as documentation only** (its assertions mirror the deployed rules).
+- **⚠️ DATA SAFETY IS RULE ZERO — read `DATA_SAFETY.md` first.** The live Firebase project holds
+  the user's **real** recorded games; they must never be lost or harmed, not even while the site is
+  being updated. The full standing policy is in **`DATA_SAFETY.md`** (session 36). The essentials:
+  - **The app / any client CANNOT bulk-delete.** The Firestore client SDK has no "delete a
+    collection" call, and `firestore.rules` only lets a game/voice be deleted by its author or the
+    group owner, one document at a time (never rewritten). This is a documented invariant in
+    `firestore.rules` — don't weaken it.
+  - **The only real mass-delete vector is admin/CLI tooling, which bypasses the rules.** So NEVER
+    run `firebase firestore:delete --all-collections …` or `… <path> --recursive …`. No task here
+    needs them. Don't put them in a script or paste them into docs.
+  - **`test/rules.prod.test.js` is HARD-GATED** (session 36): it refuses to run unless
+    `SH_PROD_RULES_TEST=i-understand` is set, and its cleanup deletes **only the exact
+    `__test_<runId>` docs it created**, per-document, through the rules — no wholesale wipe exists in
+    the file (correcting the old note: it never actually wiped all collections, but the risk is now
+    designed out). Prefer not running it at all.
 - **Verify cloud / rules changes WITHOUT touching the live project.** Drive the real UI with a
   **mock `window.Cloud`** over CDP (see the session-34 night-voice test: an in-memory "remote", no
   auth, no Firestore writes). That exercises all the app-side glue safely. Deploying rules
@@ -70,7 +79,8 @@ _Last updated: 2026-07-29 (after session 35)._
   Firebase CLI is logged in as `timhadfield7@gmail.com`; deploy rules with
   `firebase deploy --only firestore:rules` (safe — config only). The Firestore emulator will NOT
   start on this machine, which is why `rules.prod.test.js` was written against the live project —
-  but see the warning above: it now wipes real data on teardown, so don't run it.
+  but it's hard-gated now (see the DATA SAFETY point above and `DATA_SAFETY.md`); prefer the mock-
+  Cloud CDP approach and don't run the prod test unless you truly must.
 - **Style:** match the existing code (vanilla JS in one IIFE in `app.js`, full-redraw rendering,
   original stylised CSS for the board — never reproduce the real game's printed artwork/logo).
 
@@ -127,12 +137,12 @@ table game, not a game engine. Feature pillars:
 | `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over, **confirm dialog**, account, settings, **night narration**; plus a **toast**. (No separate end screen — role recording is in-place.) |
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
-| `js/stats.js` | localStorage read/write (record / **delete** / clear) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. |
+| `js/stats.js` | localStorage read/write (record / **delete** / clear) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. **`clearAll()` is the only bulk delete; the app wraps it in a backup-first, two-confirm flow (session 36) and it only ever clears the local device.** |
 | `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring, **account UI**. |
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, groups, game delete, and **shared night voices** (base64 audio in Firestore). Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **Its teardown empties ALL collections — running it DESTROYS real recorded games. Do not run it while the live DB holds games you care about.** It now also covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not); those assertions were added in session 31 but **not executed** for exactly that reason. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
+| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **HARD-GATED (session 36): it refuses to run without `SH_PROD_RULES_TEST=i-understand`, and cleans up ONLY the exact `__test_<runId>` docs it created, per-document, through the rules — no wholesale wipe exists in the file.** (The older warning that its teardown "empties ALL collections" was overstated — every committed version scoped itself to a test group; the gate + per-doc cleanup now design the risk out. See `DATA_SAFETY.md`.) It covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not) and voice permissions (§7c); still, prefer the mock-Cloud CDP approach and don't run it unless you truly must. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
@@ -141,6 +151,7 @@ table game, not a game engine. Feature pillars:
 | `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates** and a **distinct cautious-Hitler** role. Pure functions, Node-tested (66 assertions incl. a from-scratch brute-force mirror). |
 | `HONESTY_MODEL.md` | Derivation of the honesty posterior ("how likely is this claim a lie?") — hard-logic layer, generative model, exact inference, calibration plan, cited prior art, and **§11: the design review that decided what v1 ships**. |
 | `BACKEND_PLAN.md` | **Phases 0–3 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
+| `DATA_SAFETY.md` | **Rule zero (session 36): keep the user's recorded games safe.** The one real mass-delete vector (admin CLI), the forbidden commands, why the app/rules can't bulk-delete, the hard-gated prod test, and the back-up-first discipline. Read before touching anything Firebase. |
 | `CHAT.md` | Session-by-session log (sessions 1–21). |
 | `PROGRESS.md` | This file. |
 

@@ -1276,3 +1276,47 @@ display cues ("( pause about 3 seconds )") and the TTS pacing both follow automa
 also dropped the "if anyone had any problems in the night, bring them up now" tail, so the small script
 now ends simply "Everyone, open your eyes." (same as the large one). `night.test.js` updated (now **42
 assertions**). One code file: `js/night.js`.
+
+## Session 36 — data-safety hardening (recorded games must never be lost)
+
+**User:** "There should be no one command that deletes history… users should always trust their game
+data won't be harmed or deleted, even while the site is being updated. Never do anything risky, and fix
+this vulnerability so it's really challenging — and impossible to accidentally — to delete user game
+data while we update the site."
+
+**What I found (the real surface, narrower than PROGRESS claimed):**
+- **From the app / any client, bulk deletion is already impossible.** The Firestore client SDK has no
+  "delete a collection" call; every delete is one document, and `firestore.rules` only lets a
+  game/voice be deleted by its author or the group owner (and `update: if false`, so history is never
+  rewritten). `Stats.clearAll()` is the one client bulk-delete — but it's **local-only** and a
+  deliberate button.
+- **The only true mass-delete vector is admin/CLI tooling** (`firebase firestore:delete …`), which
+  **bypasses the rules entirely** — no rule can police the project owner's terminal.
+- **Correction:** the old warning that `rules.prod.test.js`'s teardown "empties ALL collections and
+  DESTROYS real games" was **overstated** — every committed version scoped itself to a `__test_<runId>`
+  group and only *printed* a scoped recursive-delete command. Still a footgun; now designed out.
+
+**What I shipped (all five):**
+1. **`DATA_SAFETY.md`** — new top-of-repo rule zero: the one real mass-delete vector, the forbidden
+   commands (`--all-collections`, `--recursive`), why app+rules can't bulk-delete, the gated prod test,
+   and back-up-first discipline.
+2. **Hard-gated `test/rules.prod.test.js`** — refuses to run unless `SH_PROD_RULES_TEST=i-understand`;
+   a plain run prints why and exits 0 **before any Firebase connection**. Verified.
+3. **Self-scoped test cleanup** — replaced the printed `firebase firestore:delete … --recursive` with
+   in-test, per-document deletion of ONLY the `__test_<runId>` docs it created, through the rules. No
+   wholesale/CLI wipe exists anywhere in the file now.
+4. **Export-first "Clear all statistics"** (`js/app.js`) — the button now auto-downloads a full JSON
+   backup FIRST, then asks a **second** time before erasing, and only clears the local device
+   (signed-in games survive in the account and sync back). New `downloadArchive()` helper shared with
+   Export. **Headless-Chrome smoke test SMOKE_OK:** empty archive → no modal (toast only); seeded →
+   "Download backup & continue" → exactly 1 backup produced, games still present → "Erase this device"
+   → cleared.
+5. **DATA-SAFETY INVARIANT comment in `firestore.rules`** — documents that client mass-delete is
+   structurally impossible and delete is per-doc author/owner only, so a future edit can't quietly
+   loosen it.
+
+**Behavioral commitment recorded:** never run wholesale/recursive Firestore deletes; verify cloud/rules
+changes with a mock `window.Cloud` over CDP; the normal update loop (edit → push → Pages →
+`firebase deploy --only firestore:rules`) never touches stored data. Files: `DATA_SAFETY.md`,
+`js/app.js`, `test/rules.prod.test.js`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`. No deploy needed
+(rules text unchanged — only a comment added; deploy is a harmless no-op if desired).

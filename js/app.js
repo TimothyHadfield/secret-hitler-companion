@@ -2358,22 +2358,32 @@
   // All statistics live in this browser only, so the archive needs a way out:
   // a backup against cleared site data, a way to carry games between devices,
   // and the payload that will seed a cloud account later.
-  function exportStats() {
+  // Write the whole archive out as a downloaded JSON file. Returns
+  // {count, name} if a file was produced, or null if there was nothing to save.
+  // Shared by the Export button and the safety backup taken before a bulk clear,
+  // so there is exactly one place that knows how to serialise the archive.
+  function downloadArchive(prefix) {
     const data = Stats.exportData();
-    if (!data.games.length) {
-      showToast("No games to export yet.");
-      return;
-    }
+    if (!data.games.length) return null;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `secret-hitler-stats-${data.exportedAt.slice(0, 10)}.json`;
+    a.download = `${prefix}-${data.exportedAt.slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast(`Exported ${data.games.length} game${data.games.length === 1 ? "" : "s"}.`);
+    return { count: data.games.length, name: a.download };
+  }
+
+  function exportStats() {
+    const res = downloadArchive("secret-hitler-stats");
+    if (!res) {
+      showToast("No games to export yet.");
+      return;
+    }
+    showToast(`Exported ${res.count} game${res.count === 1 ? "" : "s"}.`);
   }
 
   function importStats(file) {
@@ -3394,19 +3404,47 @@
       e.target.value = ""; // let the same file be picked again after a failure
       if (f) importStats(f);
     };
+    // Clearing is the one bulk-delete a user can trigger, and for a signed-out
+    // device that never synced it is unrecoverable — so it is deliberately hard
+    // to do by accident: we take an automatic backup download FIRST, then ask a
+    // second time before erasing anything. (Signed-in games also survive in the
+    // account and re-download, so this only ever clears THIS device.)
     $("btnClearStats").onclick = () => {
+      const total = Stats.loadAllGames().length;
+      if (!total) {
+        showToast("There are no statistics to clear.");
+        return;
+      }
+      const plural = total === 1 ? "" : "s";
       askConfirm(
         {
-          title: "Delete all statistics?",
-          body: "Every saved game and all player statistics will be permanently erased. This cannot be undone.",
-          confirm: "Delete everything",
+          title: "Clear statistics from this device?",
+          body:
+            `This removes all ${total} saved game${plural} stored in this browser. ` +
+            `A backup file will download first so nothing is lost — you can restore it any time with Import data. Continue?`,
+          confirm: "Download backup & continue",
           cancel: "Cancel",
           danger: true,
         },
         () => {
-          Stats.clearAll();
-          renderStats();
-          showToast("All statistics deleted.");
+          const backup = downloadArchive("secret-hitler-backup");
+          askConfirm(
+            {
+              title: "Erase this device now?",
+              body: backup
+                ? `Your backup "${backup.name}" has downloaded. Permanently remove all ${total} game${plural} from this browser now? ` +
+                  `Any games in a signed-in account stay safe and will sync back.`
+                : `Permanently remove all statistics from this browser now?`,
+              confirm: "Erase this device",
+              cancel: "Keep my statistics",
+              danger: true,
+            },
+            () => {
+              Stats.clearAll();
+              renderStats();
+              showToast("Statistics cleared from this device.");
+            }
+          );
         }
       );
     };

@@ -11,10 +11,32 @@
  * directly from the jar. Testing production is stronger evidence anyway: it
  * exercises exactly what is live.)
  *
- * Everything it creates is namespaced under a __test_<runId> group and torn
- * down at the end. Run from the project root:
- *     node test/rules.prod.test.js
+ * ⚠️ THIS TEST TOUCHES THE LIVE PROJECT, which holds the user's real recorded
+ * games. To make that impossible to do by ACCIDENT it is HARD-GATED: it refuses
+ * to run unless you deliberately opt in with an environment variable:
+ *
+ *     SH_PROD_RULES_TEST=i-understand  node test/rules.prod.test.js
+ *
+ * A plain `node test/rules.prod.test.js` prints why it stopped and exits 0
+ * WITHOUT connecting to anything. See DATA_SAFETY.md.
+ *
+ * Everything it creates is namespaced under a __test_<runId> group. Cleanup is
+ * done IN-TEST, per document, deleting ONLY the exact ids this run created
+ * (see teardown) — the client SDK cannot delete a collection, so there is no
+ * wholesale-wipe command anywhere in this file. Never introduce one.
  * ==========================================================================*/
+
+// ---- safety gate: refuse to run against the live project by accident --------
+if (process.env.SH_PROD_RULES_TEST !== "i-understand") {
+  console.log(
+    "\nrules.prod.test.js did NOT run — it writes to the LIVE Firebase project\n" +
+    "(which holds real recorded games). This is a safety gate, not an error.\n\n" +
+    "If you genuinely mean to exercise the deployed rules, opt in explicitly:\n" +
+    "    SH_PROD_RULES_TEST=i-understand  node test/rules.prod.test.js\n\n" +
+    "It cleans up only the exact test documents it creates. See DATA_SAFETY.md.\n"
+  );
+  process.exit(0);
+}
 
 const { initializeApp } = require("firebase/app");
 const {
@@ -246,15 +268,44 @@ function makeUser(name) {
   await allowed("the recipient CAN clear their own", () =>
     deleteDoc(doc(bob.db, `profiles/${bob.uid}/invites/${GID}`)));
 
-  // ---- teardown ----
-  log("\nCleaning up…");
+  // ---- teardown: delete ONLY the documents THIS run created -----------------
+  // Everything lives under groups/<GID>, this run's private namespace. The client
+  // SDK has no "delete a collection" call, so we list each of this test group's
+  // subcollections and remove its documents one at a time, as the group owner
+  // (bob), through the very same security rules the app uses. There is
+  // deliberately NO recursive / CLI / --all-collections wipe anywhere here, and
+  // no path is ever referenced outside groups/<GID>. Never add one.
+  log("\nCleaning up this run's test data…");
+  async function purgeCollection(path) {
+    try {
+      const snap = await getDocs(collection(bob.db, path));
+      for (const d of snap.docs) {
+        try { await deleteDoc(doc(bob.db, path, d.id)); }
+        catch (e) { log(`  ! left ${path}/${d.id}: ${e.code || e.message}`); }
+      }
+    } catch (e) { log(`  ! could not list ${path}: ${e.code || e.message}`); }
+  }
+  // Voices carry clip subdocuments — remove those before their parent voice.
+  try {
+    const vs = await getDocs(collection(bob.db, `groups/${GID}/voices`));
+    for (const v of vs.docs) await purgeCollection(`groups/${GID}/voices/${v.id}/clips`);
+  } catch (e) { /* nothing to clean */ }
+  await purgeCollection(`groups/${GID}/voices`);
+  await purgeCollection(`groups/${GID}/games`);
+  await purgeCollection(`groups/${GID}/members`);
+  await purgeCollection(`profiles/${bob.uid}/invites`);
+  try { await deleteDoc(doc(bob.db, `groups/${GID}`)); log(`  removed test group ${GID}`); }
+  catch (e) { log(`  ! left group ${GID}: ${e.code || e.message}`); }
+
+  // Firestore cleanup runs first (it needs bob signed in to pass the rules);
+  // only then do we drop the throwaway auth accounts.
   for (const u of created) {
     try { await deleteUser(u.auth.currentUser); log(`  deleted test user ${u.name}`); }
     catch (e) { log(`  ! could not delete user ${u.name}: ${e.code || e.message}`); }
     try { await signOut(u.auth); } catch (e) {}
   }
-  log(`  NOTE: documents under groups/${GID} are append-only by design.`);
-  log(`  Remove them with:  firebase firestore:delete groups/${GID} --recursive --force`);
+  log(`  (test-account profile docs are keyed by throwaway uids and a rule forbids`);
+  log(`   deleting a profile — they're harmless residue, not real user data.)`);
 
   log(`\n${pass} passed, ${fail} failed\n`);
   process.exit(fail ? 1 : 0);
