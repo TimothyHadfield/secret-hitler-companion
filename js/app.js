@@ -680,6 +680,10 @@
     renderGameOver();
     renderHistory(d);
     renderBackTop();
+    // the night narration only makes sense during a live game, not while
+    // reviewing a saved one or recording roles at the end
+    const nb = $("btnNight");
+    if (nb) nb.classList.toggle("hidden", !!(state.review || state.recordingRoles));
     fitCenterBoards();
     $("chaosPrompt").classList.toggle("hidden", !(state.pendingChaos && !state.gameOver));
     saveActive(); // persist the full game state after every change
@@ -2923,6 +2927,295 @@
     $("setBoard").onclick = () => { settings.boardOdds = !settings.boardOdds; apply(); };
   }
 
+  // ------------------------ "in the night" narration -------------------------
+  // A start-of-game helper that plays the fascist-reveal narration so nobody at
+  // the table has to read it aloud. The right script (5–6 vs 7+) is chosen from
+  // the player count. Voices: two device-speech defaults, or a user's own
+  // recorded/uploaded clips (stored locally in IndexedDB via js/night.js).
+  let nightView = "main";           // "main" | "record"
+  let nightCtl = null;              // active playback controller (stop())
+  let nightStep = null;             // { i, n } while narrating, for the UI
+  let nightSets = [];               // cached custom voice sets
+  let nightDraft = null;            // { name, clips:{small,large}, recording }
+
+  const nightCount = () => (state && Array.isArray(state.players) ? state.players.length : 5);
+  const hasNight = () => typeof Night !== "undefined";
+
+  function openNight() {
+    if (!hasNight()) { showToast("Night narration isn't available here."); return; }
+    nightStopPlayback();
+    nightView = "main";
+    Night.ready(); // warm the voice list
+    refreshNightSets();
+    $("nightModal").classList.remove("hidden");
+    renderNight();
+  }
+  function closeNight() {
+    nightStopPlayback();
+    nightDiscardDraft();
+    $("nightModal").classList.add("hidden");
+  }
+  async function refreshNightSets() {
+    try { nightSets = await Night.listSets(); } catch (e) { nightSets = []; }
+    if (!$("nightModal").classList.contains("hidden")) renderNight();
+  }
+
+  function nightStopPlayback() {
+    if (nightCtl) { try { nightCtl.stop(); } catch (e) {} }
+    nightCtl = null; nightStep = null;
+  }
+
+  function renderNight() {
+    if (nightView === "record") return renderNightRecord();
+    renderNightMain();
+  }
+
+  function renderNightMain() {
+    const box = $("nightBox");
+    const n = nightCount();
+    const key = Night.scriptKeyFor(n);
+    const sel = Night.getSelected();
+    const playing = !!nightCtl;
+
+    const opt = (id, name, sub, extra) =>
+      `<button class="night-voice${sel === id ? " sel" : ""}" data-sel="${escapeHtml(id)}">` +
+      `<span class="nv-dot"></span>` +
+      `<span class="nv-text"><span class="nv-name">${escapeHtml(name)}</span>` +
+      `<span class="nv-sub">${sub}</span></span>${extra || ""}</button>`;
+
+    let voices =
+      opt("female", "Default — Female", "Your device's speech voice") +
+      opt("male", "Default — Male", "Your device's speech voice");
+    nightSets.forEach((s) => {
+      const missing = !s[key];
+      const sub = missing
+        ? `<span class="nv-warn">no ${Night.SCRIPT_TITLE[key]} clip yet</span>`
+        : "Your recording";
+      voices += opt("custom:" + s.id, s.name, sub,
+        `<span class="nv-del" data-del="${escapeHtml(s.id)}" title="Delete this voice">🗑</span>`);
+    });
+
+    // is the current selection actually playable for this player count?
+    let playable = true, why = "";
+    if (sel.startsWith("custom:")) {
+      const s = nightSets.find((x) => "custom:" + x.id === sel);
+      if (!s || !s[key]) { playable = false; why = `This voice has no ${Night.SCRIPT_TITLE[key]} recording.`; }
+    } else if (!Night.hasSpeech()) { playable = false; why = "This browser has no speech voices."; }
+
+    const stepLine = playing && nightStep
+      ? `<div class="night-step">Narrating… line ${nightStep.i + 1} of ${nightStep.n}</div>`
+      : "";
+
+    box.innerHTML =
+      backBtn("nightBack", "Close") +
+      `<div class="power-title">🌙 In the night</div>` +
+      `<p class="confirm-body" style="margin:0 0 10px">` +
+      `<b>${n} players</b> — the <b>${Night.SCRIPT_TITLE[key]}</b> narration will play` +
+      `${key === "large" ? " (Hitler stays hidden and signals with a raised thumb)." : " (Hitler opens their eyes with the fascists)."}` +
+      ` Close everyone's eyes, then press play.</p>` +
+      `<div class="night-voices">${voices}</div>` +
+      stepLine +
+      `<div class="control-row">` +
+      (playing
+        ? `<button id="nightStop" class="danger" style="width:100%">■ Stop</button>`
+        : `<button id="nightPlay" class="primary" style="width:100%" ${playable ? "" : "disabled"}>▶ Play narration</button>`) +
+      `</div>` +
+      (why ? `<div class="acct-msg bad">${escapeHtml(why)}</div>` : "") +
+      `<div class="control-row"><button id="nightNew" class="ghost" style="width:100%">＋ Record or upload your own voice</button></div>` +
+      `<p class="muted" style="font-size:12px;margin:8px 0 0">Your own recordings are saved on this device only. ` +
+      `The default voices use your browser's speech engine, so how human they sound depends on your device.</p>`;
+
+    $("nightBack").onclick = closeNight;
+    box.querySelectorAll(".night-voice").forEach((b) => {
+      b.onclick = (e) => {
+        if (e.target.classList.contains("nv-del")) return; // handled below
+        nightStopPlayback();
+        Night.setSelected(b.dataset.sel);
+        renderNight();
+      };
+    });
+    box.querySelectorAll(".nv-del").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); nightDeleteSet(b.dataset.del); };
+    });
+    if ($("nightPlay")) $("nightPlay").onclick = nightPlay;
+    if ($("nightStop")) $("nightStop").onclick = () => { nightStopPlayback(); renderNight(); };
+    $("nightNew").onclick = () => { nightView = "record"; nightDraft = { name: "", clips: { small: null, large: null }, recording: null }; renderNight(); };
+  }
+
+  function nightPlay() {
+    const n = nightCount();
+    const key = Night.scriptKeyFor(n);
+    const sel = Night.getSelected();
+    const handlers = {
+      onStep: (i, total) => { nightStep = { i, n: total }; if ($("nightModal") && !$("nightModal").classList.contains("hidden")) renderNight(); },
+      onDone: () => { nightStopPlayback(); renderNight(); },
+      onError: (e) => { nightStopPlayback(); renderNight(); showToast(e === "play-blocked" ? "Tap play again to allow audio." : "Couldn't play that audio."); },
+    };
+    if (sel.startsWith("custom:")) {
+      const id = sel.slice(7);
+      Night.getClip(id, key).then((blob) => {
+        if (!blob) { showToast(`That voice has no ${Night.SCRIPT_TITLE[key]} recording.`); return; }
+        nightCtl = Night.playBlob(blob, handlers);
+        nightStep = { i: 0, n: 1 };
+        renderNight();
+      });
+      return;
+    }
+    nightCtl = Night.speak(key, sel === "male" ? "male" : "female", handlers);
+    renderNight();
+  }
+
+  function nightDeleteSet(id) {
+    const s = nightSets.find((x) => x.id === id);
+    askConfirm(
+      {
+        title: "Delete this voice?",
+        body: `“${escapeHtml((s && s.name) || "This voice")}” and both of its recordings will be removed from this device. This can't be undone.`,
+        confirm: "Delete", cancel: "Keep it", danger: true,
+      },
+      async () => {
+        if (Night.getSelected() === "custom:" + id) Night.setSelected("female");
+        try { await Night.deleteSet(id); } catch (e) {}
+        await refreshNightSets();
+        showToast("Voice deleted.");
+      }
+    );
+  }
+
+  // ---- record / upload a custom voice (one clip per script) ----
+  function renderNightRecord() {
+    const box = $("nightBox");
+    const d = nightDraft;
+    const rec = d.recording;
+    const card = (key) => {
+      const clip = d.clips[key];
+      const isRec = rec && rec.key === key;
+      const status = isRec
+        ? `<span class="nv-rec">● recording…<span id="recTime"></span></span>`
+        : clip
+          ? `<span class="nv-ok">✓ ${clip.source === "uploaded" ? "uploaded" : "recorded"}</span>`
+          : `<span class="muted">not recorded yet</span>`;
+      const preview = clip && !isRec ? `<audio class="night-prev" controls src="${clip.url}"></audio>` : "";
+      return (
+        `<div class="night-card">` +
+        `<div class="night-card-head"><b>${Night.SCRIPT_TITLE[key]}</b> ${status}</div>` +
+        `<pre class="night-script">${escapeHtml(Night.displayScript(key))}</pre>` +
+        `<div class="control-row">` +
+        (isRec
+          ? `<button class="danger" data-stoprec="${key}" style="flex:1">■ Stop recording</button>`
+          : `<button class="primary" data-rec="${key}" style="flex:1" ${rec ? "disabled" : ""}>● Record</button>` +
+            `<button class="ghost" data-upload="${key}" style="flex:1" ${rec ? "disabled" : ""}>⤒ Upload file</button>`) +
+        `</div>${preview}</div>`
+      );
+    };
+
+    const ready = d.name.trim() && d.clips.small && d.clips.large && !rec;
+    box.innerHTML =
+      backBtn("nightRecBack", "Back") +
+      `<div class="power-title">Record your own voice</div>` +
+      `<p class="muted" style="font-size:13px;margin:0 0 8px">Record (or upload) a clip for <b>each</b> script, reading it aloud and ` +
+      `pausing where marked. Both are saved under one name; the game plays the right one for the player count.</p>` +
+      `<div class="acct-field"><label for="nightName">Voice name</label>` +
+      `<input id="nightName" maxlength="40" placeholder="e.g. Tim's voice" value="${escapeHtml(d.name)}"></div>` +
+      card("small") +
+      card("large") +
+      `<div class="control-row" style="margin-top:10px">` +
+      `<button id="nightSave" class="primary" style="flex:2" ${ready ? "" : "disabled"}>Save voice</button>` +
+      `<button id="nightCancel" class="ghost" style="flex:1">Cancel</button>` +
+      `</div>` +
+      `<p class="muted" style="font-size:12px;margin:8px 0 0">Recording asks for microphone permission. Nothing leaves this device.</p>`;
+
+    $("nightRecBack").onclick = () => { nightStopRecording(true); nightView = "main"; renderNight(); };
+    $("nightCancel").onclick = () => { nightDiscardDraft(); nightView = "main"; renderNight(); };
+    const nameEl = $("nightName");
+    nameEl.oninput = () => { d.name = nameEl.value; const s = $("nightSave"); if (s) s.disabled = !(d.name.trim() && d.clips.small && d.clips.large && !d.recording); };
+    box.querySelectorAll("[data-rec]").forEach((b) => (b.onclick = () => nightStartRecording(b.dataset.rec)));
+    box.querySelectorAll("[data-stoprec]").forEach((b) => (b.onclick = () => nightStopRecording(false)));
+    box.querySelectorAll("[data-upload]").forEach((b) => (b.onclick = () => nightPickUpload(b.dataset.upload)));
+    $("nightSave").onclick = nightSaveDraft;
+    if (rec) startRecTimer();
+  }
+
+  let recTimer = null;
+  function startRecTimer() {
+    stopRecTimer();
+    recTimer = setInterval(() => {
+      const el = $("recTime");
+      if (!el || !nightDraft || !nightDraft.recording) return;
+      const s = Math.round((performance.now() - nightDraft.recording.startedAt) / 1000);
+      el.textContent = " " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }, 500);
+  }
+  function stopRecTimer() { if (recTimer) { clearInterval(recTimer); recTimer = null; } }
+
+  async function nightStartRecording(key) {
+    if (nightDraft.recording) return;
+    if (!navigator.mediaDevices || !window.MediaRecorder) { showToast("Recording isn't supported in this browser — try Upload file."); return; }
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { showToast("Microphone permission is needed to record — or use Upload file."); return; }
+    const chunks = [];
+    let rec;
+    try { rec = new MediaRecorder(stream); }
+    catch (e) { stream.getTracks().forEach((t) => t.stop()); showToast("Couldn't start recording."); return; }
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+      stream.getTracks().forEach((t) => t.stop());
+      stopRecTimer();
+      if (nightDraft) { nightDraft.recording = null; if (blob.size) nightSetClip(key, blob, "recorded"); else renderNight(); }
+    };
+    nightDraft.recording = { key, rec, stream, startedAt: performance.now() };
+    rec.start();
+    renderNight();
+  }
+  function nightStopRecording(discard) {
+    const r = nightDraft && nightDraft.recording;
+    if (!r) return;
+    if (discard) { // abandon without saving the take
+      try { r.rec.onstop = null; r.rec.stop(); } catch (e) {}
+      try { r.stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+      nightDraft.recording = null; stopRecTimer();
+    } else {
+      try { r.rec.stop(); } catch (e) {} // onstop stores the clip
+    }
+  }
+
+  function nightPickUpload(key) {
+    const inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "audio/*";
+    inp.onchange = () => { const f = inp.files && inp.files[0]; if (f) nightSetClip(key, f, "uploaded"); };
+    inp.click();
+  }
+  function nightSetClip(key, blob, source) {
+    const old = nightDraft.clips[key];
+    if (old && old.url) { try { URL.revokeObjectURL(old.url); } catch (e) {} }
+    nightDraft.clips[key] = { blob, url: URL.createObjectURL(blob), source };
+    renderNight();
+  }
+  function nightDiscardDraft() {
+    if (recTimer) stopRecTimer();
+    if (nightDraft) {
+      if (nightDraft.recording) { try { nightDraft.recording.rec.onstop = null; nightDraft.recording.rec.stop(); } catch (e) {} try { nightDraft.recording.stream.getTracks().forEach((t) => t.stop()); } catch (e) {} }
+      ["small", "large"].forEach((k) => { const c = nightDraft.clips[k]; if (c && c.url) { try { URL.revokeObjectURL(c.url); } catch (e) {} } });
+    }
+    nightDraft = null;
+  }
+  async function nightSaveDraft() {
+    const d = nightDraft;
+    if (!d || !d.name.trim() || !d.clips.small || !d.clips.large) return;
+    try {
+      const setRec = await Night.createSet(d.name.trim());
+      await Night.putClip(setRec.id, "small", d.clips.small.blob);
+      await Night.putClip(setRec.id, "large", d.clips.large.blob);
+      Night.setSelected("custom:" + setRec.id);
+    } catch (e) { showToast("Couldn't save that voice — storage may be full."); return; }
+    nightDiscardDraft();
+    nightView = "main";
+    await refreshNightSets();
+    showToast("Voice saved.");
+  }
+
   let toastTimer = null;
   function showToast(msg) {
     const t = $("toast");
@@ -2996,6 +3289,7 @@
     $("btnBackFromSetup").onclick = navBack;
     $("btnSettings").onclick = openSettings;
     $("btnSettingsGame").onclick = openSettings;
+    $("btnNight").onclick = openNight;
     $("btnBackFromStats").onclick = navBack;
     $("btnExportStats").onclick = exportStats;
     $("btnImportStats").onclick = () => $("importFile").click();

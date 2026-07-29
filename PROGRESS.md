@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-29 (after session 32)._
+_Last updated: 2026-07-29 (after session 33)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -101,7 +101,7 @@ table game, not a game engine. Feature pillars:
 ## File map
 | File | Purpose |
 |------|---------|
-| `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over, **confirm dialog**; plus a **toast**. (No separate end screen — role recording is in-place.) |
+| `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over, **confirm dialog**, account, settings, **night narration**; plus a **toast**. (No separate end screen — role recording is in-place.) |
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
 | `js/stats.js` | localStorage read/write (record / **delete** / clear) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. |
@@ -109,11 +109,12 @@ table game, not a game engine. Feature pillars:
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, and groups. Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **Its teardown empties ALL collections — running it DESTROYS real recorded games. Do not run it while the live DB holds games you care about.** It now also covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not); those assertions were added in session 31 but **not executed** for exactly that reason. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
+| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 34 assertions for the narration (script selection, pacing, voice picking; the IndexedDB storage layer runs when `fake-indexeddb` — a dev dependency — is present, and is skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **Its teardown empties ALL collections — running it DESTROYS real recorded games. Do not run it while the live DB holds games you care about.** It now also covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not); those assertions were added in session 31 but **not executed** for exactly that reason. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
+| `js/night.js` | **"In the night" narration** (session 33). The two fascist-reveal scripts (5–6 vs 7+) as speakable segments with timed pauses; script selection by player count; device-speech (Web Speech API) playback with natural-voice preference; and IndexedDB blob storage for a user's own recorded/uploaded clips. Classic script exposing `window.Night`; pure parts Node-tested (`test/night.test.js`). |
 | `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates** and a **distinct cautious-Hitler** role. Pure functions, Node-tested (66 assertions incl. a from-scratch brute-force mirror). |
 | `HONESTY_MODEL.md` | Derivation of the honesty posterior ("how likely is this claim a lie?") — hard-logic layer, generative model, exact inference, calibration plan, cited prior art, and **§11: the design review that decided what v1 ships**. |
 | `BACKEND_PLAN.md` | **Phases 0–3 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
@@ -217,11 +218,46 @@ table game, not a game engine. Feature pillars:
 - **Menu ⇄ group sync:** `renderAcctChip()` also refreshes the menu's group label, so switching /
   renaming / leaving a group in the account modal updates the box sitting behind it.
 
+## "In the night" narration (session 33)
+- **What it is:** a start-of-game helper that reads the classic fascist-reveal narration aloud so
+  nobody at the table has to. Opened from a **🌙 Night button in the in-game tabbar** (next to the ⚙
+  gear; hidden during a review or role-recording). It's a `#nightModal` overlay — the game underneath
+  is untouched.
+- **Two scripts, auto-chosen by player count** (`Night.scriptKeyFor`): **5–6 ⇒ "small"** (Hitler opens
+  their eyes with the fascists), **7+ ⇒ "large"** (Hitler stays hidden and signals with a raised
+  thumb). Scripts live as `Night.SEGMENTS[key]` — speakable lines each with a trailing pause (5s, one
+  2.5s); the human-readable version with "( pause about 5 seconds )" cues is derived from the same data
+  (`Night.displayScript`) and shown while recording, so a user's pauses match the timed defaults.
+- **Default voices = device speech (Web Speech API).** Two built-ins, **Female** and **Male**; the
+  engine prefers natural/neural (and networked) voices — on modern Chrome/Edge it picks Microsoft
+  *Aria*/*Guy* (Natural), which sound human; on older/offline setups it falls back to whatever local
+  voices exist (more robotic). `Night.speak(key, gender, handlers)` speaks each line then waits the
+  scripted pause; a `resume()` heartbeat keeps long queues from stalling. No audio files are shipped.
+  **(User chose device-speech for the defaults; realistic files can't be generated in this no-build
+  setup.)**
+- **Bring your own voice:** from the modal, **Record** (MediaRecorder + mic permission) **or Upload** a
+  clip for **each** script, saved under **one name** (`Night.createSet` + `putClip`). The game plays the
+  right clip for the player count. Multiple named voice sets are supported; each can be deleted.
+- **Custom audio is stored LOCALLY only** — blobs in **IndexedDB** (`secretHitlerNight` DB), metadata
+  in a sibling store, the selected-voice preference in `localStorage`. **Not synced.** Firebase Storage
+  would be needed for group sync, and the probe in session 33 found **no bucket provisioned** (the
+  `/v0/b/<bucket>/o` endpoint 404s under both the new `.firebasestorage.app` and legacy `.appspot.com`
+  names — 403 would mean "exists but denied"). Provisioning needs a manual console step and, for a
+  bucket on the new naming, likely the **Blaze plan** — which `BACKEND_PLAN.md` forbids. So sync is
+  deferred; the storage layer is abstracted behind `window.Night` so it can be added later if Storage
+  is ever enabled.
+- **Testing note:** IndexedDB and the Web Speech engine don't work under Chrome's `--virtual-time`
+  clock (same class of issue as Firebase's IndexedDB init). The UI + narration sequencing were tested
+  headless with a **mocked `speechSynthesis`** (asserting the 7-player game speaks all 5 large-script
+  lines in order, and the record view shows both scripts) after shrinking the pauses; the **IndexedDB
+  layer** is tested in Node with `fake-indexeddb`. Real voice quality and mic recording need a real
+  device — they can't be headless-tested.
+
 ## Interaction model (mobile-first, no-scroll)
 - **In-game top row:** a **back arrow (←)** at the far upper-left, then Play / History / Stats tabs;
-  **Quit game + New game** on the right (short "Quit"/"New" labels on phones).
-  No page title. Footer removed. (The global top bar is gone — its account/settings buttons moved to
-  the main menu; the game screen keeps its own `#btnSettingsGame` gear.)
+  a **🌙 Night** button + the **⚙** gear + **Quit + New game** on the right (short labels/icons on
+  phones). No page title. Footer removed. (The global top bar is gone — its account/settings buttons
+  moved to the main menu; the game screen keeps its own `#btnSettingsGame` gear.)
 - **Table dominates.** Wide screens: policy controls stacked **vertically on the right**; phones:
   controls **below** the table.
 - **Table is a rounded rectangle** (not a circle). Seats sit around its **edges**, placed by
@@ -485,6 +521,10 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   not separate undo steps (freely reversible with −/+).
 
 ## Known limitations / not yet done
+- **The night narration's default voices are only as good as the device** (Web Speech API) — great on
+  modern Chrome/Edge, robotic on older/offline setups. **Custom recorded/uploaded voices are stored on
+  one device only** and don't sync (Firebase Storage isn't provisioned — see the night-narration
+  section). Real voice quality + mic recording can't be headless-tested.
 - **No way to evict a member who has an account** — you can remove guest seats and leave a group
   yourself, but not remove another account holder. Closing the group stops new joins.
 - **The in-progress game doesn't sync**, only completed/recorded ones. Resuming a half-played game

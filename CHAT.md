@@ -1190,3 +1190,41 @@ the `.pb-controls` top was **156px at every one of the 9 steps (spread 0)** whil
 went 1↔2 and the caption length ranged 41→76 chars — so neither the disappearing round boxes nor the
 varying presidency description moves the box. Screenshot confirms the reserved gap looks clean. One
 file: `js/app.js`.
+
+## Session 33 — "in the night" fascist-reveal narration
+
+**User ask:** a start-of-game audio that reads the fascist-reveal aloud so nobody at the table has to.
+A 🌙 button at the top of the game; choose a voice and play when ready. **Two scripts** — a 5–6 player
+one (Hitler opens their eyes with the fascists) and a 7+ one (Hitler stays hidden, raises a thumb);
+the game auto-plays the right one by player count. Users can **record or upload their own** clip for
+each script (both under one name). Default **female + male** voices, "as human as possible."
+
+**Two decisions asked up front:** default voices → **device speech engine** (user picked). Storage →
+user pushed back that Firebase Storage *is* set up; I **probed** it — the `/v0/b/<bucket>/o` endpoint
+**404s** under both the new `.firebasestorage.app` and legacy `.appspot.com` names (403 would mean
+"exists but denied"), so **no bucket is provisioned**; enabling needs a console step and, on the new
+bucket naming, likely the Blaze plan `BACKEND_PLAN.md` forbids. So **custom audio is device-local**
+(IndexedDB), with the storage abstracted so sync can be added later.
+
+**Built:**
+- **`js/night.js`** (`window.Night`): the two scripts as `SEGMENTS[key]` (speakable line + trailing
+  pause; 5s, one 2.5s); `scriptKeyFor(n)` (5–6 ⇒ small, 7+ ⇒ large); `displayScript` (human version
+  with "( pause about 5 seconds )" cues, derived from the same data); `speak()` via Web Speech API
+  preferring natural/neural voices (`pickVoice`/`guessGender` pick Microsoft *Aria*/*Guy* Natural on
+  modern Chrome/Edge); IndexedDB blob store (`createSet`/`putClip`/`getClip`/`listSets`/`deleteSet`);
+  `playBlob` for custom clips; selected-voice pref in `localStorage`.
+- **UI in `app.js`:** a `#nightModal` opened by a **🌙 Night** tabbar button (hidden in review/role
+  recording). Main view = player-count + which script, a Female/Male/custom voice chooser, ▶ Play (with
+  a live "line k of N" indicator) / ■ Stop, and "＋ Record or upload your own voice". Record view =
+  name + a card per script showing the script text and Record (MediaRecorder) / Upload; Save writes
+  both clips under one name and selects it. Deleting a voice confirms first.
+- **HTML/CSS:** `#btnNight` in the tabbar, `#nightModal`, and the night styles.
+
+**Verified.** `node test/night.test.js` = **34 assertions** (script selection, pacing = real 5s pauses,
+voice picking prefers the natural voices, and the full IndexedDB roundtrip via `fake-indexeddb`).
+Headless UI test (mocked `speechSynthesis`, since Web Speech + IndexedDB don't run under Chrome's
+virtual-time clock) = **18/18**: a 7-player game opens the modal, shows the 7+ note, and pressing Play
+speaks **all 5 large-script lines in order**; the record view shows both scripts with their pause cues.
+Screenshots of both views confirm the layout. Real voice quality + mic recording need a real device.
+Files: `js/night.js` (new), `index.html`, `js/app.js`, `styles.css`, `test/night.test.js` (new),
+`test/package.json` (dev-dep `fake-indexeddb`).
