@@ -26,16 +26,16 @@ const Night = (() => {
   // while recording is derived from these so the two never drift apart.
   const SEGMENTS = {
     small: [
-      { say: "Everyone, close your eyes.", wait: 5000 },
-      { say: "Fascists, open your eyes. See who the other fascist is. If you are Hitler, then you now know who the other fascist is.", wait: 5000 },
-      { say: "Fascists, close your eyes.", wait: 5000 },
+      { say: "Everyone, close your eyes.", wait: 3000 },
+      { say: "Fascists, open your eyes. See who the other fascist is.", wait: 3000 },
+      { say: "Fascists, close your eyes.", wait: 3000 },
       { say: "Everyone, open your eyes. If anyone had any problems in the night, bring them up now.", wait: 0 },
     ],
     large: [
-      { say: "Everyone, put your fist on the table with your thumb on top. Everyone, close your eyes.", wait: 5000 },
+      { say: "Everyone, put your fist on the table with your thumb on top. Everyone, close your eyes.", wait: 3000 },
       { say: "Hitler, keep your eyes closed and raise your thumb up.", wait: 2500 },
-      { say: "Fascists, open your eyes. See who the other fascists are. Hitler's thumb is raised.", wait: 5000 },
-      { say: "Fascists, close your eyes. Hitler, put your thumb down.", wait: 5000 },
+      { say: "Fascists, open your eyes. See who the other fascists are. Hitler's thumb is raised.", wait: 3000 },
+      { say: "Fascists, close your eyes. Hitler, put your thumb down.", wait: 3000 },
       { say: "Everyone, open your eyes.", wait: 0 },
     ],
   };

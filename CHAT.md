@@ -1265,3 +1265,13 @@ by new §7c assertions in `rules.prod.test.js` — **not run** (its teardown wip
 Firestore round-trip itself is only covered by the deployed rules + review; try sharing between two
 accounts to confirm end-to-end. Files: `js/night.js`, `js/cloud.js`, `js/app.js`, `styles.css`,
 `firestore.rules`, `test/night.test.js`, `test/rules.prod.test.js`.
+
+## Session 35 — narration script/pacing tweaks
+
+**User:** drop the "if you're Hitler, you now know who the other fascist is" line from the small (5–6)
+script + audio, and shorten the pauses from 5s to 3s. Data-only change in `js/night.js` `SEGMENTS`:
+the small script's second line is now just "Fascists, open your eyes. See who the other fascist is.",
+and every `wait: 5000` → `3000` (the 2.5s Hitler-thumb beat in the large script is unchanged). The
+display cues ("( pause about 3 seconds )") and the TTS pacing both follow automatically. `night.test.js`
+updated (now **41 assertions**: 3s pacing, no 5s pauses remain, small no longer names Hitler). One code
+file: `js/night.js`.

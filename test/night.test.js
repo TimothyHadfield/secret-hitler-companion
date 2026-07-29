@@ -29,16 +29,19 @@ ok(/fist|thumb/i.test(Night.SEGMENTS.large[0].say), "large opens with the thumb/
 ok(Night.SEGMENTS.large.some((s) => /raise your thumb/i.test(s.say)), "large has Hitler raise their thumb");
 ok(!Night.SEGMENTS.large.some((s) => /fascists, open your eyes.*hitler.*open/i.test(s.say)),
   "large never tells Hitler to open their eyes");
+ok(!Night.SEGMENTS.small.some((s) => /if you.?re hitler|you now know who the other fascist/i.test(s.say)),
+  "small no longer calls out Hitler after the fascists open their eyes");
 eq(Night.SEGMENTS.small[Night.SEGMENTS.small.length - 1].wait, 0, "small ends with no trailing pause");
 eq(Night.SEGMENTS.large[Night.SEGMENTS.large.length - 1].wait, 0, "large ends with no trailing pause");
 
-// ---- pacing: the between-line pauses are the scripted ~5s ----------------
-ok(Night.SEGMENTS.small.filter((s) => s.wait === 5000).length >= 2, "small has 5s pauses");
-ok(Night.SEGMENTS.large.filter((s) => s.wait === 5000).length >= 2, "large has 5s pauses");
+// ---- pacing: the between-line pauses are the scripted ~3s ----------------
+ok(Night.SEGMENTS.small.filter((s) => s.wait === 3000).length >= 2, "small has 3s pauses");
+ok(Night.SEGMENTS.large.filter((s) => s.wait === 3000).length >= 2, "large has 3s pauses");
+ok(!Night.SEGMENTS.small.concat(Night.SEGMENTS.large).some((s) => s.wait === 5000), "no 5s pauses remain");
 
 // ---- display script carries pause cues for a human reader ----------------
 const dispL = Night.displayScript("large");
-ok(/pause about 5 seconds/.test(dispL), "display script shows the 5-second cue");
+ok(/pause about 3 seconds/.test(dispL), "display script shows the 3-second cue");
 ok(/raise your thumb/i.test(dispL), "display script includes the thumb signal");
 
 // ---- gender guessing + best-voice picking --------------------------------

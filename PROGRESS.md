@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-29 (after session 34)._
+_Last updated: 2026-07-29 (after session 35)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -225,8 +225,9 @@ table game, not a game engine. Feature pillars:
   is untouched.
 - **Two scripts, auto-chosen by player count** (`Night.scriptKeyFor`): **5–6 ⇒ "small"** (Hitler opens
   their eyes with the fascists), **7+ ⇒ "large"** (Hitler stays hidden and signals with a raised
-  thumb). Scripts live as `Night.SEGMENTS[key]` — speakable lines each with a trailing pause (5s, one
-  2.5s); the human-readable version with "( pause about 5 seconds )" cues is derived from the same data
+  thumb). Scripts live as `Night.SEGMENTS[key]` — speakable lines each with a trailing pause (3s, one
+  2.5s for the Hitler thumb; session 35 shortened these from 5s and dropped the "if you're Hitler…" line
+  from the small script); the human-readable version with "( pause about 3 seconds )" cues is from the same data
   (`Night.displayScript`) and shown while recording, so a user's pauses match the timed defaults.
 - **Default voices = device speech (Web Speech API).** Two built-ins, **Female** and **Male**; the
   engine prefers natural/neural (and networked) voices — on modern Chrome/Edge it picks Microsoft
