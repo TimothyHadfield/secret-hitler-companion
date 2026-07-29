@@ -574,6 +574,70 @@ async function deleteGame(id, gid) {
   return { ok: true };
 }
 
+// -------------------------------------- shared "in the night" voices
+// A custom voice can be SHARED with the group: its two clips are base64-encoded
+// and stored in Firestore (there is no Firebase Storage on this project), under
+// groups/{gid}/voices/{id} (metadata) + …/clips/{small|large} (the audio). Each
+// clip is one document, so it has the full ~1 MB Firestore budget; the app caps
+// clips well under that. The encode/decode helpers live in night.js so they're
+// unit-testable; this module just moves bytes.
+const B64_MAX = 990000; // base64 chars; keeps a clip doc under Firestore's 1 MiB
+
+async function uploadVoice(voiceId, name, clips) {
+  if (!currentUser || !activeGroupId) return { ok: false, message: "Sign in and pick a group to share a voice." };
+  const B = typeof window !== "undefined" && window.Night;
+  if (!B) return { ok: false, message: "Audio storage isn't available." };
+  const gid = activeGroupId;
+  const enc = {};
+  for (const key of ["small", "large"]) {
+    if (!clips[key]) return { ok: false, message: "Both clips are needed to share a voice." };
+    const b64 = await B.blobToBase64(clips[key]);
+    if (b64.length > B64_MAX) {
+      const kb = Math.round((clips[key].size || 0) / 1024);
+      return { ok: false, message: `The ${key === "small" ? "5–6" : "7+"}-player clip is too big to sync (~${kb} KB; the limit is about 700 KB). Record a shorter clip, or keep this voice on this device.` };
+    }
+    enc[key] = clean({ data: b64, mime: clips[key].type || "audio/webm" });
+  }
+  try {
+    const base = ["groups", gid, "voices", voiceId];
+    await setDoc(doc(db, ...base), clean({ createdBy: currentUser.uid, name: String(name || "Voice").slice(0, 40), createdAt: serverTimestamp(), schema: 1 }));
+    await setDoc(doc(db, ...base, "clips", "small"), enc.small);
+    await setDoc(doc(db, ...base, "clips", "large"), enc.large);
+    return { ok: true };
+  } catch (e) { return { ok: false, message: humanError(e) }; }
+}
+
+async function deleteVoice(voiceId) {
+  if (!currentUser || !activeGroupId) return { ok: true };
+  const gid = activeGroupId;
+  const base = ["groups", gid, "voices", voiceId];
+  try {
+    // clips first — their delete rule reads the parent voice's owner
+    try { await deleteDoc(doc(db, ...base, "clips", "small")); } catch (e) {}
+    try { await deleteDoc(doc(db, ...base, "clips", "large")); } catch (e) {}
+    await deleteDoc(doc(db, ...base));
+    return { ok: true };
+  } catch (e) { return { ok: false, message: humanError(e) }; }
+}
+
+async function listRemoteVoices() {
+  if (!currentUser || !activeGroupId) return [];
+  const snap = await withRetry(() => getDocs(collection(db, "groups", activeGroupId, "voices")));
+  const list = [];
+  snap.forEach((d) => { const x = d.data(); list.push({ id: d.id, name: x.name, createdBy: x.createdBy }); });
+  return list;
+}
+
+async function downloadVoiceClips(voiceId) {
+  if (!currentUser || !activeGroupId) return {};
+  const out = {};
+  for (const key of ["small", "large"]) {
+    const s = await getDoc(doc(db, "groups", activeGroupId, "voices", voiceId, "clips", key));
+    if (s.exists()) { const d = s.data(); out[key] = { data: d.data, mime: d.mime }; }
+  }
+  return out;
+}
+
 // ------------------------------------------------- invite links (?join=…)
 // Captured immediately, because the visitor may not be signed in yet: the id is
 // held until an account exists, then the join happens automatically.
@@ -656,6 +720,20 @@ window.Cloud = {
   async deleteGame(id, gid) {
     try { return await deleteGame(id, gid); }
     catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  // ---- shared night voices ----
+  uploadVoice,
+  async deleteVoice(voiceId) {
+    try { return await deleteVoice(voiceId); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  async listRemoteVoices() {
+    try { return await listRemoteVoices(); }
+    catch (e) { return []; }
+  },
+  async downloadVoiceClips(voiceId) {
+    try { return await downloadVoiceClips(voiceId); }
+    catch (e) { return {}; }
   },
   uploadAllowed,
   setUploadAllowed,

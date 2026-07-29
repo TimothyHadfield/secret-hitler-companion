@@ -1228,3 +1228,40 @@ speaks **all 5 large-script lines in order**; the record view shows both scripts
 Screenshots of both views confirm the layout. Real voice quality + mic recording need a real device.
 Files: `js/night.js` (new), `index.html`, `js/app.js`, `styles.css`, `test/night.test.js` (new),
 `test/package.json` (dev-dep `fake-indexeddb`).
+
+## Session 34 — share custom night voices with the group (Firestore base64)
+
+**User asked** (after session 33 shipped custom voices as device-local): why do games/players sync but
+not audio — type or size? **Clarified:** it's storage *type* — games are JSON in **Firestore** (set
+up); audio normally lives in **Firebase Storage** (a file bucket), which is **not provisioned** (the
+bucket 404s; enabling needs a console step + likely Blaze). **But** we don't need Storage: audio can
+ride in **Firestore as base64**, free, no new setup — the only real limit is Firestore's **1 MiB/doc**,
+so each clip must be < ~700 KB. User said **build it**.
+
+**Built (opt-in sharing, ownership mirrors games):**
+- **`night.js`:** `blobToBase64`/`base64ToBlob` (cross-env, unit-tested), `markShared`, and
+  `saveRemoteVoice` (caches a downloaded group voice's base64 clips back into IndexedDB). Set metadata
+  gained `shared`/`groupId`/`createdBy`. Recording now uses **32 kbps** so clips stay tiny.
+- **`cloud.js`:** `uploadVoice` (encodes both clips, **rejects > ~990 K base64 chars** with a friendly
+  message), `deleteVoice` (clips first, then metadata — the clip delete rule reads the parent),
+  `listRemoteVoices`, `downloadVoiceClips`. One clip = one Firestore doc, so each gets the full ~1 MiB.
+- **`firestore.rules` (deployed):** a `voices` subcollection + `clips` subcollection. Read = member;
+  create voice = member as self; **clip create = the voice's author only** (via a `get()` on the parent)
+  **and < 990 000 chars**; delete = author or group owner; update = never. Rules compiled + released
+  (no data touched).
+- **`app.js` glue:** a **Share** button on a local voice and a **"Share with your group"** checkbox in
+  the record view (both gated on being signed in with a group); a **"shared"** badge; delete removes the
+  remote copy too (and is only offered for your own voices — a voice someone else shared has no delete,
+  since it'd just re-download). `syncNightVoices()` pulls the group's voices on sign-in / sync /
+  group-switch / modal-open and reconciles remote deletions.
+
+**Verified.** `node test/night.test.js` now **39 assertions** (adds base64 round-trip + `markShared` +
+`saveRemoteVoice` caching). The signed-in share/sync glue needs real IndexedDB (dead under Chrome's
+virtual clock), so it's tested with a **real-time CDP driver + a mock `window.Cloud`** (in-memory
+"remote"): **12/12** — Share calls `uploadVoice` and flips the badge, a group voice on the remote gets
+downloaded + cached (size-checked), someone-else's shared voice shows no delete while mine stays
+deletable. The virtual-time UI test is **19/19** (adds: no share UI when signed out). Rules also covered
+by new §7c assertions in `rules.prod.test.js` — **not run** (its teardown wipes the live DB). The real
+Firestore round-trip itself is only covered by the deployed rules + review; try sharing between two
+accounts to confirm end-to-end. Files: `js/night.js`, `js/cloud.js`, `js/app.js`, `styles.css`,
+`firestore.rules`, `test/night.test.js`, `test/rules.prod.test.js`.

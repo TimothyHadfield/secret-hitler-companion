@@ -194,9 +194,34 @@ const Night = (() => {
 
   async function createSet(name) {
     const db = await openDB();
-    const rec = { id: uuid(), name: String(name || "My voice").slice(0, 40), createdAt: Date.now() };
+    // shared/groupId/createdBy are filled once a voice is shared to a group (or
+    // when it was downloaded from one) — see markShared / saveRemoteVoice.
+    const rec = { id: uuid(), name: String(name || "My voice").slice(0, 40), createdAt: Date.now(), shared: false, groupId: null, createdBy: null };
     await pReq(tx(db, SETS, "readwrite").put(rec, rec.id));
     return rec;
+  }
+
+  // Update a set's sharing metadata (after a successful upload, or when a share
+  // is withdrawn). Merges onto whatever is stored.
+  async function markShared(id, patch) {
+    const db = await openDB();
+    const cur = await pReq(tx(db, SETS, "readonly").get(id));
+    if (!cur) return false;
+    await pReq(tx(db, SETS, "readwrite").put(Object.assign({}, cur, patch), id));
+    return true;
+  }
+
+  // Cache a voice downloaded from the group into local IndexedDB, so it plays
+  // instantly and offline. Clips arrive base64-encoded (Firestore stores text).
+  async function saveRemoteVoice(id, name, groupId, createdBy, clips) {
+    const db = await openDB();
+    await pReq(tx(db, SETS, "readwrite").put(
+      { id, name: String(name || "Voice").slice(0, 40), createdAt: Date.now(), shared: true, groupId: groupId || null, createdBy: createdBy || null }, id));
+    for (const key of ["small", "large"]) {
+      const c = clips && clips[key];
+      if (c && c.data) await pReq(tx(db, CLIPS, "readwrite").put(base64ToBlob(c.data, c.mime), id + ":" + key));
+    }
+    return true;
   }
   async function putClip(setId, key, blob) {
     const db = await openDB();
@@ -213,6 +238,25 @@ const Night = (() => {
     await pReq(tx(db, CLIPS, "readwrite").delete(setId + ":small"));
     await pReq(tx(db, CLIPS, "readwrite").delete(setId + ":large"));
     return true;
+  }
+
+  // ---- base64 <-> Blob (Firestore stores audio as text) --------------------
+  // Cross-environment (browser + Node test): uses atob/btoa when present, else
+  // Buffer. Chunked to avoid blowing the argument limit on large clips.
+  const _btoa = typeof btoa !== "undefined" ? btoa : (s) => Buffer.from(s, "binary").toString("base64");
+  const _atob = typeof atob !== "undefined" ? atob : (s) => Buffer.from(s, "base64").toString("binary");
+  async function blobToBase64(blob) {
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    let bin = "";
+    const CH = 0x8000;
+    for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+    return _btoa(bin);
+  }
+  function base64ToBlob(b64, mime) {
+    const bin = _atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime || "audio/webm" });
   }
 
   // Play a stored/custom clip. Returns a controller with the same shape as
@@ -242,6 +286,7 @@ const Night = (() => {
     ready, pickVoice, guessGender, speak, hasSpeech,
     // storage
     listSets, createSet, putClip, getClip, deleteSet, playBlob, hasIDB,
+    markShared, saveRemoteVoice, blobToBase64, base64ToBlob,
     // preference
     getSelected, setSelected,
   };

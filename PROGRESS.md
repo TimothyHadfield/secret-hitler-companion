@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-29 (after session 33)._
+_Last updated: 2026-07-29 (after session 34)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -106,15 +106,15 @@ table game, not a game engine. Feature pillars:
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
 | `js/stats.js` | localStorage read/write (record / **delete** / clear) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. |
 | `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring, **account UI**. |
-| `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, and groups. Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
+| `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, groups, game delete, and **shared night voices** (base64 audio in Firestore). Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 34 assertions for the narration (script selection, pacing, voice picking; the IndexedDB storage layer runs when `fake-indexeddb` — a dev dependency — is present, and is skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **Its teardown empties ALL collections — running it DESTROYS real recorded games. Do not run it while the live DB holds games you care about.** It now also covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not); those assertions were added in session 31 but **not executed** for exactly that reason. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
+| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **Its teardown empties ALL collections — running it DESTROYS real recorded games. Do not run it while the live DB holds games you care about.** It now also covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not); those assertions were added in session 31 but **not executed** for exactly that reason. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
-| `js/night.js` | **"In the night" narration** (session 33). The two fascist-reveal scripts (5–6 vs 7+) as speakable segments with timed pauses; script selection by player count; device-speech (Web Speech API) playback with natural-voice preference; and IndexedDB blob storage for a user's own recorded/uploaded clips. Classic script exposing `window.Night`; pure parts Node-tested (`test/night.test.js`). |
+| `js/night.js` | **"In the night" narration** (session 33–34). The two fascist-reveal scripts (5–6 vs 7+) as speakable segments with timed pauses; script selection by player count; device-speech (Web Speech API) playback with natural-voice preference; IndexedDB blob storage for a user's own recorded/uploaded clips; **base64↔Blob helpers + shared-voice caching** for group sync. Classic script exposing `window.Night`; pure parts Node-tested (`test/night.test.js`). |
 | `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates** and a **distinct cautious-Hitler** role. Pure functions, Node-tested (66 assertions incl. a from-scratch brute-force mirror). |
 | `HONESTY_MODEL.md` | Derivation of the honesty posterior ("how likely is this claim a lie?") — hard-logic layer, generative model, exact inference, calibration plan, cited prior art, and **§11: the design review that decided what v1 ships**. |
 | `BACKEND_PLAN.md` | **Phases 0–3 shipped:** accounts/groups/shared stats on **Firebase (free Spark plan)** — data model, security rules, sync strategy, free-tier budget, phases, **and the exact console setup steps the user must do**. |
@@ -235,17 +235,25 @@ table game, not a game engine. Feature pillars:
   scripted pause; a `resume()` heartbeat keeps long queues from stalling. No audio files are shipped.
   **(User chose device-speech for the defaults; realistic files can't be generated in this no-build
   setup.)**
-- **Bring your own voice:** from the modal, **Record** (MediaRecorder + mic permission) **or Upload** a
-  clip for **each** script, saved under **one name** (`Night.createSet` + `putClip`). The game plays the
-  right clip for the player count. Multiple named voice sets are supported; each can be deleted.
-- **Custom audio is stored LOCALLY only** — blobs in **IndexedDB** (`secretHitlerNight` DB), metadata
-  in a sibling store, the selected-voice preference in `localStorage`. **Not synced.** Firebase Storage
-  would be needed for group sync, and the probe in session 33 found **no bucket provisioned** (the
-  `/v0/b/<bucket>/o` endpoint 404s under both the new `.firebasestorage.app` and legacy `.appspot.com`
-  names — 403 would mean "exists but denied"). Provisioning needs a manual console step and, for a
-  bucket on the new naming, likely the **Blaze plan** — which `BACKEND_PLAN.md` forbids. So sync is
-  deferred; the storage layer is abstracted behind `window.Night` so it can be added later if Storage
-  is ever enabled.
+- **Bring your own voice:** from the modal, **Record** (MediaRecorder + mic permission, at a modest
+  32 kbps so clips stay small) **or Upload** a clip for **each** script, saved under **one name**
+  (`Night.createSet` + `putClip`). The game plays the right clip for the player count. Multiple named
+  voice sets are supported; each can be deleted.
+- **Custom audio: local by default, optionally SHARED with the group (session 34).** Clips live as
+  blobs in **IndexedDB** (`secretHitlerNight` DB), metadata in a sibling store, the selected-voice
+  preference in `localStorage`. A voice can be **shared with the active group**: since **Firebase
+  Storage isn't provisioned** (the session-33 probe 404s the bucket, and provisioning needs a console
+  step + likely the Blaze plan `BACKEND_PLAN.md` forbids), the clips are stored **base64 in Firestore**
+  instead — `groups/{gid}/voices/{id}` (metadata) + `…/clips/{small|large}` (one doc each, so each gets
+  the full ~1 MiB Firestore budget). The app **caps a clip at ~700 KB** raw (≈990 K base64 chars) to
+  stay under that limit and rejects/​explains anything larger. `Cloud.uploadVoice/deleteVoice/
+  listRemoteVoices/downloadVoiceClips` (in `cloud.js`) move the bytes; `Night.blobToBase64/base64ToBlob`
+  (unit-tested) do the encoding. `syncNightVoices()` (app.js) pulls the group's shared voices onto the
+  device on sign-in / sync / group-switch / modal-open and caches them in IndexedDB for instant offline
+  playback, and drops local caches of group voices deleted remotely. **Ownership mirrors games:** only a
+  voice's author (or the group owner) may delete the shared copy; a member can't wipe another's, and a
+  voice someone else shared shows no delete button (it would just re-download). Rules deployed with the
+  `voices`/`clips` blocks (author-scoped clip writes, size guard).
 - **Testing note:** IndexedDB and the Web Speech engine don't work under Chrome's `--virtual-time`
   clock (same class of issue as Firebase's IndexedDB init). The UI + narration sequencing were tested
   headless with a **mocked `speechSynthesis`** (asserting the 7-player game speaks all 5 large-script
@@ -522,9 +530,11 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 
 ## Known limitations / not yet done
 - **The night narration's default voices are only as good as the device** (Web Speech API) — great on
-  modern Chrome/Edge, robotic on older/offline setups. **Custom recorded/uploaded voices are stored on
-  one device only** and don't sync (Firebase Storage isn't provisioned — see the night-narration
-  section). Real voice quality + mic recording can't be headless-tested.
+  modern Chrome/Edge, robotic on older/offline setups. **Custom voices can be shared with a group**
+  (base64 in Firestore, session 34) but each clip must be **under ~700 KB** (Firestore's 1 MiB/doc
+  limit) — recordings fit easily; long uploaded files are rejected with an explanation. Real voice
+  quality + mic recording can't be headless-tested (the share/sync glue is CDP-tested with a mock
+  Cloud; the Firestore calls themselves are covered only by the deployed rules + unrun rules test).
 - **No way to evict a member who has an account** — you can remove guest seats and leave a group
   yourself, but not remove another account holder. Closing the group stops new joins.
 - **The in-progress game doesn't sync**, only completed/recorded ones. Resuming a half-played game

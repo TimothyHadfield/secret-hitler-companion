@@ -538,6 +538,17 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .night-voice .nv-warn { font-size: 12px; color: var(--fac-2); }
 .night-voice .nv-del { flex: 0 0 auto; padding: 2px 6px; border-radius: 6px; font-size: 14px; opacity: 0.7; }
 .night-voice .nv-del:hover { opacity: 1; background: rgba(0,0,0,0.3); }
+.night-voice .nv-share {
+  flex: 0 0 auto; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--lib-2); border: 1px solid var(--lib); background: transparent;
+}
+.night-voice .nv-share:hover { background: var(--lib); color: #fff; }
+.night-voice .nv-badge {
+  flex: 0 0 auto; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  color: #0d2b33; background: var(--lib-2);
+}
+.night-share-opt { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; margin: 4px 2px 2px; cursor: pointer; }
+.night-share-opt input { margin-top: 2px; }
 .night-step { text-align: center; font-size: 13px; color: var(--gold); margin: 2px 0 8px; font-weight: 600; }
 .night-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
 .night-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 14px; }

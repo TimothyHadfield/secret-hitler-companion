@@ -2821,8 +2821,9 @@
     document.addEventListener("cloud:groups", () => {
       refresh();
       renderSetup(); // the roster suggestions depend on the active group
+      syncNightVoices(); // a different active group has different shared voices
     });
-    document.addEventListener("cloud:ready-to-sync", () => { refresh(); maybeAskUpload(); refreshInvites(); });
+    document.addEventListener("cloud:ready-to-sync", () => { refresh(); maybeAskUpload(); refreshInvites(); syncNightVoices(); });
 
     // Arrived via an invite link.
     document.addEventListener("cloud:invite", () => {
@@ -2947,6 +2948,7 @@
     nightView = "main";
     Night.ready(); // warm the voice list
     refreshNightSets();
+    syncNightVoices(); // pull any group-shared voices (no-op signed out)
     $("nightModal").classList.remove("hidden");
     renderNight();
   }
@@ -2983,16 +2985,30 @@
       `<span class="nv-text"><span class="nv-name">${escapeHtml(name)}</span>` +
       `<span class="nv-sub">${sub}</span></span>${extra || ""}</button>`;
 
+    const c = cloud();
+    const canShare = !!(c && c.user && c.groupId);
+    const myUid = c && c.user ? c.user.uid : null;
+
     let voices =
       opt("female", "Default — Female", "Your device's speech voice") +
       opt("male", "Default — Male", "Your device's speech voice");
     nightSets.forEach((s) => {
       const missing = !s[key];
-      const sub = missing
-        ? `<span class="nv-warn">no ${Night.SCRIPT_TITLE[key]} clip yet</span>`
-        : "Your recording";
-      voices += opt("custom:" + s.id, s.name, sub,
-        `<span class="nv-del" data-del="${escapeHtml(s.id)}" title="Delete this voice">🗑</span>`);
+      const complete = s.small && s.large;
+      const sub = s.shared
+        ? "Shared with your group"
+        : missing
+          ? `<span class="nv-warn">no ${Night.SCRIPT_TITLE[key]} clip yet</span>`
+          : "Saved on this device";
+      let extra = "";
+      if (!s.shared && canShare && complete)
+        extra += `<span class="nv-share" data-share="${escapeHtml(s.id)}" title="Share with your group">Share</span>`;
+      if (s.shared) extra += `<span class="nv-badge" title="Synced to your group">shared</span>`;
+      // you can remove a local voice, or a shared one you created; a group voice
+      // shared by someone else isn't yours to delete (it would just re-download).
+      if (!s.shared || (myUid && s.createdBy === myUid))
+        extra += `<span class="nv-del" data-del="${escapeHtml(s.id)}" title="Delete this voice">🗑</span>`;
+      voices += opt("custom:" + s.id, s.name, sub, extra);
     });
 
     // is the current selection actually playable for this player count?
@@ -3028,7 +3044,7 @@
     $("nightBack").onclick = closeNight;
     box.querySelectorAll(".night-voice").forEach((b) => {
       b.onclick = (e) => {
-        if (e.target.classList.contains("nv-del")) return; // handled below
+        if (e.target.classList.contains("nv-del") || e.target.classList.contains("nv-share")) return; // handled below
         nightStopPlayback();
         Night.setSelected(b.dataset.sel);
         renderNight();
@@ -3036,6 +3052,9 @@
     });
     box.querySelectorAll(".nv-del").forEach((b) => {
       b.onclick = (e) => { e.stopPropagation(); nightDeleteSet(b.dataset.del); };
+    });
+    box.querySelectorAll(".nv-share").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); nightShareSet(b.dataset.share); };
     });
     if ($("nightPlay")) $("nightPlay").onclick = nightPlay;
     if ($("nightStop")) $("nightStop").onclick = () => { nightStopPlayback(); renderNight(); };
@@ -3070,16 +3089,71 @@
     askConfirm(
       {
         title: "Delete this voice?",
-        body: `“${escapeHtml((s && s.name) || "This voice")}” and both of its recordings will be removed from this device. This can't be undone.`,
+        body: s && s.shared
+          ? `“${escapeHtml(s.name)}” will be removed from your group for everyone, and from this device. This can't be undone.`
+          : `“${escapeHtml((s && s.name) || "This voice")}” and both of its recordings will be removed from this device. This can't be undone.`,
         confirm: "Delete", cancel: "Keep it", danger: true,
       },
       async () => {
+        if (s && s.shared) {
+          const c = cloud();
+          if (c && c.user) {
+            const r = await c.deleteVoice(id);
+            if (!r || !r.ok) { showToast((r && r.message) || "Couldn't remove the shared copy — try again."); return; }
+          }
+        }
         if (Night.getSelected() === "custom:" + id) Night.setSelected("female");
         try { await Night.deleteSet(id); } catch (e) {}
         await refreshNightSets();
         showToast("Voice deleted.");
       }
     );
+  }
+
+  // Share an existing local voice with the group (uploads both clips as base64).
+  async function nightShareSet(id) {
+    const c = cloud();
+    if (!c || !c.user || !c.groupId) { showToast("Sign in and pick a group to share a voice."); return; }
+    const s = nightSets.find((x) => x.id === id);
+    if (!s) return;
+    showToast("Sharing…");
+    let small, large;
+    try { small = await Night.getClip(id, "small"); large = await Night.getClip(id, "large"); } catch (e) {}
+    if (!small || !large) { showToast("Both clips are needed to share a voice."); return; }
+    const r = await c.uploadVoice(id, s.name, { small, large });
+    if (!r.ok) { showToast(r.message || "Couldn't share that voice."); return; }
+    try { await Night.markShared(id, { shared: true, groupId: c.groupId, createdBy: c.user.uid }); } catch (e) {}
+    await refreshNightSets();
+    showToast("Voice shared with your group.");
+  }
+
+  // Pull the active group's shared voices onto this device (cached in IndexedDB
+  // so playback is instant/offline), and drop local caches of group voices that
+  // were deleted remotely. Additive for everything else — never touches a
+  // device-only voice. Fired on sign-in, sync, and group switch.
+  async function syncNightVoices() {
+    const c = cloud();
+    if (!c || !c.user || !c.groupId || !hasNight()) return;
+    let remote;
+    try { remote = await c.listRemoteVoices(); } catch (e) { return; }
+    let local;
+    try { local = await Night.listSets(); } catch (e) { local = []; }
+    const localIds = new Set(local.map((s) => s.id));
+    const remoteIds = new Set(remote.map((v) => v.id));
+    let changed = false;
+    for (const v of remote) {
+      if (localIds.has(v.id)) continue;
+      try {
+        const clips = await c.downloadVoiceClips(v.id);
+        if (clips.small || clips.large) { await Night.saveRemoteVoice(v.id, v.name, c.groupId, v.createdBy, clips); changed = true; }
+      } catch (e) {}
+    }
+    for (const s of local) {
+      if (s.shared && s.groupId === c.groupId && !remoteIds.has(s.id)) {
+        try { await Night.deleteSet(s.id); changed = true; } catch (e) {}
+      }
+    }
+    if (changed && !$("nightModal").classList.contains("hidden")) refreshNightSets();
   }
 
   // ---- record / upload a custom voice (one clip per script) ----
@@ -3109,6 +3183,8 @@
       );
     };
 
+    const c = cloud();
+    const canShare = !!(c && c.user && c.groupId);
     const ready = d.name.trim() && d.clips.small && d.clips.large && !rec;
     box.innerHTML =
       backBtn("nightRecBack", "Back") +
@@ -3119,16 +3195,22 @@
       `<input id="nightName" maxlength="40" placeholder="e.g. Tim's voice" value="${escapeHtml(d.name)}"></div>` +
       card("small") +
       card("large") +
+      (canShare
+        ? `<label class="night-share-opt"><input type="checkbox" id="nightShareChk"${d.share ? " checked" : ""}> ` +
+          `Share with your group <span class="muted">(syncs to everyone; clips must be small — recordings are)</span></label>`
+        : "") +
       `<div class="control-row" style="margin-top:10px">` +
       `<button id="nightSave" class="primary" style="flex:2" ${ready ? "" : "disabled"}>Save voice</button>` +
       `<button id="nightCancel" class="ghost" style="flex:1">Cancel</button>` +
       `</div>` +
-      `<p class="muted" style="font-size:12px;margin:8px 0 0">Recording asks for microphone permission. Nothing leaves this device.</p>`;
+      `<p class="muted" style="font-size:12px;margin:8px 0 0">Recording asks for microphone permission.` +
+      `${canShare ? "" : " Your voice is saved on this device."}</p>`;
 
     $("nightRecBack").onclick = () => { nightStopRecording(true); nightView = "main"; renderNight(); };
     $("nightCancel").onclick = () => { nightDiscardDraft(); nightView = "main"; renderNight(); };
     const nameEl = $("nightName");
     nameEl.oninput = () => { d.name = nameEl.value; const s = $("nightSave"); if (s) s.disabled = !(d.name.trim() && d.clips.small && d.clips.large && !d.recording); };
+    if ($("nightShareChk")) $("nightShareChk").onchange = (e) => { d.share = e.target.checked; };
     box.querySelectorAll("[data-rec]").forEach((b) => (b.onclick = () => nightStartRecording(b.dataset.rec)));
     box.querySelectorAll("[data-stoprec]").forEach((b) => (b.onclick = () => nightStopRecording(false)));
     box.querySelectorAll("[data-upload]").forEach((b) => (b.onclick = () => nightPickUpload(b.dataset.upload)));
@@ -3156,8 +3238,10 @@
     catch (e) { showToast("Microphone permission is needed to record — or use Upload file."); return; }
     const chunks = [];
     let rec;
-    try { rec = new MediaRecorder(stream); }
-    catch (e) { stream.getTracks().forEach((t) => t.stop()); showToast("Couldn't start recording."); return; }
+    // A modest bitrate keeps a spoken clip small enough to sync (well under the
+    // ~700 KB per-clip cap) while staying clearly intelligible.
+    try { rec = new MediaRecorder(stream, { audioBitsPerSecond: 32000 }); }
+    catch (e) { try { rec = new MediaRecorder(stream); } catch (e2) { stream.getTracks().forEach((t) => t.stop()); showToast("Couldn't start recording."); return; } }
     rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     rec.onstop = () => {
       const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
@@ -3204,16 +3288,27 @@
   async function nightSaveDraft() {
     const d = nightDraft;
     if (!d || !d.name.trim() || !d.clips.small || !d.clips.large) return;
+    let setRec;
     try {
-      const setRec = await Night.createSet(d.name.trim());
+      setRec = await Night.createSet(d.name.trim());
       await Night.putClip(setRec.id, "small", d.clips.small.blob);
       await Night.putClip(setRec.id, "large", d.clips.large.blob);
       Night.setSelected("custom:" + setRec.id);
     } catch (e) { showToast("Couldn't save that voice — storage may be full."); return; }
+    // optional: share it with the group (upload both clips as base64)
+    let toast = "Voice saved.";
+    if (d.share) {
+      const c = cloud();
+      if (c && c.user && c.groupId) {
+        const r = await c.uploadVoice(setRec.id, d.name.trim(), { small: d.clips.small.blob, large: d.clips.large.blob });
+        if (r.ok) { try { await Night.markShared(setRec.id, { shared: true, groupId: c.groupId, createdBy: c.user.uid }); } catch (e) {} toast = "Voice saved and shared with your group."; }
+        else toast = r.message || "Saved on this device — couldn't share it.";
+      }
+    }
     nightDiscardDraft();
     nightView = "main";
     await refreshNightSets();
-    showToast("Voice saved.");
+    showToast(toast);
   }
 
   let toastTimer = null;

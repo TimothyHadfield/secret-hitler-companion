@@ -153,6 +153,37 @@ function makeUser(name) {
   await allowed("the group OWNER can delete any member's game", () =>
     deleteDoc(doc(bob.db, `groups/${GID}/games/game3`)));     // bob owns the group, so may moderate
 
+  log("\n7c. Shared night voices: author-scoped clips, size-capped, author/owner delete");
+  const VOICE = (by) => ({ createdBy: by, name: "A voice", schema: 1 });
+  const CLIP = (n) => ({ data: "A".repeat(n), mime: "audio/webm" });
+  await allowed("a member CAN create a voice", () =>
+    setDoc(doc(bob.db, `groups/${GID}/voices/v1`), VOICE(bob.uid)));
+  await allowed("a member CAN read voices", () => getDocs(collection(bob.db, `groups/${GID}/voices`)));
+  await denied("CANNOT create a voice as someone else", () =>
+    setDoc(doc(bob.db, `groups/${GID}/voices/v2`), VOICE(alice.uid)));
+  await allowed("the voice's AUTHOR can attach a clip", () =>
+    setDoc(doc(bob.db, `groups/${GID}/voices/v1/clips/small`), CLIP(100)));
+  await denied("another member CANNOT attach a clip to that voice", () =>
+    setDoc(doc(alice.db, `groups/${GID}/voices/v1/clips/large`), CLIP(100)));
+  await denied("a clip over the ~1 MB cap is rejected", () =>
+    setDoc(doc(bob.db, `groups/${GID}/voices/v1/clips/large`), CLIP(990001)));
+  await denied("a clip with an id other than small/large is rejected", () =>
+    setDoc(doc(bob.db, `groups/${GID}/voices/v1/clips/other`), CLIP(100)));
+  await allowed("a member CAN read a clip", () =>
+    getDoc(doc(alice.db, `groups/${GID}/voices/v1/clips/small`)));
+  await denied("voice metadata cannot be rewritten", () =>
+    updateDoc(doc(bob.db, `groups/${GID}/voices/v1`), { name: "changed" }));
+  await denied("another member CANNOT delete someone else's voice", () =>
+    deleteDoc(doc(alice.db, `groups/${GID}/voices/v1`)));
+  await allowed("the AUTHOR can delete a clip", () =>
+    deleteDoc(doc(bob.db, `groups/${GID}/voices/v1/clips/small`)));
+  await allowed("the AUTHOR can delete their voice", () =>
+    deleteDoc(doc(bob.db, `groups/${GID}/voices/v1`)));
+  await allowed("alice records a voice", () =>
+    setDoc(doc(alice.db, `groups/${GID}/voices/v3`), VOICE(alice.uid)));
+  await allowed("the group OWNER can delete a member's voice", () =>
+    deleteDoc(doc(bob.db, `groups/${GID}/voices/v3`)));
+
   log("\n8. Profiles");
   await allowed("CAN write their own profile", () =>
     setDoc(doc(alice.db, `profiles/${alice.uid}`), { displayName: "Alice" }));

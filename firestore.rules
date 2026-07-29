@@ -135,6 +135,43 @@ service cloud.firestore {
                       && (resource.data.createdBy == uid()
                           || group(groupId).ownerUid == uid());
       }
+
+      // ---- shared "in the night" voices ----
+      // A member can share a custom narration voice with the group: metadata
+      // here, the two audio clips (base64) in the clips subcollection — one doc
+      // each, so each gets the full ~1 MiB Firestore budget (the app caps them
+      // well below that). Same ownership model as games: only the voice's author
+      // or the group owner may delete it.
+      match /voices/{voiceId} {
+        allow read:   if isMember(groupId);
+        allow create: if isMember(groupId)
+                      && request.resource.data.createdBy == uid()
+                      && request.resource.data.name is string
+                      && request.resource.data.name.size() <= 40;
+        allow update: if false;               // voice metadata is never rewritten
+        allow delete: if isMember(groupId)
+                      && (resource.data.createdBy == uid()
+                          || group(groupId).ownerUid == uid());
+
+        function voiceAuthor() {
+          return get(/databases/$(database)/documents/groups/$(groupId)/voices/$(voiceId)).data.createdBy;
+        }
+        match /clips/{clipId} {
+          allow read:   if isMember(groupId);
+          // Only the voice's author may attach its clips. The size guard keeps a
+          // clip document under Firestore's 1 MiB limit.
+          allow create: if isMember(groupId)
+                        && (clipId == "small" || clipId == "large")
+                        && request.resource.data.data is string
+                        && request.resource.data.data.size() < 990000
+                        && voiceAuthor() == uid();
+          allow update: if false;
+          // Delete the clip (author or owner). Must happen before the parent
+          // voice doc is removed, or voiceAuthor() has nothing to read.
+          allow delete: if isMember(groupId)
+                        && (voiceAuthor() == uid() || group(groupId).ownerUid == uid());
+        }
+      }
     }
 
     // Anything not matched above is denied.

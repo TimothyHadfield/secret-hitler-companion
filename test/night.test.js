@@ -94,6 +94,36 @@ async function idbTests() {
   sets = await Night.listSets();
   ok(sets.length === 1 && !sets.find((s) => s.id === setA.id), "deleteSet removes the set");
   ok((await Night.getClip(setA.id, "large")) === undefined, "deleteSet removes its clips too");
+
+  // ---- sharing metadata + base64 round-trip (the sync path) ----
+  ok(await base64idempotent(blobL), "base64 encode→decode preserves clip bytes");
+
+  const localV = await Night.createSet("Local only");
+  eq((await Night.listSets()).find((s) => s.id === localV.id).shared, false, "new voice starts unshared");
+  await Night.markShared(localV.id, { shared: true, groupId: "g1", createdBy: "u1" });
+  const marked = (await Night.listSets()).find((s) => s.id === localV.id);
+  ok(marked.shared === true && marked.groupId === "g1" && marked.createdBy === "u1", "markShared records who/where");
+
+  // a voice downloaded from the group is cached (base64 in → blobs out)
+  const b64s = await Night.blobToBase64(blobS);
+  const b64l = await Night.blobToBase64(blobL);
+  await Night.saveRemoteVoice("remoteX", "Group voice", "g1", "u2", {
+    small: { data: b64s, mime: "audio/webm" }, large: { data: b64l, mime: "audio/webm" },
+  });
+  const rv = (await Night.listSets()).find((s) => s.id === "remoteX");
+  ok(rv && rv.shared && rv.createdBy === "u2" && rv.small && rv.large, "saveRemoteVoice caches a group voice with both clips");
+  const rvClip = await Night.getClip("remoteX", "large");
+  ok(rvClip && rvClip.size === 4, "the cached remote clip round-trips to the right bytes");
+}
+
+async function base64idempotent(blob) {
+  const b64 = await Night.blobToBase64(blob);
+  const back = Night.base64ToBlob(b64, "audio/webm");
+  const a = new Uint8Array(await blob.arrayBuffer());
+  const b = new Uint8Array(await back.arrayBuffer());
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 (async () => {
