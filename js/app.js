@@ -2494,6 +2494,7 @@
 
     if (c.user) {
       const pending = c.pendingCount();
+      const dispName = (c.user.displayName || "").trim();
       const groups = c.groups();
       const groupRows = groups.map((g) =>
         `<button class="grp-row${g.id === c.groupId ? " sel" : ""}" data-gid="${escapeHtml(g.id)}">` +
@@ -2504,7 +2505,13 @@
         backBtn("acBack", "Close") +
         `<div class="power-title">Your account</div>` +
         `<div class="acct-panel">` +
-        `<div class="acct-who">${escapeHtml(c.user.email || c.user.displayName || "Signed in")}</div>` +
+        `<div class="acct-who">` +
+          (dispName
+            ? escapeHtml(dispName)
+            : `<span class="muted">No display name yet</span>`) +
+          `<button id="acSetName" class="acct-editname" title="Change your display name">Change name</button>` +
+        `</div>` +
+        (c.user.email ? `<div class="acct-sub">${escapeHtml(c.user.email)}</div>` : "") +
         `<div class="acct-state">${escapeHtml(syncStateText(c))}</div>` +
         invitesHtml() +
         msgHtml +
@@ -2525,6 +2532,21 @@
         `</div>` +
         `</div>`;
       $("acBack").onclick = closeAccount;
+      // Change your display name — updates the account and every group roster
+      // seat that is you, so it propagates to everyone sharing your groups.
+      $("acSetName").onclick = () => promptText(
+        "Your display name",
+        "This is how you appear across the app and to others in your groups.",
+        "e.g. Tim",
+        async (name) => {
+          acctMsg = { text: "Updating your name…", bad: false }; renderAccount();
+          const r = await c.setDisplayName(name);
+          acctMsg = r.ok ? { text: "Name updated everywhere.", bad: false } : { text: r.message, bad: true };
+          renderAccount(); renderAcctChip(); renderSetup();
+          if (!$("statsScreen").classList.contains("hidden")) renderStats();
+        },
+        dispName
+      );
       wireInvites(box, c);
       box.querySelectorAll(".grp-row").forEach((b) => {
         b.onclick = async () => {
@@ -2620,13 +2642,14 @@
   }
 
   // In-app text prompt (never window.prompt — see the no-native-dialogs rule).
-  function promptText(title, body, placeholder, onOk) {
+  // `prefill` seeds the field (e.g. editing an existing display name).
+  function promptText(title, body, placeholder, onOk, prefill) {
     const m = $("confirmModal");
     $("confirmBox").innerHTML =
       backBtn("ptBack", "Cancel") +
       `<div class="power-title">${escapeHtml(title)}</div>` +
       `<p class="confirm-body">${escapeHtml(body)}</p>` +
-      `<div class="acct-field"><input id="ptInput" maxlength="60" placeholder="${escapeHtml(placeholder || "")}"></div>` +
+      `<div class="acct-field"><input id="ptInput" maxlength="60" placeholder="${escapeHtml(placeholder || "")}" value="${escapeHtml(prefill || "")}"></div>` +
       `<div class="control-row"><button id="ptOk" class="primary">OK</button>` +
       `<button id="ptNo" class="ghost">Cancel</button></div>`;
     m.classList.remove("hidden");
@@ -2641,7 +2664,7 @@
     $("ptNo").onclick = close;
     $("ptBack").onclick = close;
     $("ptInput").addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
-    setTimeout(() => { try { $("ptInput").focus(); } catch (e) {} }, 30);
+    setTimeout(() => { try { $("ptInput").focus(); $("ptInput").select(); } catch (e) {} }, 30);
   }
 
   function showInvite(c) {

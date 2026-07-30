@@ -737,7 +737,18 @@ button.btn-lib:hover { background: var(--lib); border-color: var(--lib-2); }
 @keyframes acctPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
 
 .acct-panel { display: flex; flex-direction: column; gap: 12px; text-align: left; }
-.acct-panel .acct-who { font-size: 14px; color: var(--muted); word-break: break-all; }
+.acct-panel .acct-who {
+  font-size: 18px; font-weight: 600; color: var(--ink); word-break: break-word;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.acct-panel .acct-who .muted { font-weight: 400; font-size: 15px; }
+.acct-editname {
+  font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted);
+  cursor: pointer; white-space: nowrap;
+}
+.acct-editname:hover { color: var(--ink); border-color: var(--muted); }
+.acct-panel .acct-sub { font-size: 13px; color: var(--muted); word-break: break-all; margin-top: -6px; }
 .acct-panel .acct-state { font-size: 13px; }
 .acct-field { display: flex; flex-direction: column; gap: 4px; }
 .acct-field input { width: 100%; }

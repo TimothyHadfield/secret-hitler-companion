@@ -1320,3 +1320,30 @@ changes with a mock `window.Cloud` over CDP; the normal update loop (edit → pu
 `firebase deploy --only firestore:rules`) never touches stored data. Files: `DATA_SAFETY.md`,
 `js/app.js`, `test/rules.prod.test.js`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`. No deploy needed
 (rules text unchanged — only a comment added; deploy is a harmless no-op if desired).
+
+## Session 37 — editable display name (propagates to your whole account + groups)
+
+**User:** account creation shows "Display name" but signing in with Google never asked, so they can't
+see a display name anywhere. Always let the user change their display name in settings, and update it
+automatically throughout the site — and through other members' views if they share a group.
+
+**Shipped.** New `Cloud.setDisplayName(name)` (`js/cloud.js`) writes the name to all three places it
+lives: (1) the Firebase Auth profile (`updateProfile`), (2) `profiles/{uid}.displayName`, and (3)
+**every roster seat that is you (`uid===me`) in every group you belong to** — best-effort per seat, so
+a slow/denied group can't fail the whole thing. Roster docs are shared group data, so other members
+see the new name on their next read/sync. It emits `cloud:auth` + `cloud:groups`; the app already
+re-renders the chip, menu, account view, and setup roster on those, so it updates live everywhere.
+No rules change needed — the members rule already allows editing `displayName` with `uid` unchanged.
+Historical games keep the free-typed table name (a snapshot, not identity) on purpose.
+
+**UI (`js/app.js` + `styles.css`):** the signed-in account view now shows the display name prominently
+(18px, `--ink`) with the email as a subtitle and a **Change name** button; no name yet → "No display
+name yet". `promptText()` gained an optional `prefill` arg (and selects the text) so editing starts
+from the current name. Clicking Change name → prompt → `setDisplayName` → refresh chip/account/setup/
+stats.
+
+**Verified** with a headless-Chrome **mock `window.Cloud`** (in-memory remote, no live project — the
+safe pattern): SMOKE_OK. Before: chip falls back to the email prefix ("me"), account shows "No display
+name yet". After changing to "Tim": `setDisplayName("Tim")` called, my seat rewritten
+(`g1/s1=Tim`), and the chip, account header, and roster all read "Tim". Files: `js/cloud.js`,
+`js/app.js`, `styles.css`, `PROGRESS.md`, `CHAT.md`.

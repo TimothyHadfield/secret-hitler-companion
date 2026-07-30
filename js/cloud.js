@@ -268,6 +268,50 @@ async function joinGroup(gid) {
   return { ok: true, name: g.name, already };
 }
 
+/**
+ * Change the signed-in user's display name and push it everywhere it is stored,
+ * so it updates across the whole app AND for everyone who shares a group.
+ *   1. the Firebase Auth profile (what `currentUser.displayName` reads),
+ *   2. the user's own profile document, and
+ *   3. every roster seat that is THIS user (uid === me) in every group they are
+ *      in — roster docs are shared group data, so other members see the new name
+ *      on their next read/sync. The rules allow this: changing displayName while
+ *      leaving `uid` untouched is a permitted roster edit.
+ * Historical games keep the free-typed name used at the table (that is a snapshot
+ * of what was played, not an identity), so they are deliberately not rewritten.
+ */
+async function setDisplayName(name) {
+  if (!currentUser) return { ok: false, message: "Sign in to set a display name." };
+  const clean = String(name || "").trim().slice(0, 60);
+  if (!clean) return { ok: false, message: "A display name can't be empty." };
+  try {
+    if (auth.currentUser) await updateProfile(auth.currentUser, { displayName: clean });
+    currentUser = { ...currentUser, displayName: clean };
+    await setDoc(doc(db, "profiles", currentUser.uid), { displayName: clean }, { merge: true });
+
+    // Rename my seat in each group, best-effort (a slow/denied group must not
+    // fail the whole operation — the name is already saved on the account).
+    await loadGroups();
+    for (const g of myGroups) {
+      let ms;
+      try { ms = await fetchMembers(g.id); } catch (e) { continue; }
+      for (const m of ms) {
+        if (m.uid === currentUser.uid && m.displayName !== clean) {
+          try { await updateDoc(doc(db, "groups", g.id, "members", m.id), { displayName: clean }); }
+          catch (e) { /* best effort per seat */ }
+        }
+      }
+      try { await fetchMembers(g.id); } catch (e) { /* refresh cache */ }
+    }
+
+    emit("cloud:auth", { user: currentUser });
+    emit("cloud:groups", { groups: groupList(), activeGroupId });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: humanError(e) };
+  }
+}
+
 async function renameGroup(gid, name) {
   const clean = String(name || "").trim().slice(0, 60);
   if (!clean) return { ok: false, message: "A group needs a name." };
@@ -737,6 +781,10 @@ window.Cloud = {
   },
   uploadAllowed,
   setUploadAllowed,
+  async setDisplayName(name) {
+    try { return await setDisplayName(name); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
 
   // ---- groups ----
   groups: groupList,

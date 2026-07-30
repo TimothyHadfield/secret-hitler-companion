@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-29 (after session 36 — data-safety hardening)._
+_Last updated: 2026-07-30 (after session 37 — editable display name)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -617,6 +617,15 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 - **A group is the unit of sharing.** Create one, invite people with a link, and every member
   reads and contributes to the same archive. A solo user still has an auto-created "My Games"
   group, so there is exactly one data model.
+- **Display name is editable and self-propagating (session 37).** The signed-in account view shows
+  your display name prominently (email as a subtitle) with a **Change name** button; Google/email
+  sign-ups that never set one show "No display name yet". `Cloud.setDisplayName(name)` updates (1)
+  the Firebase Auth profile, (2) `profiles/{uid}.displayName`, and (3) **every roster seat that is
+  you (`uid===me`) in every group you're in** — so the new name reaches everyone sharing your groups
+  on their next read/sync. Allowed by the existing members rule (changing `displayName` with `uid`
+  unchanged is a permitted edit — no rules change). It emits `cloud:auth` + `cloud:groups`, so the
+  chip, menu, account view, and setup roster all refresh live. Historical games keep the free-typed
+  name played at the table (a snapshot, not identity), so they are deliberately not rewritten.
 - **Invite links are `?join=<groupId>`.** `cloud.js` captures the id on load *before* sign-in
   (a visitor usually has no account yet), strips it from the URL so a refresh or a shared
   screenshot can't re-trigger, and joins once an account exists. The security rules let a
