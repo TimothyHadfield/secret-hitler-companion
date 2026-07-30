@@ -44,6 +44,14 @@
           <span class="mo-icon">📊</span>
           <span class="mo-text"><span class="mo-title">Statistics</span><span class="mo-sub">games &amp; player stats</span></span>
         </button>
+        <button id="btnMenuRules" class="menu-option">
+          <span class="mo-icon">📖</span>
+          <span class="mo-text"><span class="mo-title">Rules</span><span class="mo-sub">find any rule, fast</span></span>
+        </button>
+        <button id="btnMenuTheory" class="menu-option">
+          <span class="mo-icon">🧠</span>
+          <span class="mo-text"><span class="mo-title">Game theory</span><span class="mo-sub">strategy &amp; community notes</span></span>
+        </button>
       </div>
     </section>
 
@@ -204,6 +212,22 @@
                aria-label="Choose a statistics export file to import">
       </div>
     </section>
+    <!-- ===================== RULES / GAME THEORY (handbook) ===================== -->
+    <!-- One markup template, reused for both sections via a shared renderer. -->
+    <section id="rulesScreen" class="hidden ref-screen">
+      <h2 class="sr-only">Rules</h2>
+      <div class="screen-head">
+        <button id="btnBackFromRules" class="backbtn" title="Back"><span class="arw">←</span></button>
+      </div>
+      <div class="ref-body" id="rulesBody"></div>
+    </section>
+    <section id="theoryScreen" class="hidden ref-screen">
+      <h2 class="sr-only">Game theory</h2>
+      <div class="screen-head">
+        <button id="btnBackFromTheory" class="backbtn" title="Back"><span class="arw">←</span></button>
+      </div>
+      <div class="ref-body" id="theoryBody"></div>
+    </section>
     <!-- in-app confirm dialog (replaces the browser's native confirm/alert) -->
     <div id="confirmModal" class="overlay hidden">
       <div class="overlay-box" id="confirmBox"></div>
@@ -224,6 +248,8 @@
 
   <div id="toast" class="toast hidden"></div>
 
+  <!-- Rules + Game Theory handbook content (offline, no network). -->
+  <script src="js/reference.js"></script>
   <script src="js/probability.js"></script>
   <!-- Lie detection. Loaded always but only ever *called* when the setting is
        on, so it costs nothing when the feature is off. See HONESTY_MODEL.md. -->

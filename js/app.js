@@ -542,7 +542,7 @@
 
   // ------------------------------ screens ------------------------------------
   function show(id) {
-    ["menuScreen", "setupScreen", "gameScreen", "statsScreen"].forEach((s) =>
+    ["menuScreen", "setupScreen", "gameScreen", "statsScreen", "rulesScreen", "theoryScreen"].forEach((s) =>
       $(s).classList.toggle("hidden", s !== id)
     );
     if (id === "menuScreen") renderMenu();
@@ -552,7 +552,7 @@
   // INTO, and the top-left ← returns to whatever you came from (a small stack, so
   // it behaves like a back button everywhere). The game screen has its own exit
   // (undo while playing, Quit/New), so it isn't part of this stack.
-  const NAV_SCREENS = ["menuScreen", "setupScreen", "statsScreen"];
+  const NAV_SCREENS = ["menuScreen", "setupScreen", "statsScreen", "rulesScreen", "theoryScreen"];
   let navStack = [];
   function currentTopScreen() {
     return NAV_SCREENS.find((s) => !$(s).classList.contains("hidden")) || null;
@@ -581,6 +581,247 @@
   }
   function openSetup() { renderSetup(); navTo("setupScreen"); }
   function openStats() { renderStatsInto($("statsBody")); navTo("statsScreen"); }
+  function openRules() { refReset("rule"); navTo("rulesScreen"); renderReference("rule"); }
+  function openTheory() { refReset("theory"); navTo("theoryScreen"); renderReference("theory"); }
+
+  // ------------------------------ RULES / GAME THEORY handbook ---------------
+  // A browsable, searchable reference (content bundled in js/reference.js) with a
+  // wiki-style community-comment layer on every item (stored in Firestore via
+  // cloud.js). Navigation is category → subcategory → item ("bullet"); each item
+  // expands to its full text plus its notes. Search cuts across everything.
+  const refBrowser = {
+    rule: { mount: "rulesBody", query: "", catId: null, subId: null, openItem: null, notes: {} },
+    theory: { mount: "theoryBody", query: "", catId: null, subId: null, openItem: null, notes: {} },
+  };
+  const REF_META = {
+    rule: { title: "Rules", tagline: "Find any rule — search, or browse by category.",
+            search: "Search rules… (e.g. term limits, chaos, veto)" },
+    theory: { title: "Game theory", tagline: "Strategy ideas, plus notes from the community. Add your own to any topic.",
+              search: "Search strategy… (e.g. Hitler, chancellor, endgame)" },
+  };
+  function refReset(kind) {
+    const s = refBrowser[kind];
+    s.query = ""; s.catId = null; s.subId = null; s.openItem = null;
+  }
+  const R = () => window.Reference;
+  const noteId = (target) => "notes_" + String(target).replace(/[^a-z0-9]+/gi, "_");
+
+  function renderReference(kind) {
+    const s = refBrowser[kind];
+    const box = $(s.mount);
+    if (!box || !R()) return;
+    const meta = REF_META[kind];
+    box.innerHTML =
+      `<div class="ref-head"><h2 class="ref-title">${escapeHtml(meta.title)}</h2>` +
+      `<p class="ref-tagline">${escapeHtml(meta.tagline)}</p></div>` +
+      `<div class="ref-searchwrap">` +
+      `<input id="refSearch_${kind}" class="ref-search" type="search" ` +
+      `placeholder="${escapeHtml(meta.search)}" value="${escapeHtml(s.query)}" ` +
+      `autocomplete="off" aria-label="${escapeHtml(meta.search)}">` +
+      `</div>` +
+      `<div class="ref-results" id="refResults_${kind}"></div>`;
+    const inp = $(`refSearch_${kind}`);
+    inp.oninput = () => { s.query = inp.value; s.openItem = null; renderRefResults(kind); };
+    renderRefResults(kind);
+  }
+
+  function renderRefResults(kind) {
+    const s = refBrowser[kind];
+    const box = $(`refResults_${kind}`);
+    if (!box) return;
+    const q = s.query.trim();
+
+    if (q) {
+      const hits = R().search(kind, q);
+      box.innerHTML =
+        `<div class="ref-count">${hits.length} result${hits.length === 1 ? "" : "s"} for “${escapeHtml(q)}”</div>` +
+        (hits.length
+          ? hits.map((e) => itemCardHtml(kind, e.item, e.crumb)).join("")
+          : `<div class="ref-empty">Nothing matched. Try fewer or different words.</div>`);
+      wireItemCards(kind, box);
+      return;
+    }
+
+    const tree = R().tree(kind);
+    // Level 0 — categories.
+    if (!s.catId) {
+      box.innerHTML = tree.map((cat) => {
+        const n = (cat.subcats || []).reduce((a, sc) => a + (sc.items || []).length, 0);
+        return `<button class="ref-cat" data-cat="${escapeHtml(cat.id)}">` +
+          `<span class="ref-cat-title">${escapeHtml(cat.title)}</span>` +
+          `<span class="ref-cat-meta">${(cat.subcats || []).length} topics · ${n} entries ▸</span>` +
+          `</button>`;
+      }).join("");
+      box.querySelectorAll(".ref-cat").forEach((b) => {
+        b.onclick = () => { s.catId = b.dataset.cat; s.subId = null; s.openItem = null; renderRefResults(kind); };
+      });
+      return;
+    }
+
+    const cat = tree.find((c) => c.id === s.catId);
+    if (!cat) { s.catId = null; return renderRefResults(kind); }
+
+    // Level 1 — subcategories within the chosen category.
+    if (!s.subId) {
+      box.innerHTML =
+        crumbHtml(kind, [{ label: cat.title }]) +
+        (cat.subcats || []).map((sc) =>
+          `<button class="ref-cat sub" data-sub="${escapeHtml(sc.id)}">` +
+          `<span class="ref-cat-title">${escapeHtml(sc.title)}</span>` +
+          `<span class="ref-cat-meta">${(sc.items || []).length} entries ▸</span>` +
+          `</button>`).join("");
+      wireCrumb(kind, box);
+      box.querySelectorAll(".ref-cat.sub").forEach((b) => {
+        b.onclick = () => { s.subId = b.dataset.sub; s.openItem = null; renderRefResults(kind); };
+      });
+      return;
+    }
+
+    // Level 2 — the items (bullets) of the chosen subcategory.
+    const sub = (cat.subcats || []).find((x) => x.id === s.subId);
+    if (!sub) { s.subId = null; return renderRefResults(kind); }
+    box.innerHTML =
+      crumbHtml(kind, [{ label: cat.title, catId: cat.id }, { label: sub.title }]) +
+      (sub.items || []).map((it) => itemCardHtml(kind, it)).join("");
+    wireCrumb(kind, box);
+    wireItemCards(kind, box);
+  }
+
+  function crumbHtml(kind, parts) {
+    // parts: [{label, catId?}] — the last is the current (not a link).
+    const bits = [`<button class="ref-crumb-link" data-crumb="root">${escapeHtml(REF_META[kind].title)}</button>`];
+    parts.forEach((p, i) => {
+      const last = i === parts.length - 1;
+      bits.push(`<span class="ref-crumb-sep">›</span>`);
+      bits.push(last
+        ? `<span class="ref-crumb-cur">${escapeHtml(p.label)}</span>`
+        : `<button class="ref-crumb-link" data-crumb="cat" data-cat="${escapeHtml(p.catId || "")}">${escapeHtml(p.label)}</button>`);
+    });
+    return `<nav class="ref-crumb">${bits.join(" ")}</nav>`;
+  }
+  function wireCrumb(kind, box) {
+    const s = refBrowser[kind];
+    box.querySelectorAll(".ref-crumb-link").forEach((b) => {
+      b.onclick = () => {
+        if (b.dataset.crumb === "root") { s.catId = null; s.subId = null; }
+        else { s.catId = b.dataset.cat || s.catId; s.subId = null; }
+        s.openItem = null; renderRefResults(kind);
+      };
+    });
+  }
+
+  function itemCardHtml(kind, item, crumb) {
+    const s = refBrowser[kind];
+    const open = s.openItem === item.id;
+    const target = R().targetOf(kind, item.id);
+    return `<div class="ref-item${open ? " open" : ""}">` +
+      `<button class="ref-item-head" data-item="${escapeHtml(item.id)}">` +
+      (crumb ? `<span class="ref-item-crumb">${escapeHtml(crumb)}</span>` : "") +
+      `<span class="ref-item-title">${escapeHtml(item.title)}</span>` +
+      `<span class="ref-item-caret">${open ? "▾" : "▸"}</span>` +
+      `</button>` +
+      (open
+        ? `<div class="ref-item-body">` +
+          `<p class="ref-item-text">${escapeHtml(item.body)}</p>` +
+          `<div class="ref-notes-head">Community notes</div>` +
+          `<div class="ref-notes" id="${noteId(target)}"></div>` +
+          `</div>`
+        : "") +
+      `</div>`;
+  }
+
+  function wireItemCards(kind, box) {
+    const s = refBrowser[kind];
+    box.querySelectorAll(".ref-item-head").forEach((b) => {
+      b.onclick = () => {
+        const id = b.dataset.item;
+        s.openItem = s.openItem === id ? null : id;
+        renderRefResults(kind);
+        if (s.openItem === id) loadNotes(kind, R().targetOf(kind, id));
+      };
+    });
+  }
+
+  // ---- the community-comment layer on a single item ----
+  function relTime(ms) {
+    const d = Date.now() - ms;
+    if (d < 60000) return "just now";
+    if (d < 3600000) return Math.floor(d / 60000) + "m ago";
+    if (d < 86400000) return Math.floor(d / 3600000) + "h ago";
+    if (d < 604800000) return Math.floor(d / 86400000) + "d ago";
+    try { return new Date(ms).toLocaleDateString(); } catch (e) { return ""; }
+  }
+  const noteText = (t) => escapeHtml(t).replace(/\n/g, "<br>");
+
+  async function loadNotes(kind, target) {
+    const el = $(noteId(target));
+    if (!el) return;
+    const c = cloud();
+    if (!c || !c.user) {
+      el.innerHTML =
+        `<div class="ref-notes-signedout">Sign in to read and add community notes.` +
+        `<button class="linklike" id="notesSignin">Sign in</button></div>`;
+      const b = $("notesSignin");
+      if (b) b.onclick = () => openAccount();
+      return;
+    }
+    el.innerHTML = `<div class="ref-notes-loading">Loading notes…</div>`;
+    let list = [];
+    try { list = await c.listComments(target); } catch (e) { list = []; }
+    refBrowser[kind].notes[target] = list;
+    paintNotes(kind, target);
+  }
+
+  function paintNotes(kind, target) {
+    const el = $(noteId(target));
+    if (!el) return;
+    const list = refBrowser[kind].notes[target] || [];
+    const rows = list.length
+      ? list.map((n) =>
+          `<div class="note">` +
+          `<div class="note-meta"><span class="note-author">${escapeHtml(n.authorName)}</span>` +
+          `<span class="note-time">${escapeHtml(relTime(n.at))}</span>` +
+          (n.mine ? `<button class="note-del" data-id="${escapeHtml(n.id)}" title="Delete your note">Delete</button>` : "") +
+          `</div><div class="note-text">${noteText(n.text)}</div></div>`).join("")
+      : `<div class="ref-notes-empty">No notes yet — add the first.</div>`;
+    el.innerHTML =
+      `<div class="note-list">${rows}</div>` +
+      `<div class="note-add">` +
+      `<textarea class="note-input" id="ni_${noteId(target)}" maxlength="1000" rows="2" ` +
+      `placeholder="Add a note, clarification, or strategy…"></textarea>` +
+      `<button class="primary note-post" id="np_${noteId(target)}">Post note</button>` +
+      `</div>`;
+
+    const post = $(`np_${noteId(target)}`);
+    const input = $(`ni_${noteId(target)}`);
+    post.onclick = async () => {
+      const text = (input.value || "").trim();
+      if (!text) return;
+      post.disabled = true; post.textContent = "Posting…";
+      const c = cloud();
+      const r = await c.addComment(target, text);
+      if (r.ok) {
+        input.value = "";
+        try { refBrowser[kind].notes[target] = await c.listComments(target); } catch (e) {}
+        paintNotes(kind, target);
+      } else {
+        post.disabled = false; post.textContent = "Post note";
+        showToast(r.message || "Couldn't post that note.");
+      }
+    };
+    el.querySelectorAll(".note-del").forEach((b) => {
+      b.onclick = () => askConfirm(
+        { title: "Delete your note?", body: "This removes your note for everyone.", confirm: "Delete", cancel: "Keep", danger: true },
+        async () => {
+          const c = cloud();
+          const r = await c.deleteComment(b.dataset.id);
+          if (r.ok) {
+            try { refBrowser[kind].notes[target] = await c.listComments(target); } catch (e) {}
+            paintNotes(kind, target);
+          } else showToast(r.message || "Couldn't delete that note.");
+        });
+    });
+  }
 
   // ------------------------------ SETUP --------------------------------------
   function renderSetup() {
@@ -3414,8 +3655,12 @@
     // main menu
     $("btnMenuStart").onclick = openSetup;
     $("btnMenuStats").onclick = openStats;
+    $("btnMenuRules").onclick = openRules;
+    $("btnMenuTheory").onclick = openTheory;
     $("btnGroupBox").onclick = openAccount; // group box is a shortcut to the switcher
     $("btnBackFromSetup").onclick = navBack;
+    $("btnBackFromRules").onclick = navBack;
+    $("btnBackFromTheory").onclick = navBack;
     $("btnSettings").onclick = openSettings;
     $("btnSettingsGame").onclick = openSettings;
     $("btnNight").onclick = openNight;

@@ -187,6 +187,30 @@ service cloud.firestore {
       }
     }
 
+    // ---- community comments: the wiki-style notes on Rules & Game Theory ----
+    // A global, shared layer keyed by a handbook item (`target`). Any signed-in
+    // user may read all notes and add their OWN (authorship is pinned to their
+    // uid, sizes are capped). Notes are never edited in place — you delete and
+    // repost — and only the author can delete their own. This collection is
+    // entirely separate from games/voices, so it cannot affect recorded history,
+    // and delete is per-document + author-scoped, so there is no bulk-delete
+    // path (see the DATA-SAFETY INVARIANT above).
+    match /comments/{commentId} {
+      allow read:   if signedIn();
+      allow create: if signedIn()
+                    && request.resource.data.authorUid == uid()
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 1000
+                    && request.resource.data.target is string
+                    && request.resource.data.target.size() > 0
+                    && request.resource.data.target.size() <= 200
+                    && request.resource.data.authorName is string
+                    && request.resource.data.authorName.size() <= 60;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.authorUid == uid();
+    }
+
     // Anything not matched above is denied.
     match /{document=**} {
       allow read, write: if false;

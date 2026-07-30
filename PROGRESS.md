@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-30 (after session 37 — editable display name)._
+_Last updated: 2026-07-30 (after session 38 — Rules & Game Theory handbook)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -134,7 +134,7 @@ table game, not a game engine. Feature pillars:
 ## File map
 | File | Purpose |
 |------|---------|
-| `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**. Full-screen overlays: chaos, power, game-over, **confirm dialog**, account, settings, **night narration**; plus a **toast**. (No separate end screen — role recording is in-place.) |
+| `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**, **rules**, **theory** (the last two share one markup template + renderer). Full-screen overlays: chaos, power, game-over, **confirm dialog**, account, settings, **night narration**; plus a **toast**. (No separate end screen — role recording is in-place.) |
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
 | `js/stats.js` | localStorage read/write (record / **delete** / clear) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. **`clearAll()` is the only bulk delete; the app wraps it in a backup-first, two-confirm flow (session 36) and it only ever clears the local device.** |
@@ -147,6 +147,7 @@ table game, not a game engine. Feature pillars:
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
+| `js/reference.js` | **Rules + Game Theory handbook content** (session 38). Classic script exposing `window.Reference`: two trees (`RULES`, `THEORY`) organised category → subcategory → item ("bullet"), each item with a **stable `id`** used as the community-comment target (`${kind}:${id}` — never renumber, or comments orphan). Plus `flatten`/`search`/`findItem` helpers. Offline, no network; rules content is kept in sync with `SECRET_HITLER_RULES.md`. |
 | `js/night.js` | **"In the night" narration** (session 33–34). The two fascist-reveal scripts (5–6 vs 7+) as speakable segments with timed pauses; script selection by player count; device-speech (Web Speech API) playback with natural-voice preference; IndexedDB blob storage for a user's own recorded/uploaded clips; **base64↔Blob helpers + shared-voice caching** for group sync. Classic script exposing `window.Night`; pure parts Node-tested (`test/night.test.js`). |
 | `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates** and a **distinct cautious-Hitler** role. Pure functions, Node-tested (66 assertions incl. a from-scratch brute-force mirror). |
 | `HONESTY_MODEL.md` | Derivation of the honesty posterior ("how likely is this claim a lie?") — hard-logic layer, generative model, exact inference, calibration plan, cited prior art, and **§11: the design review that decided what v1 ships**. |
@@ -236,12 +237,13 @@ table game, not a game engine. Feature pillars:
 - **The app opens on a MAIN MENU (home hub)**, `#menuScreen` — not the players list. It has the big
   **Secret Hitler** title, a **profile/sign-in** chip in the top-left corner and a **⚙ settings** gear
   in the top-right, a **group box** ("This device" / the group name — tap to open the group switcher),
-  and two **option boxes**: **Start game** (→ players/setup) and **Statistics**. The two corner
-  buttons reuse the old top-bar `#btnAccount` / `#btnSettings` (the global `#topbar` was removed).
+  and four **option boxes**: **Start game** (→ players/setup), **Statistics**, **Rules**, and
+  **Game theory** (the last two added session 38). The two corner buttons reuse the old top-bar
+  `#btnAccount` / `#btnSettings` (the global `#topbar` was removed).
 - **Back-anywhere via a nav stack.** `navTo(id)` pushes the current top-level screen and shows the
-  new one; the top-left **← on Players and Statistics** calls `navBack()` to return to wherever you
-  came from (default: the menu). `NAV_SCREENS = [menu, setup, stats]`; the game screen has its own
-  exit so it isn't on the stack. `goHome()` clears the stack and shows the menu.
+  new one; the top-left **← on Players/Statistics/Rules/Game theory** calls `navBack()` to return to
+  wherever you came from (default: the menu). `NAV_SCREENS = [menu, setup, stats, rules, theory]`; the
+  game screen has its own exit so it isn't on the stack. `goHome()` clears the stack and shows the menu.
 - **Flow after a game:** recording roles → **`goHome()` (main menu)**, *not* the players list (the
   session-29-era complaint). **Quit game → menu**; **New game (in-game) → players** (quick replay,
   `resetToSetup()` seeds the stack with the menu so its back arrow returns home). Closing a review
@@ -251,6 +253,38 @@ table game, not a game engine. Feature pillars:
   untouched. (Verified: a full game recorded from the menu appended one game and preserved the rest.)
 - **Menu ⇄ group sync:** `renderAcctChip()` also refreshes the menu's group label, so switching /
   renaming / leaving a group in the account modal updates the box sitting behind it.
+
+## Rules & Game Theory handbook + community notes (session 38)
+- **Two new main-menu sections**, each its own screen (`#rulesScreen` / `#theoryScreen`) sharing one
+  markup template and one renderer (`renderReference(kind)` in `app.js`, `kind` = `"rule"` | `"theory"`):
+  - **Rules** — an authoritative, searchable rules reference ("find any rule, fast").
+  - **Game theory** — a curated strategy guide ("strategy & community notes").
+- **Content is bundled offline in `js/reference.js`** (`window.Reference`): two trees organised
+  **category → subcategory → item ("bullet")**. Each item has a **stable `id`** (e.g.
+  `elections.tracker.chaos-resets-limits`); it is the comment target (`${kind}:${id}`) — **never
+  renumber an id or existing comments orphan.** Rules mirror `SECRET_HITLER_RULES.md`; keep them in
+  sync. Helpers: `flatten`, `search` (multi-word AND over title+body+breadcrumb), `findItem`.
+- **Navigation:** a search box at top (filters across everything, precedence over drill-down), else
+  drill-down **categories → subcategories → items** with a breadcrumb. Tapping an item expands it to
+  its full text + a **Community notes** panel. State per kind in `refBrowser` (`query/catId/subId/
+  openItem/notes`); the shell renders once and `renderRefResults(kind)` re-renders on every
+  keystroke/click **without rebuilding the search input** (so focus/caret are preserved).
+- **Community notes = a wiki layer (the user asked for "like Wikipedia").** Any **signed-in** user can
+  read all notes on an item and post their own, shown with the **author's display name** + relative
+  time. Stored in a NEW top-level Firestore collection **`comments`** — completely separate from
+  games/voices, so it can never touch recorded history. `Cloud.addComment(target,text)` /
+  `listComments(target)` (single `where target==` equality, no composite index; sorted client-side) /
+  `deleteComment(id)`. Notes are **never edited in place** (delete + repost); **only the author can
+  delete their own** (a quick confirm). Signed-out users see a "Sign in to read and add notes" CTA.
+- **Rules deployed** (`firestore.rules`, `comments` block): `read: signedIn`, `create` pins
+  `authorUid==uid` + caps (`text` ≤1000, `target` ≤200, `authorName` ≤60), `update:false`,
+  `delete:` author-only. Per-doc + author-scoped, so **no bulk-delete path** — consistent with the
+  DATA-SAFETY invariant. Deploy was config-only (safe).
+- **Verified** headless with a mock `window.Cloud` (in-memory comment store — no live project):
+  SMOKE_OK. Menu boxes open; searching "term limit top-deck" surfaces the chaos-reset rule with the
+  right breadcrumb; expanding shows the body; posting a note shows the author name; deleting removes
+  it; drill-down (Elections → 3 subcats → 6 items + breadcrumb) works; Game theory opens with its 7
+  categories. Content sanity-checked in Node: 41 rule items, 26 theory items, all ids unique.
 
 ## "In the night" narration (session 33)
 - **What it is:** a start-of-game helper that reads the classic fascist-reveal narration aloud so

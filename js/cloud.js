@@ -28,7 +28,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection,
-  getDocs, serverTimestamp,
+  getDocs, serverTimestamp, query, where,
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
 const GAMES_KEY = "secretHitler.games.v1";
@@ -682,6 +682,57 @@ async function downloadVoiceClips(voiceId) {
   return out;
 }
 
+// -------------------------------------- community comments (Rules & Theory)
+// A global, wiki-style layer: anyone signed in can attach an attributed note to
+// any handbook item (target = `${kind}:${itemId}`) and read everyone else's.
+// Comments live in their OWN top-level `comments` collection — completely apart
+// from games/voices, so nothing here can ever touch a user's recorded history.
+// Filtered by a single equality on `target`, so no composite index is needed;
+// sorted client-side by time. The rules cap sizes and pin authorship.
+const COMMENT_MAX = 1000;
+
+async function addComment(target, text) {
+  if (!currentUser) return { ok: false, message: "Sign in to add a note." };
+  const body = String(text || "").trim();
+  if (!body) return { ok: false, message: "The note is empty." };
+  if (body.length > COMMENT_MAX) return { ok: false, message: `Please keep notes under ${COMMENT_MAX} characters.` };
+  try {
+    const ref = await addDoc(collection(db, "comments"), clean({
+      target: String(target || "").slice(0, 200),
+      text: body,
+      authorUid: currentUser.uid,
+      authorName: myDisplayName(),
+      createdAt: serverTimestamp(),
+    }));
+    return { ok: true, id: ref.id };
+  } catch (e) { return { ok: false, message: humanError(e) }; }
+}
+
+async function listComments(target) {
+  if (!currentUser) return [];
+  const q = query(collection(db, "comments"), where("target", "==", String(target || "")));
+  const snap = await getDocs(q);
+  const out = [];
+  snap.forEach((d) => {
+    const x = d.data();
+    out.push({
+      id: d.id, text: x.text, authorName: x.authorName || "Someone",
+      authorUid: x.authorUid,
+      // serverTimestamp() is null for a beat right after a local write; treat as "now".
+      at: x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : Date.now(),
+      mine: x.authorUid === currentUser.uid,
+    });
+  });
+  out.sort((a, b) => a.at - b.at);
+  return out;
+}
+
+async function deleteComment(id) {
+  if (!currentUser || !id) return { ok: false, message: "Nothing to delete." };
+  try { await deleteDoc(doc(db, "comments", id)); return { ok: true }; }
+  catch (e) { return { ok: false, message: humanError(e) }; }
+}
+
 // ------------------------------------------------- invite links (?join=…)
 // Captured immediately, because the visitor may not be signed in yet: the id is
 // held until an account exists, then the join happens automatically.
@@ -783,6 +834,20 @@ window.Cloud = {
   setUploadAllowed,
   async setDisplayName(name) {
     try { return await setDisplayName(name); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+
+  // ---- community comments (Rules & Game Theory handbook) ----
+  async addComment(target, text) {
+    try { return await addComment(target, text); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  async listComments(target) {
+    try { return await listComments(target); }
+    catch (e) { return []; }
+  },
+  async deleteComment(id) {
+    try { return await deleteComment(id); }
     catch (e) { return { ok: false, message: humanError(e) }; }
   },
 

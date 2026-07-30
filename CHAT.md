@@ -1347,3 +1347,38 @@ safe pattern): SMOKE_OK. Before: chip falls back to the email prefix ("me"), acc
 name yet". After changing to "Tim": `setDisplayName("Tim")` called, my seat rewritten
 (`g1/s1=Tim`), and the chip, account header, and roster all read "Tim". Files: `js/cloud.js`,
 `js/app.js`, `styles.css`, `PROGRESS.md`, `CHAT.md`.
+
+## Session 38 — Rules & Game Theory handbook with community notes
+
+**User:** add two new main-menu sections — a **Rules** reference where you can find any rule fast, and a
+**Game theory** section — both split into categories so you can drill down (Rules → category → category →
+the specific bullet). Let users add notes/strategies. On the notes: "a fundamental part of the website,
+like Wikipedia — anyone can share comments or ideas, shown with who commented (a name on the side)."
+Also let Rules items carry user notes too.
+
+**Shipped.**
+- **Two new menu boxes → two screens** (`#rulesScreen` / `#theoryScreen`) sharing one markup template
+  and one renderer (`renderReference("rule"|"theory")`). Added to `show()`, `NAV_SCREENS`, and the
+  back-stack; wired `btnMenuRules`/`btnMenuTheory` + back buttons.
+- **Bundled content in `js/reference.js`** (`window.Reference`): two trees, category → subcategory →
+  item ("bullet"). Each item has a **stable id** used as the comment target. Rules authored from
+  `SECRET_HITLER_RULES.md` (41 items incl. the user's exact example — "election restrictions reset
+  after a chaos top-deck" — under Elections → The Election Tracker & chaos, plus a cross-ref in
+  Tricky situations). Curated strategy tree (26 items) across Liberal/Fascist/Hitler/President/
+  Chancellor/Reading-the-table/Endgame.
+- **Browse + search UI:** a sticky search box (multi-word AND across title+body+breadcrumb) that takes
+  precedence over drill-down; otherwise categories → subcategories → items with a breadcrumb. Tapping
+  an item expands its full text + a Community notes panel. The shell renders once and results
+  re-render per keystroke without rebuilding the input (focus/caret preserved).
+- **Community notes = wiki layer.** New top-level Firestore **`comments`** collection (separate from
+  games/voices — cannot touch recorded history). `Cloud.addComment/listComments/deleteComment`
+  (single `where target==` equality, no index; client-side sort). Any signed-in user reads all notes
+  and posts their own, shown with their **display name** + relative time; notes aren't edited (delete
+  + repost); author-only delete with a confirm. Signed-out → "Sign in to read and add notes" CTA.
+- **Rules deployed** (`comments` block: read=signedIn, create pins authorUid + size caps,
+  update=false, delete=author-only) — per-doc + author-scoped, so no bulk-delete path (respects the
+  DATA-SAFETY invariant). `firebase deploy --only firestore:rules` compiled + released (config-only).
+- **Verified:** Node content check (ids unique, example search hits the right rule) + a headless
+  mock-Cloud smoke test **SMOKE_OK** (open, search, expand, post note shows author, delete, drill-down,
+  Game theory opens). Files: `index.html`, `js/reference.js` (new), `js/app.js`, `js/cloud.js`,
+  `styles.css`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`.
