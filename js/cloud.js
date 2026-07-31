@@ -140,6 +140,9 @@ function fromCloud(id, d, gid) {
     date: d.playedAt,
     groupId: d.groupId || gid || null,
     seats: d.seats || [],
+    // Who recorded it — lets the app show the "edit roles" affordance only to the
+    // author (the rules enforce it too).
+    createdBy: d.createdBy || null,
   };
 }
 
@@ -552,6 +555,7 @@ async function sync() {
             if (remote.has(g.id)) { synced.add(g.id); continue; }
             const seats = await resolveSeats(grp.id, g.players);
             await setDoc(doc(col, g.id), toCloud(g, grp.id, seats));
+            if (!g.createdBy) { g.createdBy = currentUser.uid; dirty = true; } // it's mine — remember, so I can edit its roles
             synced.add(g.id);
             uploaded++;
           }
@@ -559,7 +563,18 @@ async function sync() {
 
         for (const [id, d] of remote) {
           synced.add(id);
-          if (localIds.has(id)) continue;
+          if (localIds.has(id)) {
+            // Keep an existing local copy in step with two mutable bits: its
+            // author (for the edit-roles affordance) and a corrected `result`
+            // (the author may fix a mis-recorded role — the event LOG never
+            // changes). Everything else is append-only, so we don't touch it.
+            const lg = local.find((x) => x.id === id);
+            if (lg) {
+              if (!lg.createdBy && d.createdBy) { lg.createdBy = d.createdBy; dirty = true; }
+              if (d.result && JSON.stringify(lg.result) !== JSON.stringify(d.result)) { lg.result = d.result; dirty = true; }
+            }
+            continue;
+          }
           local.push(fromCloud(id, d, grp.id));
           downloaded++;
           dirty = true;
@@ -662,6 +677,27 @@ async function pullGameMeta() {
   const snap = await getDocs(collection(db, "profiles", currentUser.uid, "gameMeta"));
   snap.forEach((d) => { const x = d.data(); out[d.id] = { label: x.label || "", favorite: !!x.favorite }; });
   return out;
+}
+
+/**
+ * Correct the recorded RESULT (roles/winner) of a synced game. The rules allow
+ * this only for the game's author, and only the `result` field may change (the
+ * event log stays immutable). A purely-local game (not yet uploaded) needs no
+ * network — it uploads with the corrected result later.
+ */
+async function updateGameResult(id, gid, result) {
+  if (!id) return { ok: false, message: "No game id." };
+  const synced = readSynced();
+  if (currentUser && gid && synced.has(id)) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false)
+      return { ok: false, message: "You're offline — reconnect to save this change to your account." };
+    try {
+      await updateDoc(doc(db, "groups", gid, "games", id), { result: clean(result) });
+    } catch (e) {
+      return { ok: false, message: humanError(e) };
+    }
+  }
+  return { ok: true };
 }
 
 // -------------------------------------- shared "in the night" voices
@@ -864,6 +900,10 @@ window.Cloud = {
   },
   async setGameMeta(id, meta) {
     try { return await setGameMeta(id, meta); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  async updateGameResult(id, gid, result) {
+    try { return await updateGameResult(id, gid, result); }
     catch (e) { return { ok: false, message: humanError(e) }; }
   },
   // ---- shared night voices ----

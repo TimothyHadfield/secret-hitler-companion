@@ -1493,3 +1493,30 @@ state machine; `js/online.js` gained the host action-pump; `js/app.js` got the l
   screen→recorded to Statistics) = SMOKE_OK; modules init cleanly against live Firebase. NOT automated:
   the true multi-client round-trip (wants a real multi-account game). Files: `js/engine.js`, `js/online.js`,
   `js/app.js`, `styles.css`, `firestore.rules`, `test/engine.test.js`, `PROGRESS.md`, `CHAT.md`.
+
+## Session 42 — edit a recorded game's roles (author-only)
+
+**User:** accidentally recorded a role wrong in a game; make recorded games' roles editable after
+submission, but only by the person who recorded the game.
+
+**Shipped.** A review-panel **Edit roles** button (author-only) reopens the role picker (Hitler +
+count-appropriate Fascists + winner) prefilled from the stored result, recolouring the table live as you
+pick. Save writes locally (`Stats.setResult`) and, for a synced game, to the cloud
+(`Cloud.updateGameResult`, cloud-first so a failure aborts). **Only `result` changes — the event LOG is
+never rewritten.**
+
+- **stats.js:** `setResult(id, result)` (full-array write, like setLabel/setFavorite).
+- **firestore.rules:** games `update` was `if false`; now the author (`createdBy==uid`) may update with
+  `diff(...).affectedKeys().hasOnly(['result'])` — a tightly-scoped, bounded exception to append-only
+  (the log stays immutable; only the author's role annotation is correctable). Deployed (config-only).
+- **cloud.js:** `fromCloud` carries `createdBy`; sync **backfills createdBy** onto local copies + stamps
+  it on my games at upload, and **propagates a corrected `result`** onto already-downloaded copies (so
+  other members get the fix on their next sync). New `updateGameResult(id,gid,result)` (only network for
+  a synced game; author-only enforced by rules).
+- **app.js:** `canEditReviewedGame(g)` (signed-out → mine; else `createdBy===myUid`, or unsynced-local).
+  `Edit roles` → `enterEditRoles` (jumps to reveal, drafts from result) → `renderRoleEditor` (winner
+  toggle + Hitler/Fascist pickers, live table preview) → `saveEditRoles`. Cancel restores.
+- **Verified** headless (mock cloud): signed-out shows Edit; editor prefilled (Cy=Hitler); change
+  Hitler→Di, Fascist→Cy, save → result updated, **events unchanged**; author gating — hidden for another
+  member's game, shown + `updateGameResult` called for my own = SMOKE_OK. Modules init clean against live
+  Firebase. Files: `js/stats.js`, `js/cloud.js`, `js/app.js`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`.

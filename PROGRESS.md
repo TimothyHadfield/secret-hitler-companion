@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-31 (after session 41 — ONLINE PLAY complete: full playable game)._
+_Last updated: 2026-07-31 (after session 42 — edit a recorded game's roles, author-only)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -567,6 +567,22 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
     it never opens the review. Verified headless (mock Cloud): star floats a game to top + calls
     setGameMeta without opening the review; review Fav/Label buttons work; label + favorite render on
     the box and persist.
+- **Editing a recorded game's roles (session 42).** A review-panel **Edit roles** button (shown only to
+  the game's author) reopens the end-of-game role picker (Hitler + the count-appropriate Fascists + who
+  won) prefilled from the stored `result`, recolouring the table live as you pick. Save writes the new
+  `result` **locally** (`Stats.setResult`) and, for a synced game, **to the cloud** (`Cloud.updateGameResult`,
+  cloud-first so a failure aborts rather than diverges). **Only the recorded ROLES/winner change — the
+  event LOG is never rewritten** (that's what everyone saw).
+  - **Rules relaxed, tightly (deployed):** the games rule was `update: if false`; now the **author**
+    (`createdBy == uid()`) may update, but `request.resource.data.diff(resource.data).affectedKeys().
+    hasOnly(['result'])` pins everything except `result`. This is a deliberate, bounded exception to the
+    append-only invariant — the game log stays immutable, only the author's own role annotation is
+    correctable. (Consistent with the author/owner delete added in s31.)
+  - **Author is known via `game.createdBy`:** `fromCloud` now carries it; sync backfills it onto existing
+    local copies and stamps it on my games at upload; a corrected `result` **propagates on sync** (the
+    remote result is applied onto already-downloaded copies, so group members see the fix). Signed out /
+    unsynced-local games count as "mine". Verified headless: edit persists + recolours, events unchanged,
+    and the button is hidden for another member's game / shown + cloud-writing for my own.
 - **Deleting a recorded game (session 31).** The review panel has a **Delete game** button (outlined
   danger, bottom of the panel, step-independent). It confirms first (`deleteReviewedGame()`), then —
   crucially in this order — removes the **cloud copy first** so a later sync can't resurrect it, and

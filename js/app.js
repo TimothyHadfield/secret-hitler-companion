@@ -1880,8 +1880,98 @@
     );
   }
 
+  // Only the person who recorded a game may correct its roles. Signed out, every
+  // local game is "mine"; signed in, it's mine if I'm the author (or it's a local
+  // unsynced game with no author on it yet). The rules enforce this server-side.
+  function canEditReviewedGame(g) {
+    if (!g || !g.id) return false;
+    const c = cloud();
+    if (!c || !c.user) return true;
+    if (g.createdBy) return g.createdBy === c.user.uid;
+    return !g.groupId;
+  }
+
+  const editFascistNeed = () => FASCIST_COUNT[state.players.length] || 1;
+  function editDraftToResult() {
+    const d = state.editRoles;
+    return { winner: d.winner, hitlerIdx: d.hitlerIdx, fascistIdxs: d.fascistIdxs.slice() };
+  }
+  function enterEditRoles() {
+    const r = state.result || {};
+    reviewGoto((state._reviewEvents || []).length); // show the reveal while editing
+    state._origResult = state.result;
+    state.editRoles = { winner: r.winner || "Liberal", hitlerIdx: r.hitlerIdx == null ? null : r.hitlerIdx, fascistIdxs: (r.fascistIdxs || []).slice() };
+    renderGame();
+  }
+  function cancelEditRoles() {
+    state.result = state._origResult; state.editRoles = null; renderGame();
+  }
+  function toggleEditRole(role, i) {
+    const d = state.editRoles, need = editFascistNeed();
+    if (role === "hitler") {
+      d.hitlerIdx = d.hitlerIdx === i ? null : i;
+      d.fascistIdxs = d.fascistIdxs.filter((x) => x !== d.hitlerIdx);
+    } else {
+      if (i === d.hitlerIdx) return;
+      const at = d.fascistIdxs.indexOf(i);
+      if (at >= 0) d.fascistIdxs.splice(at, 1);
+      else if (d.fascistIdxs.length < need) d.fascistIdxs.push(i);
+    }
+    state.result = editDraftToResult(); // live preview: recolour the table
+    renderGame();
+  }
+  const editReady = () => {
+    const d = state.editRoles;
+    return d && d.winner && d.hitlerIdx != null && d.fascistIdxs.length === editFascistNeed();
+  };
+  async function saveEditRoles() {
+    if (!editReady()) return;
+    const g = state._reviewGame;
+    const newResult = editDraftToResult();
+    const c = cloud();
+    // Cloud first for a synced game, so a failure aborts and nothing diverges.
+    if (c && c.user && g.groupId) {
+      const r = await c.updateGameResult(g.id, g.groupId, newResult);
+      if (!r || !r.ok) { showToast((r && r.message) || "Couldn’t save — try again."); return; }
+    }
+    Stats.setResult(g.id, newResult);
+    g.result = newResult; state._origResult = newResult; state.result = newResult;
+    state.editRoles = null;
+    renderGame();
+    showToast("Roles updated.");
+  }
+
+  function renderRoleEditor(cp) {
+    const players = state.players;
+    const d = state.editRoles;
+    const need = editFascistNeed();
+    const pbtns = (role) => players.map((p, i) => {
+      const sel = role === "hitler" ? d.hitlerIdx === i : d.fascistIdxs.indexOf(i) >= 0;
+      return `<button class="role-pick ${role} ${sel ? "sel" : ""}" data-role="${role}" data-i="${i}">${escapeHtml(p.name)}</button>`;
+    }).join("");
+    cp.innerHTML =
+      `<div class="role-panel">` +
+      `<div class="role-title">Edit roles</div>` +
+      `<div class="role-field"><label>Who won?</label> <span class="seg">` +
+      `<button id="erLib" class="${d.winner === "Liberal" ? "sel L" : ""}">Liberal</button>` +
+      `<button id="erFac" class="${d.winner === "Fascist" ? "sel F" : ""}">Fascist</button></span></div>` +
+      `<div class="role-field"><label>Who was Hitler?</label><div class="role-btns">${pbtns("hitler")}</div></div>` +
+      `<div class="role-field"><label>${need > 1 ? "Who were the " + need + " Fascists" : "Who was the Fascist"}? (${d.fascistIdxs.length}/${need})</label>` +
+      `<div class="role-btns">${pbtns("fascist")}</div></div>` +
+      `<div class="control-row"><button id="erSave" class="primary" ${editReady() ? "" : "disabled"}>Save changes</button>` +
+      `<button id="erCancel" class="ghost">Cancel</button></div>` +
+      `</div>`;
+    cp.querySelectorAll(".role-pick").forEach((b) => b.onclick = () => toggleEditRole(b.dataset.role, +b.dataset.i));
+    $("erLib").onclick = () => { d.winner = "Liberal"; state.result = editDraftToResult(); renderGame(); };
+    $("erFac").onclick = () => { d.winner = "Fascist"; state.result = editDraftToResult(); renderGame(); };
+    $("erSave").onclick = saveEditRoles;
+    $("erCancel").onclick = cancelEditRoles;
+  }
+
   function renderReviewPanel(cp, d) {
     const g = state._reviewGame;
+    // Editing the recorded roles takes over the panel (author-only, at the reveal).
+    if (state.editRoles) { renderRoleEditor(cp); return; }
     const full = state._reviewEvents || [];
     const N = full.length;
     const step = state.reviewStep;
@@ -1925,6 +2015,7 @@
       `<div class="review-actions">` +
       `<button id="btnFavGame" class="ghost">${g.favorite ? "★ Favorited" : "☆ Favorite"}</button>` +
       `<button id="btnLabelGame" class="ghost">${g.label ? "Rename" : "Add a label"}</button>` +
+      (canEditReviewedGame(g) ? `<button id="btnEditRoles" class="ghost">Edit roles</button>` : "") +
       `<button id="btnDeleteGame" class="ghost-danger">Delete game</button>` +
       `</div>`;
 
@@ -1935,6 +2026,7 @@
     if ($("pbNext")) $("pbNext").onclick = () => go(step + 1);
     if ($("pbLast")) $("pbLast").onclick = () => go(N);
     if ($("btnDeleteGame")) $("btnDeleteGame").onclick = deleteReviewedGame;
+    if ($("btnEditRoles")) $("btnEditRoles").onclick = enterEditRoles;
     if ($("btnFavGame")) $("btnFavGame").onclick = () => {
       if (!g.id) return;
       g.favorite = !g.favorite;             // reflect immediately on the in-review copy

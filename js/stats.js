@@ -180,6 +180,25 @@ const Stats = (() => {
   }
 
   /**
+   * Correct the recorded RESULT (roles + winner) of a finished game — e.g. a
+   * mis-tapped Hitler. Only the `result` is touched; the event LOG (what actually
+   * happened) is never rewritten. Writes through the full array like the others.
+   */
+  function setResult(id, result) {
+    if (!id || !result || typeof result !== "object") return false;
+    const games = loadAllGames();
+    const g = games.find((x) => x && x.id === id);
+    if (!g) return false;
+    g.result = {
+      winner: result.winner,
+      hitlerIdx: result.hitlerIdx,
+      fascistIdxs: (result.fascistIdxs || []).slice(),
+    };
+    saveGames(games);
+    return true;
+  }
+
+  /**
    * Games in display order: favorites first (keeping their relative order),
    * everything else after. A stable partition, so within each group the caller's
    * existing order is preserved. Operates on whatever list is passed in.
@@ -427,6 +446,7 @@ const Stats = (() => {
     deleteGame,
     setLabel,
     setFavorite,
+    setResult,
     orderForDisplay,
     clearAll,
     exportData,
