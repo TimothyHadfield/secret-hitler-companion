@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-31 (after session 40 — ONLINE PLAY Phase 1: lobby + roles + night)._
+_Last updated: 2026-07-31 (after session 41 — ONLINE PLAY complete: full playable game)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -142,13 +142,13 @@ table game, not a game engine. Feature pillars:
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, groups, game delete, and **shared night voices** (base64 audio in Firestore). Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **HARD-GATED (session 36): it refuses to run without `SH_PROD_RULES_TEST=i-understand`, and cleans up ONLY the exact `__test_<runId>` docs it created, per-document, through the rules — no wholesale wipe exists in the file.** (The older warning that its teardown "empties ALL collections" was overstated — every committed version scoped itself to a test group; the gate + per-doc cleanup now design the risk out. See `DATA_SAFETY.md`.) It covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not) and voice permissions (§7c); still, prefer the mock-Cloud CDP approach and don't run it unless you truly must. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). `engine.test.js` = **126 assertions** for the online play engine (`node test/engine.test.js`, no deps): team sizes 5–10, exactly one Hitler, per-role night knowledge, deterministic deal. Has its own `package.json`; the site stays dependency-free. |
+| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **HARD-GATED (session 36): it refuses to run without `SH_PROD_RULES_TEST=i-understand`, and cleans up ONLY the exact `__test_<runId>` docs it created, per-document, through the rules — no wholesale wipe exists in the file.** (The older warning that its teardown "empties ALL collections" was overstated — every committed version scoped itself to a test group; the gate + per-doc cleanup now design the risk out. See `DATA_SAFETY.md`.) It covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not) and voice permissions (§7c); still, prefer the mock-Cloud CDP approach and don't run it unless you truly must. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). `engine.test.js` = **1653 assertions** for the online-play engine (`node test/engine.test.js`, no deps): role deal (team sizes 5–10, per-role night knowledge, determinism) + 60 full simulated games (17-card conservation, term limits, veto, both Hitler wins, public-view privacy). Has its own `package.json`; the site stays dependency-free. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
-| `js/engine.js` | **Pure authoritative game logic for online play** (session 40). NO network/DOM/randomness of its own (callers pass an rng, so it's deterministic + replayable). Phase 1: `setupGame(uids,rng)` deals a randomized seat order, first President, roles, and each player's exact night knowledge (`reveals`). Classic script (`window.Engine`) + `module.exports`; Node-tested (`test/engine.test.js`, 126 assertions). Grows into deck/legal-moves/win-detection in later phases. |
-| `js/online.js` | **Real-time ONLINE PLAY** (session 40, Phase 1). ES module (`window.Online` + `online:*` events), loaded AFTER cloud.js and **reuses the same Firebase app** (`getApps().length ? getApp() : initializeApp`). Host-authoritative: the host's browser deals + referees. Data under `groups/{gid}/tables/{tid}`: the table doc (public), `players/{uid}` (lobby), `private/{uid}` (secrets — only that player reads), `actions/` (queue, later phases). Phase 1: host/join lobby, `startGame()` (deal roles → write private docs → status night), night reveal. |
+| `js/engine.js` | **Pure authoritative game engine for online play** (sessions 40–41). NO network/DOM/randomness of its own (callers pass an rng → deterministic/replayable). Full state machine: `initGame` (roles + shuffled 11F/6L deck), `applyAction(state,action,rng)` (nominate/vote/president_play/chancellor_play/veto/powers — pure reducer returning a fresh state or an error), win detection (5L / 6F / Hitler-chancellor / Hitler-executed), `publicView` (leaks no secrets), `privateView` (one player's role + current hand + learned power results), `toRecordedGame` (analyzer-compatible record). Classic script (`window.Engine`) + `module.exports`; Node-tested (`test/engine.test.js`, **1653 assertions** incl. 60 full simulated games). |
+| `js/online.js` | **Real-time ONLINE PLAY** (sessions 40–41). ES module (`window.Online` + `online:*` events), loaded AFTER cloud.js and **reuses the same Firebase app**. Host-authoritative: the host's browser runs `engine.js` as dealer/referee. Data under `groups/{gid}/tables/{tid}`: table doc (public projection, host-write), `players/{uid}` (lobby seat, own-write), `private/{uid}` (secrets — only that player reads, host writes), `host/state` (the FULL secret state as a JSON blob — host-only, for reload/resume), `actions/` (each player submits their own move; the host processes them). Host loop: `processActions` drains the queue → `applyAction` → `pushState` (secret + public + every private) → deletes the action; `submitAction` for players; on game over `finishGame` emits `online:finished` → app records it to the group. |
 | `js/reference.js` | **Rules + Game Theory handbook content** (session 38). Classic script exposing `window.Reference`: two trees (`RULES`, `THEORY`) organised category → subcategory → item ("bullet"), each item with a **stable `id`** used as the community-comment target (`${kind}:${id}` — never renumber, or comments orphan). Plus `flatten`/`search`/`findItem` helpers. Offline, no network; rules content is kept in sync with `SECRET_HITLER_RULES.md`. |
 | `js/night.js` | **"In the night" narration** (session 33–34). The two fascist-reveal scripts (5–6 vs 7+) as speakable segments with timed pauses; script selection by player count; device-speech (Web Speech API) playback with natural-voice preference; IndexedDB blob storage for a user's own recorded/uploaded clips; **base64↔Blob helpers + shared-voice caching** for group sync. Classic script exposing `window.Night`; pure parts Node-tested (`test/night.test.js`). |
 | `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates** and a **distinct cautious-Hitler** role. Pure functions, Node-tested (66 assertions incl. a from-scratch brute-force mirror). |
@@ -288,10 +288,11 @@ table game, not a game engine. Feature pillars:
   it; drill-down (Elections → 3 subcats → 6 items + breadcrumb) works; Game theory opens with its 7
   categories. Content sanity-checked in Node: 41 rule items, 26 theory items, all ids unique.
 
-## ONLINE PLAY (session 40 — Phase 1 of a multi-phase build) 🌐
-**This reverses the long-standing "online/real-time play is descoped" decision** — the user asked to
+## ONLINE PLAY (sessions 40–41 — COMPLETE, fully playable) 🌐
+**This reversed the long-standing "online/real-time play is descoped" decision** — the user asked to
 build full online play that "makes the site capable of doing anything the real board, cards, and roles
-would," recording finished games to a group. It's being built in **shippable phases**; Phase 1 is live.
+would," recording finished games to a group. Built over two sessions (Phase 1 = lobby/roles/night in
+s40; the full game in s41) and now **live end-to-end**.
 - **Decisions locked with the user (session 40):** **host-authoritative** (the host's browser is the
   dealer/referee — free, no server, no build step; a host *could* technically cheat like a dishonest
   physical dealer, and must stay connected); **signed-in group members only** (each player needs an
@@ -311,27 +312,42 @@ would," recording finished games to a group. It's being built in **shippable pha
   `actions/` (player-submitted move queue — used from Phase 2). Rules deployed; per-doc + host-scoped
   deletes only, so **no bulk-delete path** (respects the DATA-SAFETY invariant — and a finished game is
   a normal `games` doc, so tearing down a table never touches recorded history).
-- **Phase 1 shipped:** **Play online** menu box → `#onlineScreen`. Host a game (creates a table in the
-  active group) or join an open one; a **lobby** (5–10 players, host-gated Start); on Start the host
-  **deals roles** and writes each player's private doc, then **night**: every device privately shows
-  that player's role + exactly the knowledge it's owed (fascists see each other + Hitler; Hitler sees
-  the fascist(s) only in 5–6; liberals nothing), plus seating + first President. `js/online.js` is the
-  Firestore/host layer; `renderOnline*` in `app.js` is the UI (`onlineScreen` in `show()`/`NAV_SCREENS`,
-  wired via `online:*` events in `wireOnline()`).
-- **Phase 1 ends at the night reveal** — turn-by-turn play is the next phase; the night screen says so.
-- **Phases still to build:** (2) election loop — nominate → per-device votes → term limits/tracker/chaos
-  + Hitler-chancellor win; (3) legislative session — real 11F/6L deck, draw 3/discard 1/enact 1,
-  reshuffles; (4) powers — investigate/special-election/peek/execution with private reveals; (5) win
-  detection → record to group, then polish (veto, reconnection, host-stay warnings, odds overlays,
-  night-narration integration).
-- **Verification (session 40):** `test/engine.test.js` = **126 assertions** (team sizes 5–10, exactly one
-  Hitler, per-role knowledge correct, deterministic deal). Full UI flow (browse→host→lobby→deal→night,
-  all four role reveals) passed a **headless mock-`window.Online` smoke test** (drives the real Engine +
-  app rendering, no live project). Real module init verified against the live Firebase SDK (Online/Cloud/
-  Engine all present, **no double-init** — online.js reuses cloud.js's app). **NOT yet automated-tested:
-  the live multi-client Firestore round-trip** (host writes N private docs; each client reads only its
-  own). It's enforced by the deployed rules, but a real 2-account play test (with a friend, or a CDP
-  harness) is the pending gold-standard check before Phase 2 leans on it.
+- **ALL FIVE PHASES SHIPPED (session 41) — the game is fully playable online.** **Play online** menu box
+  → `#onlineScreen`. Host a game (creates a table in the active group) or join an open one → **lobby**
+  (5–10, host-gated Start) → host **deals roles** → **night** (each device privately shows its role +
+  owed knowledge) → host **Begins game** → live play, then the finished game **records to the group**.
+- **The live game screen** (`renderOnlinePlaying` in app.js) shows, like the companion: the **board**
+  (Fascist/Liberal tracks, election-tracker dots, draw/discard counts), the **players** (P/C/nominee/
+  termed/dead badges, the last election's Ja/Nein per seat, and — when the **Fascist-odds** setting is
+  on — a live fascist-% chip per seat, reusing the analyzer via a briefly-swapped review state so no
+  secret leaks), a **History** of past governments, and the player's own **secret panel** (role +
+  learned investigations/peeks). The **action panel** shows the current step's controls to whoever must
+  act and "waiting for X" to everyone else:
+  - **nominate** (President picks a Chancellor, term-limits filtered) → **vote** (each living player Ja/
+    Nein on their own device; the tally reveals when all are in; ties fail; tracker/chaos; Hitler-as-
+    Chancellor after 3F = instant Fascist win) → **president_play** (President sees the real 3 cards,
+    discards 1, and **announces a claimed hand — they may bluff**, which is what feeds the odds/lie
+    model) → **chancellor_play** (enact 1 of the 2, or **propose a veto** at 5F) → **veto** (President
+    agrees/refuses) → **powers** (investigate / special election / policy peek / execution, each with
+    the right private reveal to the President) → repeat until a **win**.
+  - On game over the roles are revealed on the table and the host records the game to the group
+    (`online:finished` → `Stats.recordGame` + upload); other players pull it on their next sync. Because
+    the engine emits the analyzer's event log, the recorded game **replays and scores exactly like a
+    companion game** — one shared pipeline.
+- **Host resilience:** the full secret state is persisted to `host/state`, so a host page-reload
+  reloads it and resumes processing the action queue (`runHostLoop`/`loadHostState`).
+- **Verification (session 41):** `test/engine.test.js` = **1653 assertions** — 60 full simulated games
+  across all counts (17-card conservation every step, tracker bounds, term limits, veto, both Hitler
+  win paths, public-view privacy) + targeted rule checks. A headless **mock-host smoke test** played a
+  **complete game through the real app UI** (nominate→vote→draw→discard+claim→enact→board+history update
+  →bot-driven to a win→over screen→**recorded to Statistics**): SMOKE_OK. Modules init cleanly against
+  live Firebase (Online/submitAction/applyAction present, no errors). **Still NOT automated-tested: the
+  real multi-client Firestore round-trip** (several real accounts at once, each reading only its own
+  private doc, the host processing remote actions). It's enforced by the deployed rules + the host loop,
+  but the gold-standard check is a real multi-device game — best done with friends.
+- **Deliberately deferred (polish, not blockers):** in-app chat (chose external voice), host-migration
+  if the host leaves mid-game (currently the host must stay; leaving the lobby cancels, and there's an
+  End-game teardown), reconnection niceties, spectators, and guest (no-account) joins.
 
 ## "In the night" narration (session 33)
 - **What it is:** a start-of-game helper that reads the classic fascist-reveal narration aloud so

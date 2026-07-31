@@ -19,7 +19,7 @@
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
+  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc,
   getDocs, onSnapshot, serverTimestamp, query, where,
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
@@ -39,6 +39,12 @@ let players = [];              // [{ uid, name }]
 let myPrivate = null;          // my secret doc
 let subs = [];                 // active onSnapshot unsubscribers
 
+// Host-only: the full authoritative game state + the action-processing pump.
+let hostState = null;          // parsed full secret state (host device only)
+let processing = false;        // reentrancy guard for the action loop
+let rerun = false;             // an action snapshot arrived mid-process
+let recorded = false;          // the finished game has been saved once
+
 const emit = (name, detail) => document.dispatchEvent(new CustomEvent(name, { detail }));
 const myName = () =>
   (me && (me.displayName || (me.email || "").split("@")[0])) || "Player";
@@ -53,6 +59,8 @@ function pathTable(t) { return doc(db, "groups", gid, "tables", t); }
 function colPlayers(t) { return collection(db, "groups", gid, "tables", t, "players"); }
 function pathPlayer(t, uid) { return doc(db, "groups", gid, "tables", t, "players", uid); }
 function pathPrivate(t, uid) { return doc(db, "groups", gid, "tables", t, "private", uid); }
+function colActions(t) { return collection(db, "groups", gid, "tables", t, "actions"); }
+function pathHostState(t) { return doc(db, "groups", gid, "tables", t, "host", "state"); }
 
 function stopSubs() { subs.forEach((u) => { try { u(); } catch (e) {} }); subs = []; }
 
@@ -92,9 +100,23 @@ function subscribe(t) {
   }, () => {}));
 }
 
+// The host watches the action queue and processes moves. Attached lazily once we
+// know we're the host (only the host may read the queue), detached otherwise.
+let actionsUnsub = null;
+function ensureHostLoop() {
+  if (isHost() && !actionsUnsub && tableId) {
+    actionsUnsub = onSnapshot(colActions(tableId), (snap) => { processActions(snap); }, () => {});
+  } else if (!isHost() && actionsUnsub) {
+    try { actionsUnsub(); } catch (e) {}
+    actionsUnsub = null;
+  }
+}
+
 function cleanupLocal() {
   stopSubs();
+  if (actionsUnsub) { try { actionsUnsub(); } catch (e) {} actionsUnsub = null; }
   tableId = null; table = null; players = []; myPrivate = null;
+  hostState = null; processing = false; rerun = false; recorded = false;
 }
 
 // ----------------------------------------------------------- lobby actions
@@ -180,55 +202,114 @@ async function abortTable() {
 }
 
 // ----------------------------------------------------- host: start the game
-// Deals roles + the night reveal. Only the host runs this; the rules also only
-// let the host write the table doc and the private docs.
+// Builds the full authoritative state (js/engine.js), writes every player's
+// SECRET private doc + the public table doc + the host-only secret state, and
+// flips the table to "night". Only the host runs this (rules enforce it).
 async function startGame() {
   if (!isHost()) return { ok: false, message: "Only the host can start the game." };
   const roster = players.slice();
   if (roster.length < MIN_PLAYERS) return { ok: false, message: `Need at least ${MIN_PLAYERS} players.` };
   if (roster.length > MAX_PLAYERS) return { ok: false, message: `Secret Hitler is ${MIN_PLAYERS}–${MAX_PLAYERS} players.` };
-
-  const uids = roster.map((p) => p.uid);
-  const names = {};
-  roster.forEach((p) => { names[p.uid] = p.name || "Player"; });
-
-  const g = E().setupGame(uids);   // pure deal (js/engine.js)
-
   try {
-    // Write every player's SECRET first (only they can read it), then flip the
-    // table to "night" so clients render the reveal against a ready private doc.
-    for (const uid of g.seatOrder) {
-      await setDoc(pathPrivate(tableId, uid), {
-        role: g.reveals[uid].role,
-        seat: g.reveals[uid].seat,
-        knownFascists: g.reveals[uid].knownFascists,
-        knownHitler: g.reveals[uid].knownHitler || null,
-      });
-    }
-    await updateDoc(pathTable(tableId), {
-      status: "night",
-      seatOrder: g.seatOrder,
-      firstPres: g.firstPres,
-      playerCount: g.playerCount,
-      names,
-    });
+    hostState = E().initGame(roster.map((p) => ({ uid: p.uid, name: p.name || "Player" })), Math.random);
+    recorded = false;
+    await pushState();
+    await updateDoc(pathTable(tableId), { status: "night", playerCount: hostState.n, names: hostState.names });
     return { ok: true };
   } catch (e) { return { ok: false, message: humanError(e) }; }
 }
 
-// Host advances night → play. (Phase 2 builds the election/legislative loop;
-// for now this just marks the game live so the table screen can show.)
+// Host advances the night reveal → live play. The engine is already at the first
+// nomination; this only flips the table status so clients switch views.
 async function beginPlay() {
   if (!isHost()) return { ok: false, message: "Only the host can start play." };
   try { await updateDoc(pathTable(tableId), { status: "playing" }); return { ok: true }; }
   catch (e) { return { ok: false, message: humanError(e) }; }
 }
 
-// The host reacts to state as it changes. Phase 1 has no automatic transitions
-// (start/begin are explicit host actions); this is where the action-queue
-// processor will live in later phases.
+// --------------------------------------------------- host: the action pump
+// Write the current authoritative state out: the host-only secret copy (so a
+// host reload can resume), the PUBLIC projection (table doc), and each player's
+// PRIVATE doc. Firestore forbids nested arrays, so the secret blob is a JSON
+// string; the public/private views are plain maps the rules already allow.
+async function pushState() {
+  if (!hostState) return;
+  await setDoc(pathHostState(tableId), { s: JSON.stringify(hostState), updatedAt: serverTimestamp() });
+  const pub = E().publicView(hostState);
+  await updateDoc(pathTable(tableId), pub);
+  for (const uid of hostState.seatOrder) {
+    await setDoc(pathPrivate(tableId, uid), E().privateView(hostState, uid));
+  }
+  if (hostState.phase === "gameover" && !recorded) { recorded = true; await finishGame(); }
+}
+
+async function loadHostState() {
+  try {
+    const snap = await getDoc(pathHostState(tableId));
+    if (snap.exists() && snap.data().s) hostState = JSON.parse(snap.data().s);
+  } catch (e) { /* not host / not ready */ }
+}
+
+// Drain the action queue: apply each move to the authoritative state (invalid
+// ones are dropped), delete it, then publish the new state once. Serialized via
+// `processing`; a snapshot that lands mid-run re-runs afterwards.
+async function processActions(snap) {
+  if (!isHost()) return;
+  if (processing) { rerun = true; return; }
+  processing = true;
+  try {
+    if (!hostState) await loadHostState();
+    if (!hostState) return;
+    const docs = snap.docs.slice().sort((a, b) => {
+      const ta = a.data().at && a.data().at.toMillis ? a.data().at.toMillis() : 0;
+      const tb = b.data().at && b.data().at.toMillis ? b.data().at.toMillis() : 0;
+      return ta - tb;
+    });
+    let changed = false;
+    for (const d of docs) {
+      const act = d.data();
+      const res = E().applyAction(hostState, act, Math.random);
+      if (res.ok) { hostState = res.state; changed = true; }
+      try { await deleteDoc(d.ref); } catch (e) {}
+      if (hostState.phase === "gameover") break;
+    }
+    if (changed) await pushState();
+  } catch (e) { /* transient; the next snapshot retries */ }
+  finally {
+    processing = false;
+    if (rerun) { rerun = false; try { const s = await getDocs(colActions(tableId)); await processActions(s); } catch (e) {} }
+  }
+}
+
+// A player (including the host) submits a move; the host applies it. `by` is
+// pinned to the sender so the rules can verify authorship.
+async function submitAction(action) {
+  if (!me || !tableId) return { ok: false, message: "Not at a table." };
+  try {
+    await addDoc(colActions(tableId), Object.assign({}, action, { by: me.uid, at: serverTimestamp() }));
+    return { ok: true };
+  } catch (e) { return { ok: false, message: humanError(e) }; }
+}
+
+// The game finished — record it to the group as an ordinary reviewable game
+// (true roles included), exactly once, by the host. app.js saves + uploads it.
+async function finishGame() {
+  try { await updateDoc(pathTable(tableId), { status: "finished" }); } catch (e) {}
+  const rec = E().toRecordedGame(hostState);
+  rec.id = newId();
+  emit("online:finished", { record: rec, isHost: isHost() });
+}
+
+// Called from the table snapshot: keep the host loop attached and, on a host
+// reload mid-game, reload the authoritative state and resume.
 function runHostLoop() {
-  if (!isHost() || !table) return;
+  ensureHostLoop();
+  if (isHost() && table && (table.status === "playing" || table.status === "night") && !hostState) {
+    loadHostState().then(() => { if (hostState) processCatchUp(); });
+  }
+}
+async function processCatchUp() {
+  try { const s = await getDocs(colActions(tableId)); await processActions(s); } catch (e) {}
 }
 
 // -------------------------------------------------------------- auth bridge
@@ -270,6 +351,7 @@ window.Online = {
   async startGame() { try { return await startGame(); } catch (e) { return { ok: false, message: humanError(e) }; } },
   async beginPlay() { try { return await beginPlay(); } catch (e) { return { ok: false, message: humanError(e) }; } },
   async abortTable() { try { return await abortTable(); } catch (e) { return { ok: false, message: humanError(e) }; } },
+  async submitAction(a) { try { return await submitAction(a); } catch (e) { return { ok: false, message: humanError(e) }; } },
   refresh: emitState,
 };
 

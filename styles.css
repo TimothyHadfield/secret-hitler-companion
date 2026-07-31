@@ -1017,3 +1017,56 @@ body.lie-on span.lie-col { display: inline; }
 .ol-role.fascist .ol-role-name b { color: var(--fac-2); }
 .ol-role.hitler .ol-role-name b { color: #f2e8d5; }
 .ol-role-sub { font-size: 14px; line-height: 1.5; color: var(--ink); }
+
+/* ---- online live game ---- */
+.ol-board { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.ol-track { display: flex; align-items: center; gap: 10px; }
+.ol-track-lbl { width: 58px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.ol-slots { display: flex; gap: 5px; flex: 1; }
+.olp { flex: 1; height: 26px; border-radius: 5px; border: 1px solid var(--line); display: grid; place-items: center; font-size: 9px; font-weight: 700; color: #fff; background: rgba(0,0,0,0.2); }
+.olp.f.on { background: var(--fac); border-color: var(--fac-2); }
+.olp.l.on { background: var(--lib); border-color: var(--lib-2); }
+.olp.f { border-color: rgba(192,57,43,0.4); }
+.ol-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.oltrk { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--muted); display: inline-block; margin-left: 3px; }
+.oltrk.on { background: var(--fac-2); border-color: var(--fac-2); }
+
+.ol-players { display: flex; flex-direction: column; gap: 5px; }
+.ol-player { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 11px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--line); }
+.ol-player.dead { opacity: 0.5; }
+.ol-player.r-lib { border-color: var(--lib); }
+.ol-player.r-fac { border-color: var(--fac); }
+.ol-player.r-hit { border-color: #000; background: rgba(0,0,0,0.5); }
+.ol-pn { font-size: 14px; font-weight: 600; }
+.ol-pbadges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.ol-b { font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; }
+.ol-b.p { background: var(--gold); color: #1a1410; }
+.ol-b.c { background: var(--lib-2); color: #06222b; }
+.ol-b.n { background: rgba(217,164,65,0.25); color: var(--gold); }
+.ol-b.tl { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+.ol-rt { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.ol-vote { font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; }
+.ol-vote.ja { background: rgba(69,184,214,0.2); color: var(--lib-2); }
+.ol-vote.nein { background: rgba(224,85,60,0.2); color: var(--fac-2); }
+.ol-odds { font-size: 10px; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
+.ol-odds.hi { background: var(--fac); color: #fff; }
+.ol-odds.mid { background: var(--gold); color: #241a08; }
+.ol-odds.lo { background: rgba(69,184,214,0.18); color: var(--lib-2); }
+
+.ol-action { background: rgba(217,164,65,0.08); border: 1px solid var(--line); border-radius: 12px; padding: 13px; display: flex; flex-direction: column; gap: 10px; }
+.ol-prompt { font-size: 15px; font-weight: 600; line-height: 1.4; }
+.ol-choices { display: flex; flex-wrap: wrap; gap: 7px; }
+.ol-choice { padding: 9px 14px; }
+.ol-choice.truth { border-color: var(--lib-2); }
+.ol-cards { display: flex; gap: 8px; flex-wrap: wrap; }
+.ol-card { flex: 1; min-width: 92px; padding: 16px 10px; font-weight: 700; border-radius: 10px; }
+.ol-card.f { background: rgba(192,57,43,0.25); border-color: var(--fac); color: #fff; }
+.ol-card.l { background: rgba(31,143,176,0.25); border-color: var(--lib); color: #fff; }
+.ol-over { font-family: Georgia, serif; font-size: 22px; text-align: center; }
+.ol-myrole { font-size: 13px; padding: 9px 12px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--line); }
+.ol-myrole.hitler { background: rgba(0,0,0,0.4); }
+.ol-learned { font-size: 13px; padding: 7px 12px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); }
+.ol-history { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.ol-hrow { padding: 6px 10px; border-radius: 7px; background: var(--panel-2); border: 1px solid var(--line); }
+.ol-action .c-fac, .ol-hrow .c-fac, .ol-learned .c-fac { color: var(--fac-2); }
+.ol-action .c-lib, .ol-hrow .c-lib, .ol-learned .c-lib { color: var(--lib-2); }

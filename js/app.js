@@ -876,8 +876,8 @@
     const t = O.table;
     if (!t) return renderOnlineBrowse(box, O);
     if (t.status === "lobby") return renderOnlineLobby(box, O);
-    if (t.status === "night" || t.status === "playing") return renderOnlineNight(box, O);
-    // finished / aborted are transient — fall back to the browser
+    if (t.status === "night") return renderOnlineNight(box, O);
+    if (t.status === "playing" || t.status === "finished") return renderOnlinePlaying(box, O);
     return renderOnlineBrowse(box, O);
   }
 
@@ -994,15 +994,221 @@
       reveal +
       `<div class="online-sub">Seating &amp; first President</div>` +
       `<div class="ol-seats">${seats}</div>` +
-      `<div class="online-hint">${firstName} is the first President. ` +
-      `<b>Turn-by-turn play is coming in the next update</b> — for now the app deals roles and runs the night; continue the round at your table.</div>` +
+      `<div class="online-hint">${escapeHtml(firstName)} is the first President. When everyone has seen their role, the host begins.</div>` +
       (O.isHost
-        ? `<div class="control-row"><button id="olEnd" class="ghost-danger">End game</button></div>`
-        : `<div class="control-row"><button id="olLeave" class="ghost">Leave</button></div>`);
+        ? `<div class="control-row"><button id="olBegin" class="primary">Begin game</button>` +
+          `<button id="olEnd" class="ghost-danger">End game</button></div>`
+        : `<div class="online-hint">Waiting for the host to begin the game.</div>` +
+          `<div class="control-row"><button id="olLeave" class="ghost">Leave</button></div>`);
+    if ($("olBegin")) $("olBegin").onclick = async () => { $("olBegin").disabled = true; const r = await O.beginPlay(); if (!r.ok) { $("olBegin").disabled = false; showToast(r.message); } };
     if ($("olEnd")) $("olEnd").onclick = () => askConfirm(
-      { title: "End this game?", body: "The game closes for everyone in the lobby.", confirm: "End game", cancel: "Keep going", danger: true },
+      { title: "End this game?", body: "The game closes for everyone.", confirm: "End game", cancel: "Keep going", danger: true },
       async () => { await O.abortTable(); });
     if ($("olLeave")) $("olLeave").onclick = async () => { await O.leaveTable(); };
+  }
+
+  // -- live game: board + table + the current step's controls -----------------
+  const CLAIM_LABELS = ["Coal · 3F", "Golden · 2F 1L", "Silver · 1F 2L", "Bronze · 3L"]; // index = #liberals claimed
+  let olForm = { discard: null }; // transient President discard selection
+
+  // Fascist odds per seat, reusing the analyzer — computed by briefly swapping in
+  // an online-derived review state (restored immediately). Only when the setting
+  // is on, and never mid-secret (public events only, so nothing leaks).
+  function onlineSeatOdds(t) {
+    if (!settings.boardOdds || !window.Honesty) return null;
+    const saved = state;
+    try {
+      state = {
+        players: t.seatOrder.map((u) => ({ name: t.names[u] || "?", dead: (t.deadUids || []).indexOf(u) >= 0 })),
+        events: t.events || [], firstPres: 0, roundMods: {}, form: {}, review: true,
+      };
+      const ri = computeRoleOdds();
+      return ri && ri.pFascist ? ri.pFascist : null;
+    } catch (e) { return null; } finally { state = saved; }
+  }
+
+  function olBoard(t) {
+    const fac = [];
+    for (let i = 0; i < 6; i++) fac.push(`<span class="olp f${i < t.facEnacted ? " on" : ""}">${i === 5 ? "WIN" : ""}</span>`);
+    const lib = [];
+    for (let i = 0; i < 5; i++) lib.push(`<span class="olp l${i < t.libEnacted ? " on" : ""}"></span>`);
+    const dots = [0, 1, 2].map((i) => `<span class="oltrk${i < t.tracker ? " on" : ""}"></span>`).join("");
+    return `<div class="ol-board">` +
+      `<div class="ol-track"><span class="ol-track-lbl">Fascist</span><div class="ol-slots">${fac.join("")}</div></div>` +
+      `<div class="ol-track"><span class="ol-track-lbl">Liberal</span><div class="ol-slots">${lib.join("")}</div></div>` +
+      `<div class="ol-meta"><span>Tracker ${dots}</span><span class="muted">Draw ${t.deckCount || 0} · Discard ${t.discardCount || 0}</span></div>` +
+      `</div>`;
+  }
+
+  function olSeats(t, over) {
+    const odds = over ? null : onlineSeatOdds(t);
+    const tl = t.termLimited || [];
+    const lastVotes = (t.lastElection && t.lastElection.votes) || null;
+    return `<div class="ol-players">` + t.seatOrder.map((uid, i) => {
+      const dead = (t.deadUids || []).indexOf(uid) >= 0;
+      const isP = uid === t.presUid, isC = uid === t.chancellorUid, isNom = uid === t.nomineeUid;
+      let roleCls = "", roleTag = "";
+      if (over && t.roleOf) {
+        const r = t.roleOf[uid];
+        roleCls = r === "hitler" ? " r-hit" : r === "fascist" ? " r-fac" : " r-lib";
+        roleTag = `<span class="ol-rt">${r === "hitler" ? "Hitler" : r === "fascist" ? "Fascist" : "Liberal"}</span>`;
+      }
+      const badges =
+        (isP ? `<span class="ol-b p">P</span>` : "") +
+        (isC ? `<span class="ol-b c">C</span>` : "") +
+        (isNom && !isC ? `<span class="ol-b n">nominee</span>` : "") +
+        (tl.indexOf(uid) >= 0 && !over ? `<span class="ol-b tl">termed</span>` : "") +
+        (dead ? `<span class="ol-b d">💀</span>` : "");
+      const vote = lastVotes && uid in lastVotes ? `<span class="ol-vote ${lastVotes[uid]}">${lastVotes[uid] === "ja" ? "Ja" : "Nein"}</span>` : "";
+      const oddsChip = odds && odds[i] != null && !dead
+        ? `<span class="ol-odds ${odds[i] >= 0.66 ? "hi" : odds[i] >= 0.4 ? "mid" : "lo"}">${Math.round(odds[i] * 100)}%</span>` : "";
+      return `<div class="ol-player${dead ? " dead" : ""}${roleCls}">` +
+        `<span class="ol-pn">${i + 1}. ${escapeHtml(t.names[uid] || "Player")}</span>` +
+        `<span class="ol-pbadges">${badges}${vote}${oddsChip}${roleTag}</span></div>`;
+    }).join("") + `</div>`;
+  }
+
+  function olHistory(t) {
+    const evs = (t.events || []);
+    if (!evs.length) return "";
+    const nm = (i) => escapeHtml((t.names[t.seatOrder[i]] || "?"));
+    const rows = evs.map((e) => {
+      const ty = e.type || "gov";
+      if (ty === "gov") {
+        const pol = e.vetoed ? "vetoed" : (e.enacted === "F" ? "Fascist" : e.enacted === "L" ? "Liberal" : "—");
+        const claim = CLAIM_LABELS[e.claimLibs] ? " · claim " + CLAIM_LABELS[e.claimLibs].split(" · ")[1] : "";
+        const pw = e.power ? " · " + e.power.type.replace("-", " ") : "";
+        return `<div class="ol-hrow"><b>${nm(e.presidentIdx)}</b> → ${nm(e.chancellorIdx)}: <span class="${e.enacted === "F" ? "c-fac" : "c-lib"}">${pol}</span>${claim}${pw}</div>`;
+      }
+      if (ty === "fail") return `<div class="ol-hrow muted">${nm(e.presidentIdx)}’s government failed</div>`;
+      if (ty === "chaos") return `<div class="ol-hrow">Chaos: <span class="${e.enacted === "F" ? "c-fac" : "c-lib"}">${e.enacted === "F" ? "Fascist" : "Liberal"}</span> topdecked</div>`;
+      if (ty === "hitler") return `<div class="ol-hrow c-fac">Hitler (${nm(e.chancellorIdx)}) elected Chancellor</div>`;
+      return "";
+    }).join("");
+    return `<div class="online-sub">History</div><div class="ol-history">${rows}</div>`;
+  }
+
+  function olMyInfo(pv, t) {
+    if (!pv || !pv.role) return "";
+    const nm = (uid) => escapeHtml(t.names[uid] || "?");
+    let s = `<div class="ol-myrole ${pv.role}">You are <b>${pv.role === "hitler" ? "Hitler" : pv.role === "fascist" ? "Fascist" : "Liberal"}</b>`;
+    if (pv.role === "fascist") s += ` · Hitler: ${pv.knownHitler ? nm(pv.knownHitler) : "?"}` + (pv.knownFascists.length ? ` · Fascists: ${pv.knownFascists.map(nm).join(", ")}` : "");
+    if (pv.role === "hitler" && pv.knownFascists.length) s += ` · Fascist: ${pv.knownFascists.map(nm).join(", ")}`;
+    s += `</div>`;
+    (pv.learned || []).forEach((l) => {
+      if (l.type === "investigate") s += `<div class="ol-learned">🔍 You investigated <b>${nm(l.target)}</b>: <b class="${l.party === "Fascist" ? "c-fac" : "c-lib"}">${l.party}</b></div>`;
+      if (l.type === "peek") s += `<div class="ol-learned">👁 You peeked the top 3: ${l.cards.map((c) => `<b class="${c === "F" ? "c-fac" : "c-lib"}">${c}</b>`).join(" ")}</div>`;
+    });
+    return s;
+  }
+
+  function renderOnlinePlaying(box, O) {
+    const t = O.table, pv = O.myPrivate || {};
+    const meUid = O.me && O.me.uid;
+    const over = t.phase === "gameover" || t.status === "finished";
+    box.innerHTML =
+      `<div class="online-head"><h2 class="online-title">${escapeHtml(activeGroupLabel())}</h2></div>` +
+      olBoard(t) +
+      olSeats(t, over) +
+      `<div id="olAction" class="ol-action"></div>` +
+      olMyInfo(pv, t) +
+      olHistory(t);
+    renderOnlineAction(t, pv, meUid, O, over);
+  }
+
+  function renderOnlineAction(t, pv, meUid, O, over) {
+    const wrap = $("olAction");
+    if (!wrap) return;
+    const nm = (uid) => escapeHtml(t.names[uid] || "Player");
+    const isPres = meUid === t.presUid;
+    const alive = (t.deadUids || []).indexOf(meUid) < 0;
+    const waiting = (who) => `<div class="online-hint">Waiting for <b>${nm(who)}</b>${who === t.presUid ? " (President)" : ""}…</div>`;
+    const send = async (a, btn) => { if (btn) btn.disabled = true; const r = await O.submitAction(a); if (!r.ok) { if (btn) btn.disabled = false; showToast(r.message || "Couldn't do that."); } };
+
+    if (over) {
+      const win = t.winner || "?";
+      wrap.innerHTML =
+        `<div class="ol-over ${win === "Fascist" ? "c-fac" : "c-lib"}">${escapeHtml(win)}s win</div>` +
+        `<div class="online-hint">${escapeHtml(t.winReason || "")} The game has been recorded to ${escapeHtml(activeGroupLabel())} — find it in Statistics.</div>` +
+        `<div class="control-row"><button id="olToStats" class="primary">View in Statistics</button>` +
+        (O.isHost ? `<button id="olEnd" class="ghost">Close table</button>` : `<button id="olLeave" class="ghost">Leave</button>`) + `</div>`;
+      if ($("olToStats")) $("olToStats").onclick = () => { O.leaveTable(); openStats(); };
+      if ($("olEnd")) $("olEnd").onclick = async () => { await O.abortTable(); };
+      if ($("olLeave")) $("olLeave").onclick = async () => { await O.leaveTable(); };
+      return;
+    }
+
+    const phase = t.phase;
+    if (phase === "nominate") {
+      if (isPres) {
+        const tl = t.termLimited || [];
+        const opts = t.seatOrder.filter((u) => u !== meUid && (t.deadUids || []).indexOf(u) < 0 && tl.indexOf(u) < 0);
+        wrap.innerHTML = `<div class="ol-prompt">You are President. Nominate a Chancellor:</div>` +
+          `<div class="ol-choices">${opts.map((u) => `<button class="ol-choice" data-u="${escapeHtml(u)}">${nm(u)}</button>`).join("")}</div>`;
+        wrap.querySelectorAll(".ol-choice").forEach((b) => b.onclick = () => send({ type: "nominate", target: b.dataset.u }, b));
+      } else wrap.innerHTML = waiting(t.presUid);
+    } else if (phase === "vote") {
+      const voted = (t.votedUids || []).indexOf(meUid) >= 0;
+      const head = `<div class="ol-prompt">Vote on President <b>${nm(t.presUid)}</b> & Chancellor <b>${nm(t.nomineeUid)}</b> — ${(t.votedUids || []).length}/${t.seatOrder.length - (t.deadUids || []).length} in</div>`;
+      if (alive && !voted) {
+        wrap.innerHTML = head + `<div class="control-row"><button id="olJa" class="primary">Ja</button><button id="olNein" class="ghost-danger">Nein</button></div>`;
+        $("olJa").onclick = (e) => send({ type: "vote", vote: "ja" }, e.target);
+        $("olNein").onclick = (e) => send({ type: "vote", vote: "nein" }, e.target);
+      } else wrap.innerHTML = head + `<div class="online-hint">${voted ? "Your vote is in — waiting for the rest." : "Waiting for the vote."}</div>`;
+    } else if (phase === "president_play") {
+      if (isPres && pv.drawn) {
+        const cards = pv.drawn;
+        if (olForm.discard == null) {
+          wrap.innerHTML = `<div class="ol-prompt">You drew these 3. Choose ONE to discard:</div>` +
+            `<div class="ol-cards">${cards.map((c, i) => `<button class="ol-card ${c === "F" ? "f" : "l"}" data-i="${i}">${c === "F" ? "Fascist" : "Liberal"}</button>`).join("")}</div>`;
+          wrap.querySelectorAll(".ol-card").forEach((b) => b.onclick = () => { olForm.discard = +b.dataset.i; renderOnlineAction(t, pv, meUid, O, over); });
+        } else {
+          const kept = cards.filter((_, i) => i !== olForm.discard);
+          const trueLibs = cards.filter((c) => c === "L").length;
+          wrap.innerHTML = `<div class="ol-prompt">Passing <b>${kept.map((c) => c === "F" ? "Fascist" : "Liberal").join(" + ")}</b> to ${nm(t.chancellorUid)}. Announce the hand you claim you drew (you may bluff):</div>` +
+            `<div class="ol-choices">${CLAIM_LABELS.map((lbl, k) => `<button class="ol-choice${k === trueLibs ? " truth" : ""}" data-k="${k}">${lbl}${k === trueLibs ? " ✓" : ""}</button>`).join("")}</div>` +
+            `<div class="control-row"><button id="olRepick" class="ghost">↩ Re-pick discard</button></div>`;
+          wrap.querySelectorAll(".ol-choice").forEach((b) => b.onclick = () => { const d = olForm.discard; olForm.discard = null; send({ type: "president_play", discard: d, claim: +b.dataset.k }, b); });
+          $("olRepick").onclick = () => { olForm.discard = null; renderOnlineAction(t, pv, meUid, O, over); };
+        }
+      } else wrap.innerHTML = waiting(t.presUid);
+    } else if (phase === "chancellor_play") {
+      if (meUid === t.chancellorUid && pv.passed) {
+        const cards = pv.passed;
+        wrap.innerHTML = `<div class="ol-prompt">You were passed these 2. Enact ONE:</div>` +
+          `<div class="ol-cards">${cards.map((c, i) => `<button class="ol-card ${c === "F" ? "f" : "l"}" data-i="${i}">Enact ${c === "F" ? "Fascist" : "Liberal"}</button>`).join("")}</div>` +
+          (t.facEnacted >= 5 ? `<div class="control-row"><button id="olVeto" class="ghost-danger">Propose veto</button></div>` : "");
+        wrap.querySelectorAll(".ol-card").forEach((b) => b.onclick = () => send({ type: "chancellor_play", enact: +b.dataset.i }, b));
+        if ($("olVeto")) $("olVeto").onclick = (e) => send({ type: "chancellor_play", veto: true }, e.target);
+      } else wrap.innerHTML = waiting(t.chancellorUid);
+    } else if (phase === "veto") {
+      if (isPres) {
+        wrap.innerHTML = `<div class="ol-prompt">${nm(t.chancellorUid)} proposes to VETO this agenda. Agree?</div>` +
+          `<div class="control-row"><button id="olVy" class="primary">Agree — discard both</button><button id="olVn" class="ghost">Refuse</button></div>`;
+        $("olVy").onclick = (e) => send({ type: "veto", agree: true }, e.target);
+        $("olVn").onclick = (e) => send({ type: "veto", agree: false }, e.target);
+      } else wrap.innerHTML = waiting(t.presUid);
+    } else if (phase.indexOf("power_") === 0) {
+      const kind = phase.slice(6);
+      if (isPres) {
+        if (kind === "peek") {
+          const peek = (pv.learned || []).filter((l) => l.type === "peek").slice(-1)[0];
+          wrap.innerHTML = `<div class="ol-prompt">Policy Peek — the top 3 cards are ${peek ? peek.cards.map((c) => `<b class="${c === "F" ? "c-fac" : "c-lib"}">${c === "F" ? "F" : "L"}</b>`).join(" ") : "…"}</div>` +
+            `<div class="control-row"><button id="olPk" class="primary">Continue</button></div>`;
+          $("olPk").onclick = (e) => send({ type: "power" }, e.target);
+        } else {
+          const label = kind === "investigate" ? "Investigate a player's party" : kind === "special" ? "Choose the next President" : "Execute a player";
+          const opts = t.seatOrder.filter((u) => u !== meUid && (t.deadUids || []).indexOf(u) < 0 && (kind !== "investigate" || (t.investigatedUids || []).indexOf(u) < 0));
+          wrap.innerHTML = `<div class="ol-prompt">${label}:</div><div class="ol-choices">${opts.map((u) => `<button class="ol-choice" data-u="${escapeHtml(u)}">${nm(u)}</button>`).join("")}</div>`;
+          wrap.querySelectorAll(".ol-choice").forEach((b) => b.onclick = () => send({ type: "power", target: b.dataset.u }, b));
+        }
+      } else {
+        const label = kind === "investigate" ? "investigating a player" : kind === "special" ? "calling a special election" : kind === "peek" ? "peeking at the deck" : "choosing who to execute";
+        wrap.innerHTML = `<div class="online-hint"><b>${nm(t.presUid)}</b> is ${label}…</div>`;
+      }
+    }
+    // reset the President's transient discard selection if we've moved on
+    if (phase !== "president_play") olForm.discard = null;
   }
 
   // ------------------------------ SETUP --------------------------------------
@@ -3317,14 +3523,42 @@
   // Online play (js/online.js) talks to us over online:* events; re-render the
   // online screen whenever the live state changes. A table that closes/leaves
   // drops us back to the browser view.
+  let onlineFinishedFor = null; // guards one finish-handling per table
   function wireOnline() {
     const rerender = () => { if (!$("onlineScreen").classList.contains("hidden")) renderOnline(); };
-    document.addEventListener("online:state", rerender);
+    document.addEventListener("online:state", (e) => {
+      rerender();
+      // Non-hosts: once a game finishes, pull the host's recorded copy so it shows
+      // up in Statistics (the host uploads it; we just need to download it).
+      const O = online(), d = e.detail || {};
+      const t = d.table;
+      if (t && t.status === "finished" && O && !O.isHost && onlineFinishedFor !== O.tableId) {
+        onlineFinishedFor = O.tableId;
+        const c = cloud();
+        if (c && c.user) setTimeout(() => c.sync(), 1500);
+      }
+    });
     document.addEventListener("online:loaded", () => { refreshOnlineTables(); rerender(); });
-    document.addEventListener("online:left", () => { onlineTables = null; refreshOnlineTables(); rerender(); });
+    document.addEventListener("online:left", () => { onlineTables = null; onlineFinishedFor = null; refreshOnlineTables(); rerender(); });
     document.addEventListener("online:closed", () => {
-      onlineTables = null; refreshOnlineTables(); rerender();
+      onlineTables = null; onlineFinishedFor = null; refreshOnlineTables(); rerender();
       if (!$("onlineScreen").classList.contains("hidden")) showToast("The game was closed.");
+    });
+    // The HOST fires this once when the game ends: save it locally + upload to the
+    // group so every player gets it (they download it on their next sync).
+    document.addEventListener("online:finished", (e) => {
+      const d = e.detail || {};
+      if (!d.record) return;
+      try {
+        const c = cloud();
+        const rec = d.record;
+        if (c && c.groupId) rec.groupId = c.groupId; // record straight into the active group
+        Stats.recordGame(rec);
+        applyScope();
+        if (!$("statsScreen").classList.contains("hidden")) renderStats();
+        if (c && c.user) c.sync();
+        showToast("Game over — recorded to " + activeGroupLabel() + ".");
+      } catch (err) { showToast("Game over. (Couldn't auto-record — check Statistics.)"); }
     });
   }
 

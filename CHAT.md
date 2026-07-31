@@ -1454,3 +1454,42 @@ Test-harness gotcha logged: don't `sed '/online\.js/d'` the HTML — it nukes a 
 `<script>` inside an unclosed comment; delete the exact `<script … src="js/online.js">` tag instead.
 Files: `js/engine.js` (new), `js/online.js` (new), `test/engine.test.js` (new), `index.html`, `js/app.js`,
 `styles.css`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`.
+
+## Session 41 — ONLINE PLAY complete (all 5 phases in one go) 🌐
+
+**User:** continue full online play — do all 5 "what's next" steps (election loop, legislative session,
+powers, win detection → record to group, polish) with no pauses.
+
+**Shipped the whole game.** `js/engine.js` grew from the Phase-1 role-dealer into a full authoritative
+state machine; `js/online.js` gained the host action-pump; `js/app.js` got the live game UI.
+
+- **engine.js (pure reducer):** `initGame` (roles + shuffled 11F/6L deck) → `applyAction(state,action,rng)`
+  handling nominate / vote / president_play (discard + a bluffable claim) / chancellor_play (enact or
+  veto) / veto / powers (investigate, special-election, peek, execute); win detection (5L, 6F, Hitler
+  elected Chancellor after 3F, Hitler executed); `publicView` (no secrets), `privateView` (one player's
+  role + current hand + learned power results), `toRecordedGame` (analyzer-compatible). Deterministic
+  given rng. **Node test = 1653 assertions**: 60 full simulated games across all counts checking 17-card
+  conservation every step, tracker bounds, term limits, veto, both Hitler wins, and that `publicView`
+  never leaks roles/deck/hands mid-game (but does at game over for the reveal + recording). (First run
+  failed only because my EXPECT table had regular-fascist counts, not team-incl-Hitler; engine was right.)
+- **online.js (host loop):** authoritative full state persisted as a JSON blob in `host/state`
+  (host-only). `processActions` drains the `actions/` queue in timestamp order, applies each via the
+  engine (dropping illegal ones), then `pushState` writes the secret blob + the public table doc +
+  EVERY player's private doc, and deletes the action. `submitAction` lets any player (incl. host) post a
+  move (`by` pinned for the rules). Host reload resumes via `loadHostState`. On game over `finishGame`
+  sets status finished + emits `online:finished`.
+- **firestore.rules:** added `host/{k}` (host-only read/write — the one place the whole secret game
+  lives). Deployed (config-only). Per-doc, host-scoped; tables are ephemeral scratch, a finished game is
+  a normal `games` doc, so nothing here touches recorded history (DATA_SAFETY invariant holds).
+- **app.js live UI (`renderOnlinePlaying`):** board (tracks + tracker dots + pile counts), players (P/C/
+  nominee/termed/dead badges, per-seat Ja/Nein from the last election, and a live fascist-% chip when the
+  Fascist-odds setting is on — computed by briefly swapping in an online-derived review state so the
+  analyzer runs on PUBLIC events only), History, the player's secret panel, and a phase-driven action
+  panel (nominate choices / Ja-Nein / draw-discard-claim / enact-or-veto / veto agree / power targets),
+  showing "waiting for X" to non-actors. Night screen now has a host **Begin game**. `online:finished` →
+  `Stats.recordGame` + upload; non-hosts pull it on sync. "View in Statistics" from the over screen.
+- **Verified:** engine 1653/1653; a headless **mock-host smoke test played a whole game through the real
+  UI** (nominate→vote→draw→discard+claim→enact→board/history update→bot-driven to a Fascist win→over
+  screen→recorded to Statistics) = SMOKE_OK; modules init cleanly against live Firebase. NOT automated:
+  the true multi-client round-trip (wants a real multi-account game). Files: `js/engine.js`, `js/online.js`,
+  `js/app.js`, `styles.css`, `firestore.rules`, `test/engine.test.js`, `PROGRESS.md`, `CHAT.md`.

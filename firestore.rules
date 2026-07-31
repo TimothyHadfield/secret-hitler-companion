@@ -231,6 +231,12 @@ service cloud.firestore {
           allow read:  if isMember(groupId) && puid == uid();
           allow write: if isMember(groupId) && tableHost() == uid();
         }
+        // The host's own copy of the FULL authoritative state (roles, deck, hands)
+        // so a host reload can resume. Only the host may ever read or write it —
+        // this is the one place the whole secret game lives.
+        match /host/{k} {
+          allow read, write: if isMember(groupId) && tableHost() == uid();
+        }
         // Action queue: a player submits their OWN moves; the host processes them.
         match /actions/{actionId} {
           allow read:           if isMember(groupId) && tableHost() == uid();
