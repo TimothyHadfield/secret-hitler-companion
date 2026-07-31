@@ -1382,3 +1382,30 @@ Also let Rules items carry user notes too.
   mock-Cloud smoke test **SMOKE_OK** (open, search, expand, post note shows author, delete, drill-down,
   Game theory opens). Files: `index.html`, `js/reference.js` (new), `js/app.js`, `js/cloud.js`,
   `styles.css`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`.
+
+## Session 39 — label & favorite recorded games
+
+**User:** let the user label games with a specific name, and favorite games so they always appear at the
+top of the games list.
+
+**Shipped.**
+- **Star + label on every game box** in the All games list. A ★/☆ star (top-left of the box) toggles
+  favorite; **favorites float to the top** (`Stats.orderForDisplay()`, a stable partition). A label
+  (name) shows on the box and in the review. Also settable from the **review panel** (☆ Favorite /
+  Add a label / Rename, beside Delete game).
+- **stats.js:** `setFavorite(id,bool)` / `setLabel(id,str≤60)` mutate the FULL array
+  (loadAllGames+saveGames, like deleteGame) storing `favorite`/`label` on the local game record —
+  mutable annotations, NOT part of the append-only history. `orderForDisplay(games)` = favorites first.
+- **Personal + cross-device without touching the immutable game doc.** Games are `update:if false`, and
+  favorites are per-user anyway, so metadata mirrors to `profiles/{uid}/gameMeta/{gameId}` = {label,
+  favorite} — fully private (owner read/write only, sizes capped), separate from games. `app.setGameMeta`
+  writes local + `Cloud.setGameMeta`; `sync()` pulls all gameMeta and applies onto local games (remote
+  wins). Fully works offline/signed-out (local only). Limitation: an offline change may not reach the
+  cloud until changed again online (best-effort push). Rules deployed (config-only).
+- **List is now id-based, not index-based:** `openReview(id)` finds the game by id (was an array index),
+  so floating favorites to the top can't misroute a click. Box is a `div[role=button]` (nested `<button>`
+  star would be invalid HTML); the star stopPropagations so it never opens the review.
+- **Verified:** Node unit test of stats (fav floats to top, keys removed on clear, label cap 60) +
+  headless mock-Cloud smoke test SMOKE_OK (star floats + calls setGameMeta without opening review;
+  review Fav/Label work; label + favorite render on the box and persist to localStorage). Files:
+  `js/stats.js`, `js/app.js`, `js/cloud.js`, `styles.css`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`.

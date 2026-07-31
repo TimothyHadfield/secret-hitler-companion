@@ -575,6 +575,26 @@ async function sync() {
         }
       }
 
+      // Apply the user's personal per-game labels/favorites (stored apart from
+      // the immutable game docs) onto the local games. Best-effort: metadata
+      // must never fail a sync.
+      try {
+        const meta = await pullGameMeta();
+        for (const g of local) {
+          if (!g.id) continue;
+          const m = meta[g.id];
+          if (!m) continue;
+          if ((g.label || "") !== (m.label || "")) {
+            if (m.label) g.label = m.label; else delete g.label;
+            dirty = true;
+          }
+          if (!!g.favorite !== !!m.favorite) {
+            if (m.favorite) g.favorite = true; else delete g.favorite;
+            dirty = true;
+          }
+        }
+      } catch (e) { /* metadata is best-effort */ }
+
       if (dirty) writeLocal(local);
       writeSynced(synced);
 
@@ -616,6 +636,32 @@ async function deleteGame(id, gid) {
   }
   if (synced.delete(id)) writeSynced(synced);
   return { ok: true };
+}
+
+// ------------------------------------ personal game metadata (label/favorite)
+// A user's label + favorite flag for a game are PERSONAL and MUTABLE, so they
+// can't live on the append-only game doc. They're stored per-user under
+// profiles/{uid}/gameMeta/{gameId} and mirrored onto the local game record, so
+// they follow the user across devices without ever touching shared history.
+async function setGameMeta(id, meta) {
+  if (!currentUser || !id) return { ok: false };
+  const label = String((meta && meta.label) || "").slice(0, 60);
+  const favorite = !!(meta && meta.favorite);
+  const ref = doc(db, "profiles", currentUser.uid, "gameMeta", id);
+  try {
+    // Nothing to remember → remove the doc rather than store an empty one.
+    if (!label && !favorite) { await deleteDoc(ref); return { ok: true }; }
+    await setDoc(ref, clean({ label, favorite }));
+    return { ok: true };
+  } catch (e) { return { ok: false, message: humanError(e) }; }
+}
+
+async function pullGameMeta() {
+  const out = {};
+  if (!currentUser) return out;
+  const snap = await getDocs(collection(db, "profiles", currentUser.uid, "gameMeta"));
+  snap.forEach((d) => { const x = d.data(); out[d.id] = { label: x.label || "", favorite: !!x.favorite }; });
+  return out;
 }
 
 // -------------------------------------- shared "in the night" voices
@@ -814,6 +860,10 @@ window.Cloud = {
   sync,
   async deleteGame(id, gid) {
     try { return await deleteGame(id, gid); }
+    catch (e) { return { ok: false, message: humanError(e) }; }
+  },
+  async setGameMeta(id, meta) {
+    try { return await setGameMeta(id, meta); }
     catch (e) { return { ok: false, message: humanError(e) }; }
   },
   // ---- shared night voices ----

@@ -513,7 +513,9 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .review-panel .review-stat { margin: 5px 0; font-size: 14px; }
 .review-panel .c-fac { color: var(--fac-2); }
 .review-panel .c-hit { color: #e8e8e8; }
-.review-actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid #3a3129; display: flex; }
+.review-actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid #3a3129; display: flex; flex-wrap: wrap; gap: 8px; }
+.review-actions #btnFavGame, .review-actions #btnLabelGame { flex: 1 1 0; min-width: 0; }
+.review-label { font-family: Georgia, serif; font-size: 16px; color: var(--gold); margin: 6px 0 2px; text-align: center; }
 /* a quieter, outlined danger button — deletion is deliberate but not the focus */
 .ghost-danger { background: transparent; border-color: var(--fac-2); color: var(--fac-2); font-weight: 600; width: 100%; }
 .ghost-danger:hover { background: var(--fac); border-color: var(--fac-2); color: #fff; }
@@ -585,10 +587,18 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 
 /* ---------- All-games list ---------- */
 .games-list { display: flex; flex-wrap: wrap; gap: 10px; }
-.game-box { flex: 0 0 auto; width: 132px; text-align: center; padding: 10px 8px; border-radius: 10px; cursor: pointer; border: 2px solid; }
+.game-box { position: relative; flex: 0 0 auto; width: 132px; text-align: center; padding: 10px 8px; border-radius: 10px; cursor: pointer; border: 2px solid; }
 .game-box.gl-lib { background: rgba(31,143,176,0.18); border-color: var(--lib); }
 .game-box.gl-fac { background: rgba(192,57,43,0.2); border-color: var(--fac); }
 .game-box:hover { filter: brightness(1.15); }
+.game-box.fav { box-shadow: 0 0 0 1px var(--gold) inset; }
+.gl-star {
+  position: absolute; top: 3px; left: 5px; font-size: 16px; line-height: 1;
+  color: var(--muted); cursor: pointer; -webkit-user-select: none; user-select: none; padding: 2px;
+}
+.gl-star:hover { color: var(--gold); }
+.gl-star.on { color: var(--gold); }
+.gl-label { font-family: Georgia, serif; font-size: 12px; color: var(--gold); margin: 2px 0 5px; padding: 0 10px; line-height: 1.2; word-break: break-word; }
 .gl-win { font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .gl-lib .gl-win { color: var(--lib-2); }
 .gl-fac .gl-win { color: var(--fac-2); }

@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-30 (after session 38 — Rules & Game Theory handbook)._
+_Last updated: 2026-07-31 (after session 39 — game labels & favorites)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -137,7 +137,7 @@ table game, not a game engine. Feature pillars:
 | `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**, **rules**, **theory** (the last two share one markup template + renderer). Full-screen overlays: chaos, power, game-over, **confirm dialog**, account, settings, **night narration**; plus a **toast**. (No separate end screen — role recording is in-place.) |
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
-| `js/stats.js` | localStorage read/write (record / **delete** / clear) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. **`clearAll()` is the only bulk delete; the app wraps it in a backup-first, two-confirm flow (session 36) and it only ever clears the local device.** |
+| `js/stats.js` | localStorage read/write (record / **delete** / clear / **label / favorite**) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. **`clearAll()` is the only bulk delete; the app wraps it in a backup-first, two-confirm flow (session 36) and it only ever clears the local device.** `setLabel`/`setFavorite` write per-game annotations onto the local record; `orderForDisplay()` floats favorites to the top (session 39). |
 | `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring, **account UI**. |
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, groups, game delete, and **shared night voices** (base64 audio in Firestore). Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
@@ -482,6 +482,28 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   review (normal play unchanged) and on phones (the strip is horizontal there, so its height is already
   constant). Verified: box top constant to <1px across all 9 steps while block count went 1↔2 and
   caption length ranged 41–76 chars.
+- **Labels & favorites on recorded games (session 39).** Each game in the **All games** list carries a
+  **★ star** (top-left of its box) that toggles a **favorite**, and **favorites float to the top** of the
+  list (`Stats.orderForDisplay()` — a stable partition, favorites first, everything else in its prior
+  order). A game can also be given a **label** (name), shown on its box and in the review. Both are set
+  from the star (favorite) and from the **review panel** (☆ Favorite / Add a label / Rename, next to
+  Delete game). `Stats.setFavorite(id,bool)` / `Stats.setLabel(id,str≤60)` mutate the **full** array
+  (`loadAllGames`+`saveGames`, like `deleteGame`) and store `favorite`/`label` **on the local game
+  record** — they are mutable annotations, NOT part of the append-only history.
+  - **Personal + cross-device, without touching the immutable game doc.** Because the games rule is
+    `update:if false`, labels/favorites can't live on the game doc (and favorites are inherently
+    per-user anyway). They mirror to **`profiles/{uid}/gameMeta/{gameId}`** = `{label, favorite}` —
+    fully private (rules: read/write only by the owner, sizes capped), separate from games, so history
+    is never rewritten and there's no bulk-delete path. `app.setGameMeta(id,patch)` writes locally +
+    calls `Cloud.setGameMeta`; `sync()` pulls all gameMeta and applies it onto local games (remote
+    wins). Works fully offline/signed-out (local only). **Limitation:** a label/favorite changed while
+    offline may not reach the cloud until changed again online (metadata push is best-effort).
+  - **The games list is now id-based, not index-based.** `openReview(id)` finds the game by `id` (was
+    an array index), so reordering favorites to the top can't misroute a click. The list box is a
+    `div[role=button]` (a nested `<button>` star would be invalid HTML); the star `stopPropagation`s so
+    it never opens the review. Verified headless (mock Cloud): star floats a game to top + calls
+    setGameMeta without opening the review; review Fav/Label buttons work; label + favorite render on
+    the box and persist.
 - **Deleting a recorded game (session 31).** The review panel has a **Delete game** button (outlined
   danger, bottom of the panel, step-independent). It confirms first (`deleteReviewedGame()`), then —
   crucially in this order — removes the **cloud copy first** so a later sync can't resurrect it, and

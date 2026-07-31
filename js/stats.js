@@ -150,6 +150,46 @@ const Stats = (() => {
     return true;
   }
 
+  /**
+   * Per-game display metadata — a user-set `label` (name) and a `favorite` flag.
+   * These are LOCAL, mutable annotations that live on the game record; they are
+   * NOT part of the immutable recorded history (which the rules keep append-only),
+   * and cloud.js mirrors them per-user via profile gameMeta so they follow you
+   * across devices. Both write through loadAllGames()/saveGames() (the full
+   * array), exactly like deleteGame, so a scoped view can never drop other games.
+   */
+  function setLabel(id, label) {
+    if (!id) return false;
+    const games = loadAllGames();
+    const g = games.find((x) => x && x.id === id);
+    if (!g) return false;
+    const clean = String(label || "").trim().slice(0, 60);
+    if (clean) g.label = clean; else delete g.label;
+    saveGames(games);
+    return true;
+  }
+
+  function setFavorite(id, fav) {
+    if (!id) return false;
+    const games = loadAllGames();
+    const g = games.find((x) => x && x.id === id);
+    if (!g) return false;
+    if (fav) g.favorite = true; else delete g.favorite;
+    saveGames(games);
+    return true;
+  }
+
+  /**
+   * Games in display order: favorites first (keeping their relative order),
+   * everything else after. A stable partition, so within each group the caller's
+   * existing order is preserved. Operates on whatever list is passed in.
+   */
+  function orderForDisplay(games) {
+    const fav = [], rest = [];
+    (games || []).forEach((g) => (g && g.favorite ? fav : rest).push(g));
+    return fav.concat(rest);
+  }
+
   const eventsOf = (g) => g.events || g.governments || [];
   const typeOf = (ev) => ev.type || "gov";
 
@@ -385,6 +425,9 @@ const Stats = (() => {
     setScope,
     recordGame,
     deleteGame,
+    setLabel,
+    setFavorite,
+    orderForDisplay,
     clearAll,
     exportData,
     importData,

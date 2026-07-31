@@ -57,6 +57,20 @@ service cloud.firestore {
                     && request.resource.data.displayName.size() <= 60;
       allow delete: if false; // deleting a profile would orphan game history
 
+      // ---- personal game metadata (label + favorite) ----
+      // A user's own labels/favorites for games, keyed by game id. Fully
+      // private (only you read or write it) and completely separate from the
+      // append-only game docs, so history is never touched. Sizes are capped.
+      match /gameMeta/{gameId} {
+        allow read, delete: if signedIn() && uid() == userId;
+        allow create, update: if signedIn() && uid() == userId
+                    && (!('label' in request.resource.data)
+                        || (request.resource.data.label is string
+                            && request.resource.data.label.size() <= 60))
+                    && (!('favorite' in request.resource.data)
+                        || request.resource.data.favorite is bool);
+      }
+
       // ---- invitation inbox ----
       // Lets you invite someone you've played with by name instead of sending
       // them a link. Anyone signed in may drop an invite in your inbox (it

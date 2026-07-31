@@ -1404,9 +1404,9 @@
   }
 
   // ------------------------------ review a saved game ------------------------
-  function openReview(idx) {
+  function openReview(id) {
     const games = Stats.loadGames().filter((g) => g.result);
-    const g = games[idx];
+    const g = games.find((x) => x.id === id);
     if (!g) return;
     if (state) stashedState = state;
     state = {
@@ -1530,18 +1530,37 @@
       body = reviewStepCaption(d) + livePlayerOdds(d);
     }
 
-    // A game can be removed from here (with confirmation). Sits at the bottom,
-    // step-independent, so it's reachable whether reviewing or replaying.
+    // Label + favorite this game, and (with confirmation) delete it. These sit
+    // at the bottom, step-independent, so they're reachable while replaying.
+    const label = g.label ? `<div class="review-label">“${escapeHtml(g.label)}”</div>` : "";
     const actions =
-      `<div class="review-actions"><button id="btnDeleteGame" class="ghost-danger">Delete game</button></div>`;
+      `<div class="review-actions">` +
+      `<button id="btnFavGame" class="ghost">${g.favorite ? "★ Favorited" : "☆ Favorite"}</button>` +
+      `<button id="btnLabelGame" class="ghost">${g.label ? "Rename" : "Add a label"}</button>` +
+      `<button id="btnDeleteGame" class="ghost-danger">Delete game</button>` +
+      `</div>`;
 
-    cp.innerHTML = `<div class="review-panel">${controls}${body}${actions}</div>`;
+    cp.innerHTML = `<div class="review-panel">${controls}${label}${body}${actions}</div>`;
     const go = (s) => reviewGoto(s);
     if ($("pbFirst")) $("pbFirst").onclick = () => go(0);
     if ($("pbPrev")) $("pbPrev").onclick = () => go(step - 1);
     if ($("pbNext")) $("pbNext").onclick = () => go(step + 1);
     if ($("pbLast")) $("pbLast").onclick = () => go(N);
     if ($("btnDeleteGame")) $("btnDeleteGame").onclick = deleteReviewedGame;
+    if ($("btnFavGame")) $("btnFavGame").onclick = () => {
+      if (!g.id) return;
+      g.favorite = !g.favorite;             // reflect immediately on the in-review copy
+      setGameMeta(g.id, { favorite: g.favorite });
+      renderGame();                         // re-render the panel with the new state
+    };
+    if ($("btnLabelGame")) $("btnLabelGame").onclick = () => {
+      if (!g.id) return;
+      promptText(
+        "Name this game", "Give it a label so you can find it later.", "e.g. The 10-player comeback",
+        (name) => { g.label = String(name || "").trim().slice(0, 60); setGameMeta(g.id, { label: g.label }); renderGame(); },
+        g.label || ""
+      );
+    };
     // (leaving a review uses the shared top-left back arrow)
   }
 
@@ -1656,30 +1675,59 @@
 
   function renderGamesList(container) {
     if (!container) return;
-    const games = Stats.loadGames().filter((g) => g.result);
+    // Favorites float to the top; each box carries a ★ toggle and its label.
+    const games = Stats.orderForDisplay(Stats.loadGames().filter((g) => g.result));
     if (!games.length) {
       container.innerHTML = `<span class="muted">No games recorded yet.</span>`;
       return;
     }
     container.innerHTML = games
-      .map((g, idx) => {
+      .map((g) => {
         const cls = g.result.winner === "Fascist" ? "gl-fac" : "gl-lib";
         const hit = g.players[g.result.hitlerIdx] ? g.players[g.result.hitlerIdx].name : "?";
         const facs = (g.result.fascistIdxs || [])
           .map((i) => (g.players[i] ? g.players[i].name : ""))
           .filter(Boolean);
         return (
-          `<button class="game-box ${cls}" data-idx="${idx}">` +
+          `<div class="game-box ${cls}${g.favorite ? " fav" : ""}" data-id="${escapeHtml(g.id)}" role="button" tabindex="0">` +
+          `<span class="gl-star${g.favorite ? " on" : ""}" data-star="${escapeHtml(g.id)}" role="button" ` +
+          `title="${g.favorite ? "Remove from favorites" : "Add to favorites"}" ` +
+          `aria-label="${g.favorite ? "Remove from favorites" : "Add to favorites"}">${g.favorite ? "★" : "☆"}</span>` +
+          (g.label ? `<div class="gl-label">${escapeHtml(g.label)}</div>` : "") +
           `<div class="gl-win">${g.result.winner} win</div>` +
           `<div class="gl-hitler">♛ ${escapeHtml(hit)}</div>` +
           `<div class="gl-facs">${facs.map((f) => `<span>${escapeHtml(f)}</span>`).join("")}</div>` +
-          `</button>`
+          `</div>`
         );
       })
       .join("");
-    container.querySelectorAll(".game-box").forEach((b) => {
-      b.onclick = () => openReview(+b.dataset.idx);
+    // Star toggles favorite in place (and must not open the review).
+    container.querySelectorAll(".gl-star").forEach((s) => {
+      s.onclick = (e) => {
+        e.stopPropagation();
+        const id = s.dataset.star;
+        const now = !Stats.loadAllGames().some((g) => g.id === id && g.favorite);
+        setGameMeta(id, { favorite: now });
+        renderGamesList(container);
+      };
     });
+    container.querySelectorAll(".game-box").forEach((b) => {
+      b.onclick = () => openReview(b.dataset.id);
+      b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openReview(b.dataset.id); } };
+    });
+  }
+
+  // Update a game's label/favorite: write it locally (source of truth on this
+  // device) and mirror it to the user's per-account gameMeta so it follows them
+  // to other devices. Never touches the immutable recorded game itself.
+  function setGameMeta(id, patch) {
+    if ("favorite" in patch) Stats.setFavorite(id, patch.favorite);
+    if ("label" in patch) Stats.setLabel(id, patch.label);
+    const c = cloud();
+    if (c && c.user && c.setGameMeta) {
+      const g = Stats.loadAllGames().find((x) => x.id === id) || {};
+      c.setGameMeta(id, { label: g.label || "", favorite: !!g.favorite });
+    }
   }
 
   // ---------------------------- lie detection (opt-in) -----------------------
