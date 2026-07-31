@@ -1783,6 +1783,9 @@
       // Which group this game belongs to. Null when signed out — sync assigns it
       // to whatever group is active when the game is eventually uploaded.
       groupId: (cloud() && cloud().groupId) || null,
+      // Remember who recorded it, so the "edit roles" affordance shows for them
+      // right away (not only after the upload round-trip). Null when signed out.
+      createdBy: (cloud() && cloud().user && cloud().user.uid) || null,
     };
     Stats.recordGame(record);
     goHome(); // back to the main menu, not the players list
@@ -1886,9 +1889,11 @@
   function canEditReviewedGame(g) {
     if (!g || !g.id) return false;
     const c = cloud();
-    if (!c || !c.user) return true;
-    if (g.createdBy) return g.createdBy === c.user.uid;
-    return !g.groupId;
+    if (!c || !c.user) return true;               // signed out → local games are mine
+    if (g.createdBy) return g.createdBy === c.user.uid; // known author → only them
+    return true; // author unknown (older/just-recorded game): allow — the security
+                 // rules still reject a cloud write by a non-author, and a synced
+                 // game backfills createdBy, so this only affects local edits.
   }
 
   const editFascistNeed = () => FASCIST_COUNT[state.players.length] || 1;
@@ -3645,6 +3650,7 @@
         const c = cloud();
         const rec = d.record;
         if (c && c.groupId) rec.groupId = c.groupId; // record straight into the active group
+        if (c && c.user) rec.createdBy = c.user.uid; // the host recorded it → they can edit its roles
         Stats.recordGame(rec);
         applyScope();
         if (!$("statsScreen").classList.contains("hidden")) renderStats();
