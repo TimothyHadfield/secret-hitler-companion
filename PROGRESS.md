@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-31 (after session 39 — game labels & favorites)._
+_Last updated: 2026-07-31 (after session 40 — ONLINE PLAY Phase 1: lobby + roles + night)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -134,7 +134,7 @@ table game, not a game engine. Feature pillars:
 ## File map
 | File | Purpose |
 |------|---------|
-| `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**, **rules**, **theory** (the last two share one markup template + renderer). Full-screen overlays: chaos, power, game-over, **confirm dialog**, account, settings, **night narration**; plus a **toast**. (No separate end screen — role recording is in-place.) |
+| `index.html` | App shell. Screens: **main menu** (home hub), **setup**, **game** (Play/History/Stats tabs), **stats**, **rules**, **theory**, **online** (rules+theory share one renderer). Full-screen overlays: chaos, power, game-over, **confirm dialog**, account, settings, **night narration**; plus a **toast**. Loads `engine.js` (classic) + `online.js` (module, after cloud.js). (No separate end screen — role recording is in-place.) |
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
 | `js/stats.js` | localStorage read/write (record / **delete** / clear / **label / favorite**) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. **`clearAll()` is the only bulk delete; the app wraps it in a backup-first, two-confirm flow (session 36) and it only ever clears the local device.** `setLabel`/`setFavorite` write per-game annotations onto the local record; `orderForDisplay()` floats favorites to the top (session 39). |
@@ -142,11 +142,13 @@ table game, not a game engine. Feature pillars:
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, groups, game delete, and **shared night voices** (base64 audio in Firestore). Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **HARD-GATED (session 36): it refuses to run without `SH_PROD_RULES_TEST=i-understand`, and cleans up ONLY the exact `__test_<runId>` docs it created, per-document, through the rules — no wholesale wipe exists in the file.** (The older warning that its teardown "empties ALL collections" was overstated — every committed version scoped itself to a test group; the gate + per-doc cleanup now design the risk out. See `DATA_SAFETY.md`.) It covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not) and voice permissions (§7c); still, prefer the mock-Cloud CDP approach and don't run it unless you truly must. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). Has its own `package.json`; the site stays dependency-free. |
+| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **HARD-GATED (session 36): it refuses to run without `SH_PROD_RULES_TEST=i-understand`, and cleans up ONLY the exact `__test_<runId>` docs it created, per-document, through the rules — no wholesale wipe exists in the file.** (The older warning that its teardown "empties ALL collections" was overstated — every committed version scoped itself to a test group; the gate + per-doc cleanup now design the risk out. See `DATA_SAFETY.md`.) It covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not) and voice permissions (§7c); still, prefer the mock-Cloud CDP approach and don't run it unless you truly must. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). `engine.test.js` = **126 assertions** for the online play engine (`node test/engine.test.js`, no deps): team sizes 5–10, exactly one Hitler, per-role night knowledge, deterministic deal. Has its own `package.json`; the site stays dependency-free. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
+| `js/engine.js` | **Pure authoritative game logic for online play** (session 40). NO network/DOM/randomness of its own (callers pass an rng, so it's deterministic + replayable). Phase 1: `setupGame(uids,rng)` deals a randomized seat order, first President, roles, and each player's exact night knowledge (`reveals`). Classic script (`window.Engine`) + `module.exports`; Node-tested (`test/engine.test.js`, 126 assertions). Grows into deck/legal-moves/win-detection in later phases. |
+| `js/online.js` | **Real-time ONLINE PLAY** (session 40, Phase 1). ES module (`window.Online` + `online:*` events), loaded AFTER cloud.js and **reuses the same Firebase app** (`getApps().length ? getApp() : initializeApp`). Host-authoritative: the host's browser deals + referees. Data under `groups/{gid}/tables/{tid}`: the table doc (public), `players/{uid}` (lobby), `private/{uid}` (secrets — only that player reads), `actions/` (queue, later phases). Phase 1: host/join lobby, `startGame()` (deal roles → write private docs → status night), night reveal. |
 | `js/reference.js` | **Rules + Game Theory handbook content** (session 38). Classic script exposing `window.Reference`: two trees (`RULES`, `THEORY`) organised category → subcategory → item ("bullet"), each item with a **stable `id`** used as the community-comment target (`${kind}:${id}` — never renumber, or comments orphan). Plus `flatten`/`search`/`findItem` helpers. Offline, no network; rules content is kept in sync with `SECRET_HITLER_RULES.md`. |
 | `js/night.js` | **"In the night" narration** (session 33–34). The two fascist-reveal scripts (5–6 vs 7+) as speakable segments with timed pauses; script selection by player count; device-speech (Web Speech API) playback with natural-voice preference; IndexedDB blob storage for a user's own recorded/uploaded clips; **base64↔Blob helpers + shared-voice caching** for group sync. Classic script exposing `window.Night`; pure parts Node-tested (`test/night.test.js`). |
 | `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates** and a **distinct cautious-Hitler** role. Pure functions, Node-tested (66 assertions incl. a from-scratch brute-force mirror). |
@@ -237,8 +239,8 @@ table game, not a game engine. Feature pillars:
 - **The app opens on a MAIN MENU (home hub)**, `#menuScreen` — not the players list. It has the big
   **Secret Hitler** title, a **profile/sign-in** chip in the top-left corner and a **⚙ settings** gear
   in the top-right, a **group box** ("This device" / the group name — tap to open the group switcher),
-  and four **option boxes**: **Start game** (→ players/setup), **Statistics**, **Rules**, and
-  **Game theory** (the last two added session 38). The two corner buttons reuse the old top-bar
+  and five **option boxes**: **Start game** (→ players/setup), **Play online** (→ `#onlineScreen`,
+  session 40), **Statistics**, **Rules**, and **Game theory**. The two corner buttons reuse the old top-bar
   `#btnAccount` / `#btnSettings` (the global `#topbar` was removed).
 - **Back-anywhere via a nav stack.** `navTo(id)` pushes the current top-level screen and shows the
   new one; the top-left **← on Players/Statistics/Rules/Game theory** calls `navBack()` to return to
@@ -285,6 +287,51 @@ table game, not a game engine. Feature pillars:
   right breadcrumb; expanding shows the body; posting a note shows the author name; deleting removes
   it; drill-down (Elections → 3 subcats → 6 items + breadcrumb) works; Game theory opens with its 7
   categories. Content sanity-checked in Node: 41 rule items, 26 theory items, all ids unique.
+
+## ONLINE PLAY (session 40 — Phase 1 of a multi-phase build) 🌐
+**This reverses the long-standing "online/real-time play is descoped" decision** — the user asked to
+build full online play that "makes the site capable of doing anything the real board, cards, and roles
+would," recording finished games to a group. It's being built in **shippable phases**; Phase 1 is live.
+- **Decisions locked with the user (session 40):** **host-authoritative** (the host's browser is the
+  dealer/referee — free, no server, no build step; a host *could* technically cheat like a dishonest
+  physical dealer, and must stay connected); **signed-in group members only** (each player needs an
+  account so they get their secret role privately; guest links deferred); **discussion happens outside
+  the app** (voice/in person — no in-app chat).
+- **Why host-authoritative + how secrets stay secret:** there's no server (Spark plan), so one player
+  hosts and their client runs `js/engine.js`. The **table doc is PUBLIC** (board, seats, phase — the
+  same `events` vocabulary the analyzer uses); each player's **secrets live in `private/{uid}` that
+  ONLY they can read and ONLY the host can write** (firestore.rules). That's what hides roles + drawn
+  cards without a trusted backend.
+- **The payoff:** the live game emits the SAME event log the analyzer consumes, so when a game finishes
+  it will **record to the group as a normal reviewable game** — replay, stats, fascist-odds, and
+  lie-detection all reuse (later phase). The fascist-odds/lie overlays will use only PUBLIC claims, so
+  turning them on can never leak the real cards the engine holds.
+- **Data model** (`groups/{gid}/tables/{tid}`): the table doc (host-write, member-read) + subcollections
+  `players/{uid}` (each writes own lobby seat), `private/{uid}` (host writes, owner-only read),
+  `actions/` (player-submitted move queue — used from Phase 2). Rules deployed; per-doc + host-scoped
+  deletes only, so **no bulk-delete path** (respects the DATA-SAFETY invariant — and a finished game is
+  a normal `games` doc, so tearing down a table never touches recorded history).
+- **Phase 1 shipped:** **Play online** menu box → `#onlineScreen`. Host a game (creates a table in the
+  active group) or join an open one; a **lobby** (5–10 players, host-gated Start); on Start the host
+  **deals roles** and writes each player's private doc, then **night**: every device privately shows
+  that player's role + exactly the knowledge it's owed (fascists see each other + Hitler; Hitler sees
+  the fascist(s) only in 5–6; liberals nothing), plus seating + first President. `js/online.js` is the
+  Firestore/host layer; `renderOnline*` in `app.js` is the UI (`onlineScreen` in `show()`/`NAV_SCREENS`,
+  wired via `online:*` events in `wireOnline()`).
+- **Phase 1 ends at the night reveal** — turn-by-turn play is the next phase; the night screen says so.
+- **Phases still to build:** (2) election loop — nominate → per-device votes → term limits/tracker/chaos
+  + Hitler-chancellor win; (3) legislative session — real 11F/6L deck, draw 3/discard 1/enact 1,
+  reshuffles; (4) powers — investigate/special-election/peek/execution with private reveals; (5) win
+  detection → record to group, then polish (veto, reconnection, host-stay warnings, odds overlays,
+  night-narration integration).
+- **Verification (session 40):** `test/engine.test.js` = **126 assertions** (team sizes 5–10, exactly one
+  Hitler, per-role knowledge correct, deterministic deal). Full UI flow (browse→host→lobby→deal→night,
+  all four role reveals) passed a **headless mock-`window.Online` smoke test** (drives the real Engine +
+  app rendering, no live project). Real module init verified against the live Firebase SDK (Online/Cloud/
+  Engine all present, **no double-init** — online.js reuses cloud.js's app). **NOT yet automated-tested:
+  the live multi-client Firestore round-trip** (host writes N private docs; each client reads only its
+  own). It's enforced by the deployed rules, but a real 2-account play test (with a friend, or a CDP
+  harness) is the pending gold-standard check before Phase 2 leans on it.
 
 ## "In the night" narration (session 33)
 - **What it is:** a start-of-game helper that reads the classic fascist-reveal narration aloud so

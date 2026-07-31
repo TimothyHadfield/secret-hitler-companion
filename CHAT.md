@@ -1409,3 +1409,48 @@ top of the games list.
   headless mock-Cloud smoke test SMOKE_OK (star floats + calls setGameMeta without opening review;
   review Fav/Label work; label + favorite render on the box and persist to localStorage). Files:
   `js/stats.js`, `js/app.js`, `js/cloud.js`, `styles.css`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`.
+
+## Session 40 — ONLINE PLAY, Phase 1 (lobby + secret roles + night) 🌐
+
+**User:** start building full online play — host a game online, record it to a group, same look/detail as
+the current game (table, names, board, past presidencies, lying + fascist-odds options), guide players
+through every step, make the site able to do everything the physical board/cards/roles do. Make a plan,
+ask questions, start.
+
+**Decisions (asked + answered):** host-authoritative (free, no server — host's browser is dealer/referee;
+a host could technically cheat like a dishonest dealer; must stay connected); signed-in group members
+only (guest links later); discussion outside the app (no in-app chat).
+
+**Plan:** phased build. (1) lobby + roles + night [THIS], (2) election loop, (3) legislative session with
+a real deck, (4) powers, (5) win detection → record to group + polish. The live game emits the SAME event
+log the analyzer uses, so a finished online game records as a normal reviewable game (replay/stats/odds
+reuse for free).
+
+**Shipped Phase 1.**
+- `js/engine.js` — pure authoritative logic (no net/DOM/rng of its own; caller passes rng → deterministic).
+  `setupGame(uids,rng)` deals seat order, first President, roles, and each player's exact night knowledge.
+  Node-tested: `test/engine.test.js`, **126 assertions** (team sizes, one Hitler, per-role knowledge,
+  determinism). NB: fascist TEAM incl Hitler = ceil(n/2)−1 → 2/2/3/3/4/4 for 5–10 (my first test had the
+  wrong expected table; engine was right).
+- `js/online.js` — ES module (`window.Online` + `online:*`), loaded after cloud.js and **reuses its
+  Firebase app** (`getApps().length?getApp():initializeApp`). Data under `groups/{gid}/tables/{tid}`:
+  table doc (host-write/member-read), `players/{uid}` (own lobby seat), `private/{uid}` (host writes,
+  owner-only read — this is what hides roles), `actions/` (Phase 2+). Phase 1 methods: hostGame,
+  listTables, joinTable, leaveTable, abortTable, startGame (deal → write private docs → status night),
+  beginPlay.
+- `firestore.rules` — new `tables` block: table host-only write; private read-owner-only + write-host-only
+  (via a `tableHost()` get()); players own-write; actions own-create/host-read. Per-doc + host-scoped, no
+  bulk-delete path. Deployed (config-only).
+- `js/app.js` + `index.html` + `styles.css` — Play online menu box → `#onlineScreen` (in show()/
+  NAV_SCREENS/back-stack). renderOnline: browse (host/join) → lobby (5–10, host-gated Start) → night
+  (per-device secret role reveal + seating + first President). `wireOnline()` re-renders on `online:*`.
+  Phase 1 ends at the night reveal (turn-by-turn play is next; the screen says so).
+
+**Verified:** engine 126/126; a headless **mock-`window.Online`** smoke test (real Engine + app UI):
+browse→host→lobby(gate at 5)→deal→night with all four reveals correct + first-Pres badge = SMOKE_OK;
+real module init against live Firebase SDK = Online/Cloud/Engine present, **no double-init**. NOT yet
+automated: the live multi-client Firestore round-trip (rules-enforced but wants a 2-account play test).
+Test-harness gotcha logged: don't `sed '/online\.js/d'` the HTML — it nukes a comment line and orphans a
+`<script>` inside an unclosed comment; delete the exact `<script … src="js/online.js">` tag instead.
+Files: `js/engine.js` (new), `js/online.js` (new), `test/engine.test.js` (new), `index.html`, `js/app.js`,
+`styles.css`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`.

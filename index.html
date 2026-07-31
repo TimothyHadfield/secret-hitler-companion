@@ -40,6 +40,10 @@
           <span class="mo-icon">▶</span>
           <span class="mo-text"><span class="mo-title">Start game</span><span class="mo-sub">set up players &amp; play</span></span>
         </button>
+        <button id="btnMenuOnline" class="menu-option">
+          <span class="mo-icon">🌐</span>
+          <span class="mo-text"><span class="mo-title">Play online</span><span class="mo-sub">host or join a live game</span></span>
+        </button>
         <button id="btnMenuStats" class="menu-option">
           <span class="mo-icon">📊</span>
           <span class="mo-text"><span class="mo-title">Statistics</span><span class="mo-sub">games &amp; player stats</span></span>
@@ -212,6 +216,14 @@
                aria-label="Choose a statistics export file to import">
       </div>
     </section>
+    <!-- ===================== ONLINE PLAY ===================== -->
+    <section id="onlineScreen" class="hidden">
+      <h2 class="sr-only">Play online</h2>
+      <div class="screen-head">
+        <button id="btnBackFromOnline" class="backbtn" title="Back"><span class="arw">←</span></button>
+      </div>
+      <div class="online-body" id="onlineBody"></div>
+    </section>
     <!-- ===================== RULES / GAME THEORY (handbook) ===================== -->
     <!-- One markup template, reused for both sections via a shared renderer. -->
     <section id="rulesScreen" class="hidden ref-screen">
@@ -250,6 +262,9 @@
 
   <!-- Rules + Game Theory handbook content (offline, no network). -->
   <script src="js/reference.js"></script>
+  <!-- Pure authoritative game logic for online play (also Node-tested). Loaded
+       before online.js, which uses window.Engine. -->
+  <script src="js/engine.js"></script>
   <script src="js/probability.js"></script>
   <!-- Lie detection. Loaded always but only ever *called* when the setting is
        on, so it costs nothing when the feature is off. See HONESTY_MODEL.md. -->
@@ -265,5 +280,9 @@
        talk via window.Cloud and `cloud:*` events. The app works fully without
        this file ever loading. -->
   <script type="module" src="js/cloud.js"></script>
+  <!-- Online play (real-time). Module, loaded AFTER cloud.js so it reuses the
+       same Firebase app + auth session. Talks to app.js via window.Online +
+       `online:*` events; the rest of the app works without it. -->
+  <script type="module" src="js/online.js"></script>
 </body>
 </html>

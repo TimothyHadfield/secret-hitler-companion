@@ -542,7 +542,7 @@
 
   // ------------------------------ screens ------------------------------------
   function show(id) {
-    ["menuScreen", "setupScreen", "gameScreen", "statsScreen", "rulesScreen", "theoryScreen"].forEach((s) =>
+    ["menuScreen", "setupScreen", "gameScreen", "statsScreen", "rulesScreen", "theoryScreen", "onlineScreen"].forEach((s) =>
       $(s).classList.toggle("hidden", s !== id)
     );
     if (id === "menuScreen") renderMenu();
@@ -552,7 +552,7 @@
   // INTO, and the top-left ← returns to whatever you came from (a small stack, so
   // it behaves like a back button everywhere). The game screen has its own exit
   // (undo while playing, Quit/New), so it isn't part of this stack.
-  const NAV_SCREENS = ["menuScreen", "setupScreen", "statsScreen", "rulesScreen", "theoryScreen"];
+  const NAV_SCREENS = ["menuScreen", "setupScreen", "statsScreen", "rulesScreen", "theoryScreen", "onlineScreen"];
   let navStack = [];
   function currentTopScreen() {
     return NAV_SCREENS.find((s) => !$(s).classList.contains("hidden")) || null;
@@ -821,6 +821,188 @@
           } else showToast(r.message || "Couldn't delete that note.");
         });
     });
+  }
+
+  // ------------------------------ ONLINE PLAY (real-time) --------------------
+  // Phase 1: lobby, secret role deal, and the night reveal. js/online.js is the
+  // Firestore/host layer (window.Online + online:* events); this is the UI. The
+  // rest of the app works if online.js never loads (window.Online stays absent).
+  let onlineTables = null; // cached list of joinable tables in the group
+
+  function openOnline() { navTo("onlineScreen"); refreshOnlineTables(); renderOnline(); }
+
+  const online = () => window.Online || null;
+
+  function onlineNameOf(uid) {
+    const O = online();
+    const t = O && O.table;
+    if (t && t.names && t.names[uid]) return t.names[uid];
+    const p = (O ? O.players : []).find((x) => x.uid === uid);
+    return (p && p.name) || "Player";
+  }
+
+  async function refreshOnlineTables() {
+    const O = online(), c = cloud();
+    if (!O || !c || !c.user || !O.groupId || O.tableId) return;
+    onlineTables = await O.listTables();
+    if (!$("onlineScreen").classList.contains("hidden")) renderOnline();
+  }
+
+  function renderOnline() {
+    const box = $("onlineBody");
+    if (!box) return;
+    const O = online(), c = cloud();
+
+    if (!c || !O) {
+      box.innerHTML = onlineNotice("Online play needs the connection to load",
+        "You may be offline. The rest of the app works normally — this page needs a network connection.");
+      return;
+    }
+    if (!c.user) {
+      box.innerHTML = onlineNotice("Sign in to play online",
+        "Online games are played with your account so each player gets their secret role privately.") +
+        `<div class="control-row"><button id="olSignin" class="primary">Sign in</button></div>`;
+      $("olSignin").onclick = openAccount;
+      return;
+    }
+    if (!O.groupId) {
+      box.innerHTML = onlineNotice("Online games belong to a group",
+        "Create or join a group first — the finished game records to it, and only its members can join.") +
+        `<div class="control-row"><button id="olGroup" class="primary">Groups &amp; account</button></div>`;
+      $("olGroup").onclick = openAccount;
+      return;
+    }
+
+    const t = O.table;
+    if (!t) return renderOnlineBrowse(box, O);
+    if (t.status === "lobby") return renderOnlineLobby(box, O);
+    if (t.status === "night" || t.status === "playing") return renderOnlineNight(box, O);
+    // finished / aborted are transient — fall back to the browser
+    return renderOnlineBrowse(box, O);
+  }
+
+  function onlineNotice(title, body) {
+    return `<div class="online-head"><h2 class="online-title">Play online</h2></div>` +
+      `<div class="online-card"><div class="online-card-title">${escapeHtml(title)}</div>` +
+      `<p class="confirm-body" style="margin:6px 0 0">${escapeHtml(body)}</p></div>`;
+  }
+
+  // -- no table yet: host, or join an open one --------------------------------
+  function renderOnlineBrowse(box, O) {
+    const list = onlineTables || [];
+    const rows = list.length
+      ? list.map((tb) =>
+          `<button class="ol-join" data-tid="${escapeHtml(tb.id)}">` +
+          `<span class="ol-join-host">${escapeHtml(tb.hostName)}’s game</span>` +
+          `<span class="ol-join-meta">${tb.playerCount} player${tb.playerCount === 1 ? "" : "s"} · ${escapeHtml(tb.status)} ▸</span>` +
+          `</button>`).join("")
+      : `<div class="muted" style="font-size:13px">No open games in <b>${escapeHtml(activeGroupLabel())}</b> right now.</div>`;
+    box.innerHTML =
+      `<div class="online-head"><h2 class="online-title">Play online</h2>` +
+      `<p class="online-tagline">Host a live game for <b>${escapeHtml(activeGroupLabel())}</b>, or join one. ` +
+      `Everyone plays on their own device; talk over voice or in person.</p></div>` +
+      `<div class="control-row"><button id="olHost" class="primary">Host a game</button>` +
+      `<button id="olRefresh" class="ghost">Refresh</button></div>` +
+      `<div class="online-sub">Open games</div>` +
+      `<div class="ol-join-list">${rows}</div>`;
+    $("olHost").onclick = async () => {
+      $("olHost").disabled = true;
+      const r = await O.hostGame();
+      if (!r.ok) { $("olHost").disabled = false; showToast(r.message); }
+    };
+    $("olRefresh").onclick = refreshOnlineTables;
+    box.querySelectorAll(".ol-join").forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        const r = await O.joinTable(b.dataset.tid);
+        if (!r.ok) { b.disabled = false; showToast(r.message); }
+      };
+    });
+  }
+
+  // -- lobby: waiting for players ---------------------------------------------
+  function renderOnlineLobby(box, O) {
+    const ps = O.players;
+    const n = ps.length;
+    const canStart = n >= O.MIN_PLAYERS && n <= O.MAX_PLAYERS;
+    const rows = ps.map((p) =>
+      `<div class="ol-seat">${escapeHtml(p.name || "Player")}` +
+      (p.uid === O.table.hostUid ? `<span class="ol-badge">host</span>` : "") +
+      (p.uid === (O.me && O.me.uid) ? `<span class="ol-badge you">you</span>` : "") +
+      `</div>`).join("");
+    box.innerHTML =
+      `<div class="online-head"><h2 class="online-title">Lobby</h2>` +
+      `<p class="online-tagline">${escapeHtml(activeGroupLabel())} · share this app with your group and have everyone open <b>Play online</b> to join.</p></div>` +
+      `<div class="online-sub">Players <span class="muted">(${n} / ${O.MIN_PLAYERS}–${O.MAX_PLAYERS})</span></div>` +
+      `<div class="ol-seats">${rows}</div>` +
+      (O.isHost
+        ? `<div class="online-hint">${canStart ? "Everyone in? Deal the roles when ready." : `Waiting for players — need ${O.MIN_PLAYERS}–${O.MAX_PLAYERS}.`}</div>` +
+          `<div class="control-row"><button id="olStart" class="primary" ${canStart ? "" : "disabled"}>Start game</button>` +
+          `<button id="olCancel" class="ghost-danger">Cancel game</button></div>`
+        : `<div class="online-hint">Waiting for the host to start…</div>` +
+          `<div class="control-row"><button id="olLeave" class="ghost">Leave</button></div>`);
+    if ($("olStart")) $("olStart").onclick = async () => {
+      $("olStart").disabled = true;
+      const r = await O.startGame();
+      if (!r.ok) { $("olStart").disabled = false; showToast(r.message); }
+    };
+    if ($("olCancel")) $("olCancel").onclick = () => askConfirm(
+      { title: "Cancel this game?", body: "The lobby closes for everyone.", confirm: "Cancel game", cancel: "Keep waiting", danger: true },
+      async () => { await O.leaveTable(); });
+    if ($("olLeave")) $("olLeave").onclick = async () => { await O.leaveTable(); };
+  }
+
+  // -- night: your secret role, privately, on your own device -----------------
+  function renderOnlineNight(box, O) {
+    const t = O.table;
+    const pv = O.myPrivate;
+    const seatOrder = t.seatOrder || [];
+    const firstName = onlineNameOf(seatOrder[t.firstPres || 0]);
+
+    let reveal;
+    if (!pv) {
+      reveal = `<div class="ol-role loading">Dealing your role…</div>`;
+    } else {
+      const facNames = (pv.knownFascists || []).map(onlineNameOf);
+      if (pv.role === "liberal") {
+        reveal = `<div class="ol-role liberal"><div class="ol-role-name">You are a <b>Liberal</b></div>` +
+          `<div class="ol-role-sub">You have no secret information. Enact Liberal policies and work out who the Fascists are.</div></div>`;
+      } else if (pv.role === "fascist") {
+        const hit = pv.knownHitler ? onlineNameOf(pv.knownHitler) : "unknown";
+        reveal = `<div class="ol-role fascist"><div class="ol-role-name">You are a <b>Fascist</b></div>` +
+          `<div class="ol-role-sub">Hitler is <b>${escapeHtml(hit)}</b>.` +
+          (facNames.length ? ` Your fellow Fascist${facNames.length > 1 ? "s" : ""}: <b>${facNames.map(escapeHtml).join(", ")}</b>.` : ` You are the only regular Fascist.`) +
+          ` Help Fascist policies pass and get Hitler elected Chancellor — without being spotted.</div></div>`;
+      } else { // hitler
+        reveal = `<div class="ol-role hitler"><div class="ol-role-name">You are <b>Hitler</b></div>` +
+          (facNames.length
+            ? `<div class="ol-role-sub">Your Fascist ally: <b>${facNames.map(escapeHtml).join(", ")}</b>. Stay hidden — if you're executed, the Liberals win.</div>`
+            : `<div class="ol-role-sub">You don't know your Fascists (7+ players). Play like a Liberal, stay unsuspected, and get elected Chancellor after 3 Fascist policies.</div>`) +
+          `</div>`;
+      }
+    }
+
+    const seats = seatOrder.map((uid, i) =>
+      `<div class="ol-seat${i === (t.firstPres || 0) ? " first" : ""}">` +
+      `<span class="ol-seat-n">${i + 1}</span>${escapeHtml(onlineNameOf(uid))}` +
+      (i === (t.firstPres || 0) ? `<span class="ol-badge">first President</span>` : "") +
+      `</div>`).join("");
+
+    box.innerHTML =
+      `<div class="online-head"><h2 class="online-title">Night phase</h2>` +
+      `<p class="online-tagline">Keep your screen to yourself. This is your secret role.</p></div>` +
+      reveal +
+      `<div class="online-sub">Seating &amp; first President</div>` +
+      `<div class="ol-seats">${seats}</div>` +
+      `<div class="online-hint">${firstName} is the first President. ` +
+      `<b>Turn-by-turn play is coming in the next update</b> — for now the app deals roles and runs the night; continue the round at your table.</div>` +
+      (O.isHost
+        ? `<div class="control-row"><button id="olEnd" class="ghost-danger">End game</button></div>`
+        : `<div class="control-row"><button id="olLeave" class="ghost">Leave</button></div>`);
+    if ($("olEnd")) $("olEnd").onclick = () => askConfirm(
+      { title: "End this game?", body: "The game closes for everyone in the lobby.", confirm: "End game", cancel: "Keep going", danger: true },
+      async () => { await O.abortTable(); });
+    if ($("olLeave")) $("olLeave").onclick = async () => { await O.leaveTable(); };
   }
 
   // ------------------------------ SETUP --------------------------------------
@@ -3132,6 +3314,20 @@
     );
   }
 
+  // Online play (js/online.js) talks to us over online:* events; re-render the
+  // online screen whenever the live state changes. A table that closes/leaves
+  // drops us back to the browser view.
+  function wireOnline() {
+    const rerender = () => { if (!$("onlineScreen").classList.contains("hidden")) renderOnline(); };
+    document.addEventListener("online:state", rerender);
+    document.addEventListener("online:loaded", () => { refreshOnlineTables(); rerender(); });
+    document.addEventListener("online:left", () => { onlineTables = null; refreshOnlineTables(); rerender(); });
+    document.addEventListener("online:closed", () => {
+      onlineTables = null; refreshOnlineTables(); rerender();
+      if (!$("onlineScreen").classList.contains("hidden")) showToast("The game was closed.");
+    });
+  }
+
   function wireCloud() {
     const refresh = () => {
       applyScope();
@@ -3705,10 +3901,12 @@
     $("btnMenuStats").onclick = openStats;
     $("btnMenuRules").onclick = openRules;
     $("btnMenuTheory").onclick = openTheory;
+    $("btnMenuOnline").onclick = openOnline;
     $("btnGroupBox").onclick = openAccount; // group box is a shortcut to the switcher
     $("btnBackFromSetup").onclick = navBack;
     $("btnBackFromRules").onclick = navBack;
     $("btnBackFromTheory").onclick = navBack;
+    $("btnBackFromOnline").onclick = navBack;
     $("btnSettings").onclick = openSettings;
     $("btnSettingsGame").onclick = openSettings;
     $("btnNight").onclick = openNight;
@@ -3786,6 +3984,7 @@
     });
 
     wireCloud();
+    wireOnline();
   }
 
   function adjustRoundModFor(roundIdx, delta) {

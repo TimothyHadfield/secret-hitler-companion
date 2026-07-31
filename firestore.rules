@@ -199,6 +199,45 @@ service cloud.firestore {
                         && (voiceAuthor() == uid() || group(groupId).ownerUid == uid());
         }
       }
+
+      // ---- ONLINE PLAY: live game tables (host-authoritative) ----
+      // One member HOSTS a live game; their client is the dealer/referee. The
+      // table doc holds only PUBLIC state (board, seats, phase) — every member
+      // may read it, but only the host may write it. Each player's SECRETS live
+      // in a private doc that ONLY that player can read and ONLY the host can
+      // write, which is what keeps roles and drawn cards hidden. Tables are
+      // ephemeral scratch state (a finished game is recorded as a normal
+      // groups/{gid}/games doc); deleting one only removes live state, never
+      // recorded history — and it's per-doc + host-scoped, so no bulk-delete
+      // path (see DATA_SAFETY.md).
+      match /tables/{tableId} {
+        function tableHost() {
+          return get(/databases/$(database)/documents/groups/$(groupId)/tables/$(tableId)).data.hostUid;
+        }
+        allow read:   if isMember(groupId);
+        allow create: if isMember(groupId)
+                      && request.resource.data.hostUid == uid()
+                      && request.resource.data.status == "lobby";
+        allow update, delete: if isMember(groupId) && resource.data.hostUid == uid();
+
+        // Lobby seats: you write only your OWN; the host (or you) may remove one.
+        match /players/{puid} {
+          allow read:          if isMember(groupId);
+          allow create, update: if isMember(groupId) && puid == uid();
+          allow delete:        if isMember(groupId) && (puid == uid() || tableHost() == uid());
+        }
+        // Secrets: ONLY you read your own; ONLY the host writes them.
+        match /private/{puid} {
+          allow read:  if isMember(groupId) && puid == uid();
+          allow write: if isMember(groupId) && tableHost() == uid();
+        }
+        // Action queue: a player submits their OWN moves; the host processes them.
+        match /actions/{actionId} {
+          allow read:           if isMember(groupId) && tableHost() == uid();
+          allow create:         if isMember(groupId) && request.resource.data.by == uid();
+          allow update, delete: if isMember(groupId) && tableHost() == uid();
+        }
+      }
     }
 
     // ---- community comments: the wiki-style notes on Rules & Game Theory ----
