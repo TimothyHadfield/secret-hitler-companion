@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-08-01 (after session 42 + the edit-roles visibility fix, commit b886cea)._
+_Last updated: 2026-08-01 (after session 43: undo-stack perf fix + `derive()` extracted to a Node-tested module)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -165,11 +165,12 @@ real table game) and is now **also a full online game engine**. Feature pillars:
 | `styles.css` | Theme + responsive no-scroll layout, **rectangular table + per-edge seat flow**, boards, role/review panels, games list. |
 | `js/probability.js` | Pure probability engine (binomial, hypergeometric, retrospective conditional). Node-tested. |
 | `js/stats.js` | localStorage read/write (record / **delete** / clear / **label / favorite**) + **in-depth** per-player / cross-game aggregation (roles, claims, powers, conflicts, things done to a player, game endings). Reads the event model. **`clearAll()` is the only bulk delete; the app wraps it in a backup-first, two-confirm flow (session 36) and it only ever clears the local device.** `setLabel`/`setFavorite` write per-game annotations onto the local record; `orderForDisplay()` floats favorites to the top (session 39). |
-| `js/app.js` | Everything else: state, persistence, derive() bookkeeping, rendering, powers, role recording, review, wiring, **account UI**. |
+| `js/app.js` | Everything else: state, persistence, the `derive()` binding, rendering, powers, role recording, review, wiring, **account UI**. (The rules engine itself now lives in `js/derive.js` — `derive()` here is a thin wrapper that hands it the live `state` + collaborators; session 43.) |
+| `js/derive.js` | **The pure rules engine** (session 43, extracted from `app.js`). `Derive.derive(state, deps)` walks `state.events` once and returns all bookkeeping — enacted counts, draw/discard pile, per-round retrospective probs + modifier bounds, presidential rotation (incl. nested special-election detours), deaths, term limits, investigations, veto, chaos, and the opt-in honesty/role reads. NO DOM/global deps — collaborators (`clamp`, `retrospectiveProb`, the two settings predicates, the honesty/role analyzers) are injected via `deps`, so the rules logic is Node-testable. Mutates the passed `state` (writes back auto-adjusted round modifiers + reflects deaths onto `players[i].dead`), exactly as before. Classic script (`window`-scoped `Derive`) + `module.exports`. Node-tested (`test/derive.test.js`, **47 assertions**). |
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, groups, game delete, and **shared night voices** (base64 audio in Firestore). Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **HARD-GATED (session 36): it refuses to run without `SH_PROD_RULES_TEST=i-understand`, and cleans up ONLY the exact `__test_<runId>` docs it created, per-document, through the rules — no wholesale wipe exists in the file.** (The older warning that its teardown "empties ALL collections" was overstated — every committed version scoped itself to a test group; the gate + per-doc cleanup now design the risk out. See `DATA_SAFETY.md`.) It covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not) and voice permissions (§7c); still, prefer the mock-Cloud CDP approach and don't run it unless you truly must. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). `engine.test.js` = **1653 assertions** for the online-play engine (`node test/engine.test.js`, no deps): role deal (team sizes 5–10, per-role night knowledge, determinism) + 60 full simulated games (17-card conservation, term limits, veto, both Hitler wins, public-view privacy). Has its own `package.json`; the site stays dependency-free. |
+| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **HARD-GATED (session 36): it refuses to run without `SH_PROD_RULES_TEST=i-understand`, and cleans up ONLY the exact `__test_<runId>` docs it created, per-document, through the rules — no wholesale wipe exists in the file.** (The older warning that its teardown "empties ALL collections" was overstated — every committed version scoped itself to a test group; the gate + per-doc cleanup now design the risk out. See `DATA_SAFETY.md`.) It covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not) and voice permissions (§7c); still, prefer the mock-Cloud CDP approach and don't run it unless you truly must. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). `engine.test.js` = **1653 assertions** for the online-play engine (`node test/engine.test.js`, no deps): role deal (team sizes 5–10, per-role night knowledge, determinism) + 60 full simulated games (17-card conservation, term limits, veto, both Hitler wins, public-view privacy). Has its own `package.json`; the site stays dependency-free. `derive.test.js` = **47 assertions** for the pure rules engine `js/derive.js` (`node test/derive.test.js`, no deps): pile counting + reshuffles, presidential rotation (incl. nested special-election resume points), deaths + rotation-skip, term limits (5 vs 7 players), the election tracker, veto, chaos (resets tracker + term limits), investigations, Hitler-elected, state mutation, determinism, and the honesty/role dependency wiring. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
@@ -186,12 +187,15 @@ real table game) and is now **also a full online game engine**. Feature pillars:
 | `PROGRESS.md` | This file. |
 
 ## Architecture notes (how app.js is organised)
-- **`state`** is the whole live game. **`derive(state)`** walks `state.events` once and returns
+- **`state`** is the whole live game. **`derive()`** walks `state.events` once and returns
   all bookkeeping: enacted counts, draw pile, rounds (+ per-round modifier bounds &
   retrospective probs), current President (`presIdx`), suggested Chancellor, `deadSet`,
   `eventsByPlayer`, draw/discard composition. President, deaths, and the special-election detour
   are **derived from the event log** — nothing turn-related is stored, which is why Undo/resume
-  "just work".
+  "just work". **The engine itself lives in `js/derive.js`** (session 43) as a pure
+  `Derive.derive(state, deps)`; the in-app `derive()` is a thin wrapper that injects the
+  collaborators (`clamp`, `Prob.retrospectiveProb`, `lieOn`/`rolesOn`, the honesty/role
+  analyzers). This is what makes the rules logic Node-testable (`test/derive.test.js`).
 - **Event model:** `state.events` is ordered, mixed: `{type:'gov', presidentIdx, chancellorIdx,
   claimLibs, conflict, enacted, vetoed, power?}`, `{type:'fail', presidentIdx}`,
   `{type:'chaos', enacted}`, `{type:'hitler', presidentIdx, chancellorIdx}` (Hitler elected
@@ -235,8 +239,12 @@ real table game) and is now **also a full online game engine**. Feature pillars:
   before the next presidency). Probability never crosses a reshuffle. Round pool = `17 − enacted`.
 - **Persistence (localStorage):** completed games → `secretHitler.games.v1`; the in-progress game
   auto-saves to `secretHitler.activeGame.v1` and is **resumed on load** (survives refresh /
-  close-reopen / redeploy); the setup roster → `secretHitler.setupPlayers.v1`. Active game cleared
-  only on New Game / after saving. `loadActive()` backfills fields missing from older saves.
+  close-reopen / redeploy); the setup roster → `secretHitler.setupPlayers.v1`. **The undo stack is a
+  SEPARATE key `secretHitler.activeGame.undo.v1`** (session 43) so the frequent per-render save never
+  re-serialises its ~25 full-state snapshots; it's written only when the stack changes and read back by
+  `loadActive()` (which also still accepts an older stack embedded in the active-game blob). Active game
+  cleared only on New Game / after saving (`clearActive()` clears both keys). `loadActive()` backfills
+  fields missing from older saves.
 - **Every saved game carries a stable `id` (UUID).** Assigned by `Stats.recordGame()` and
   backfilled onto older records by `loadGames()` (writes once, then a no-op). It is the dedupe
   key on import and — deliberately — the idempotency key for the future cloud sync, so a
@@ -783,11 +791,16 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
     factorisation; deferred.
   - Long-noted goal: this eventually retires the round-modifier stepper (a hand-set point estimate
     of what the posterior integrates out).
-- **Reliability:** `lsSet()` now surfaces quota errors and the undo stack is capped (session 19), but
-  `saveActive()` still re-serialises the whole undo stack on every render (O(n²) in a long game).
-- **Tests:** `derive()` is trapped inside the IIFE; exporting it for Node would give the rules
-  logic (term limits, veto, nested special elections, reshuffles) real regression coverage.
-  `js/stats.js` and `js/honesty.js`/`js/probability.js` are already Node-tested.
+- **Reliability:** `lsSet()` surfaces quota errors and the undo stack is capped (session 19).
+  **FIXED (session 43): the undo stack no longer weighs down the per-render save.** It moved out of
+  the active-game blob into its own key (`secretHitler.activeGame.undo.v1`) and is written only when
+  it changes (`pushUndo`/`undoLast` call `saveUndo()`), so `saveActive()` re-serialises just the live
+  state — no more re-serialising ~25 full snapshots on every render (was O(n²) in a long game). Undo
+  still survives a refresh; `loadActive()` reads the new key and still accepts an older embedded stack.
+- **Tests:** **DONE (session 43): `derive()` is extracted to `js/derive.js` and Node-tested**
+  (`test/derive.test.js`, 47 assertions — term limits, veto, nested special elections, reshuffles,
+  rotation, deaths, tracker/chaos, pile counts, plus the honesty/role dependency wiring).
+  `js/stats.js` and `js/honesty.js`/`js/probability.js` were already Node-tested.
 - Accessibility: no `aria-*` or `tabindex` anywhere; seats are `div`s with `onclick`. The only key
   handler is the review playback's ← / → scrubbing (session 29).
 - Further statistics ideas: favourite chancellor pairings, per-round trends.

@@ -1529,3 +1529,43 @@ signed-in uid, so a new game is editable by its recorder immediately; (2) when t
 (older/pre-sync game) `canEditReviewedGame` now returns **true** — safe because the rules still reject a
 non-author's cloud write (save is cloud-first) and sync backfills `createdBy`. Also reminded the user to
 hard-refresh (GitHub Pages had the code; browser cache was serving the old app.js). `js/app.js` only.
+
+---
+
+## Session 43 — Undo-stack perf fix + `derive()` extracted to a Node-tested rules module
+
+Two non-online-play quick wins off the backlog (user asked "what could we improve that isn't online
+play", then "start with 1 and 2").
+
+**1. Undo-stack O(n²)-per-render perf fix.** `saveActive()` did `JSON.stringify(state)` on every render,
+and `state.undoStack` holds up to `UNDO_LIMIT` (25) full-state snapshots — so each render re-serialised
+the whole stack (O(snapshots × state size) = O(n²) in a long game). Fix: the undo stack moved out of the
+active-game blob into its **own** localStorage key `secretHitler.activeGame.undo.v1`.
+- `saveActive()` now strips `undoStack` (`const {undoStack, ...rest} = state`) and saves only the live
+  state. New `saveUndo()` writes the stack, called **only when it changes** — from `pushUndo()` and
+  `undoLast()`. `clearActive()` clears both keys.
+- `loadActive()` reads the new key, but still accepts an older stack **embedded** in the blob (migration:
+  an in-progress game saved by the old code keeps its undo history). Undo still survives a refresh.
+
+**2. `derive()` extracted to `js/derive.js` (Node-testable) + a 47-assertion regression test.** The app's
+core rules engine was trapped in the `app.js` IIFE with zero coverage. Moved it out verbatim into a pure
+`Derive.derive(state, deps)` (classic `Derive` global + `module.exports`, matching `probability.js`). The
+in-app `derive()` is now a thin wrapper injecting the collaborators: `clamp`, `Prob.retrospectiveProb`,
+`lieOn`/`rolesOn`, and the honesty/role analyzers (`analyzeRound` deferred via a wrapper so `Honesty` is
+only touched when the switch is on). `index.html` loads `derive.js` before `app.js`.
+- **`test/derive.test.js` = 47 assertions** (`node test/derive.test.js`, no deps): empty game, pile
+  counting, rotation (+wrap, +fail), election tracker, veto bookkeeping, chaos (resets tracker + term
+  limits + removes one card), term limits (7-player Pres+Chan vs 5-player Chan-only), deaths (dead set,
+  aliveCount, `players[i].dead` mutation, rotation-skip, `wasHitler` not marked dead), **nested special
+  election keeps the first resume seat**, reshuffle into round 1, investigations, Hitler-elected terminal,
+  state mutation (roundMods written back), determinism, and the honesty/role **dependency wiring** (hooks
+  fire when the switches are on and their output is surfaced).
+
+**Verification:** `node --check` on both files; `node test/derive.test.js` → 47/0; existing
+`test/engine.test.js` → 1653/0 and `test/honesty.test.js` → 66/0 still green (proves the extraction is
+behaviour-identical). Full **headless-Chrome smoke test** through the real UI (menu → setup → randomize →
+set chancellor → enact a Liberal): `Derive` global present, no init error, one Liberal policy on the
+track, draw pile 14, president advanced → **SMOKE_OK**.
+
+Files: `js/derive.js` (new), `js/app.js`, `index.html`, `test/derive.test.js` (new), `PROGRESS.md`,
+`CHAT.md`.
