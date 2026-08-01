@@ -1520,3 +1520,12 @@ never rewritten.**
   Hitler→Di, Fascist→Cy, save → result updated, **events unchanged**; author gating — hidden for another
   member's game, shown + `updateGameResult` called for my own = SMOKE_OK. Modules init clean against live
   Firebase. Files: `js/stats.js`, `js/cloud.js`, `js/app.js`, `firestore.rules`, `PROGRESS.md`, `CHAT.md`.
+
+**Follow-up fix (same session, commit `b886cea`):** user couldn't see the Edit button on a game they'd
+recorded. Cause: games recorded **before** the feature (and freshly recorded ones until they sync) had no
+local `createdBy`, so for a signed-in user `canEditReviewedGame` returned false. Fixes: (1) stamp
+`createdBy` at RECORD time — companion `saveRoles` + the `online:finished` handler now set it to the
+signed-in uid, so a new game is editable by its recorder immediately; (2) when the author is UNKNOWN
+(older/pre-sync game) `canEditReviewedGame` now returns **true** — safe because the rules still reject a
+non-author's cloud write (save is cloud-first) and sync backfills `createdBy`. Also reminded the user to
+hard-refresh (GitHub Pages had the code; browser cache was serving the old app.js). `js/app.js` only.

@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-07-31 (after session 42 — edit a recorded game's roles, author-only)._
+_Last updated: 2026-08-01 (after session 42 + the edit-roles visibility fix, commit b886cea)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -23,8 +23,11 @@ _Last updated: 2026-07-31 (after session 42 — edit a recorded game's roles, au
   triggered within a few minutes (it happened in session 16 — the push landed but Pages never
   queued a run), force one:
   `gh api -X POST /repos/TimothyHadfield/secret-hitler-companion/pages/builds`. End commit
-  messages with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. Commit
-  only when work is done/tested; don't force-push.
+  messages with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+  **⚠️ USER PREFERENCE (session 37, standing): commit + push to GitHub IMMEDIATELY after every
+  change — don't wait to be asked.** So the flow is: finish a coherent change → test → commit + push
+  right away. (Still: land a change only once it's done/tested, and don't force-push. Never push
+  anything that risks recorded game data — see `DATA_SAFETY.md`.)
 - **The loop for every change:** implement → `node --check js/*.js` → **smoke-test in headless
   Chrome** (recipe below) → commit + push → poll the Pages build until `built` and `curl` the
   live URL for `200` → **update PROGRESS.md + CHAT.md**.
@@ -85,20 +88,44 @@ _Last updated: 2026-07-31 (after session 42 — edit a recorded game's roles, au
   original stylised CSS for the board — never reproduce the real game's printed artwork/logo).
 
 ## What this project is
-A website **companion/analyzer for the board game Secret Hitler** — used alongside a real
-table game, not a game engine. Feature pillars:
+A website for the board game Secret Hitler that started as a **companion/analyzer** (used alongside a
+real table game) and is now **also a full online game engine**. Feature pillars:
 1. **Randomization** — seat order + first President.
 2. **Probability** — for each government, the likelihood the President truly got the hand they
    claim, using a *retrospective* hypergeometric model (updates as the round unfolds).
 3. **Game statistics** — per-player + cross-game data, plus a reviewable per-game archive.
 4. **Accounts + groups** — live: sign in, sync across devices, share an archive with a group.
+5. **Online play** (sessions 40–41) — host a live game for your group; the app deals roles, runs every
+   step, and records the finished game. The companion mode (record a physical game) still exists too.
 
-## Current status: ✅ live and working (as of session 35)
+## Current status: ✅ live and working (as of session 42)
 - Static site (HTML/CSS/vanilla JS), auto-deployed via **GitHub Pages** on push to `main`.
 - All features below verified with headless-Chrome smoke tests + screenshots (no build step).
-- **All four pillars are shipped.** The full backend plan (accounts → cross-device sync →
-  groups → guest-linking/invitations) is **done and live**; nothing there needs the user.
-- **Shipped since session 28 (see the dedicated sections + `CHAT.md` for each):**
+- **All four pillars are shipped, PLUS full online play.** The backend plan (accounts → cross-device
+  sync → groups → guest-linking/invitations) is done and live; nothing there needs the user.
+- **🌐 ONLINE PLAY is COMPLETE and live (sessions 40–41)** — the app is now also a real game engine, not
+  just a companion. Host a game in a group, players join on their own devices, get secret roles
+  privately, and play a full guided game (nominate → vote → legislate → powers → win); the finished
+  game records to the group as a normal reviewable game. **Host-authoritative, serverless** (the host's
+  browser is the dealer/referee). See the dedicated **ONLINE PLAY** section. The one unproven bit is a
+  live multi-account round-trip (rules-enforced; wants a real multi-device game). A **brainstorm of
+  online-play improvements** was given in session 41's chat (not yet saved to a doc) — presence/waiting
+  indicators, diff'd private writes, guest links, spectators, visual parity with the companion table,
+  auto night-narration, and an automated multi-client test were the headline ideas.
+- **Data safety is RULE ZERO (session 36) — see `DATA_SAFETY.md`.** Recorded games must never be lost;
+  no wholesale Firestore deletes; the destructive prod test is hard-gated; "Clear all statistics" now
+  backs up first. Read it before touching anything Firebase.
+- **Shipped since session 35 (see the dedicated sections + `CHAT.md`):**
+  - **Editable display name** (session 37): change it in the account view; propagates to your profile +
+    every group roster seat that is you, so others see the new name.
+  - **Rules & Game Theory handbook** (session 38): two searchable, categorized main-menu sections
+    (`js/reference.js`) with a **wiki-style community-comments** layer (a global `comments` collection)
+    — anyone signed in can attach attributed notes to any rule/strategy item.
+  - **Label & favorite recorded games** (session 39): a ★ on each game box floats favorites to the top;
+    games can be named; both are per-user, synced via `profiles/{uid}/gameMeta`.
+  - **Edit a recorded game's roles** (session 42): author-only correction of a mis-recorded role in the
+    review; only `result` changes (the event log stays append-only).
+- **Shipped in sessions 28–35 (see the dedicated sections + `CHAT.md` for each):**
   - **Main-menu hub + back-anywhere navigation** (session 30): the app opens on a home menu (title,
     profile, settings, group box, Start game / Statistics cards); Players & Stats have a top-left ←
     that returns to where you came from; finishing/quitting a game returns to the menu.
@@ -578,11 +605,18 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
     hasOnly(['result'])` pins everything except `result`. This is a deliberate, bounded exception to the
     append-only invariant — the game log stays immutable, only the author's own role annotation is
     correctable. (Consistent with the author/owner delete added in s31.)
-  - **Author is known via `game.createdBy`:** `fromCloud` now carries it; sync backfills it onto existing
-    local copies and stamps it on my games at upload; a corrected `result` **propagates on sync** (the
-    remote result is applied onto already-downloaded copies, so group members see the fix). Signed out /
-    unsynced-local games count as "mine". Verified headless: edit persists + recolours, events unchanged,
-    and the button is hidden for another member's game / shown + cloud-writing for my own.
+  - **Author is known via `game.createdBy`:** stamped **at record time** (companion `saveRoles` + the
+    `online:finished` handler set it to the signed-in uid, so a new game is editable by its recorder
+    immediately); `fromCloud` also carries it; sync backfills it onto existing local copies + stamps it
+    on my games at upload; a corrected `result` **propagates on sync** (the remote result is applied onto
+    already-downloaded copies, so group members see the fix). `canEditReviewedGame`: signed-out → mine;
+    known author → only them; **author UNKNOWN (older/pre-sync game) → allowed** (safe — the rules still
+    reject a non-author's cloud write, and save is cloud-first). Verified headless: edit persists +
+    recolours, events unchanged, button hidden for another member's game / shown + cloud-writing for mine.
+  - **Gotcha for a fresh chat:** if a user says the Edit button is missing, it's almost always **browser
+    cache** (GitHub Pages already has it) — tell them to hard-refresh — or an old game with no local
+    `createdBy` yet (resolves after the sign-in sync backfills it). The permissive fallback above means
+    it should show regardless now.
 - **Deleting a recorded game (session 31).** The review panel has a **Delete game** button (outlined
   danger, bottom of the panel, step-independent). It confirms first (`deleteReviewedGame()`), then —
   crucially in this order — removes the **cloud copy first** so a later sync can't resurrect it, and
@@ -708,12 +742,16 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   Cloud; the Firestore calls themselves are covered only by the deployed rules + unrun rules test).
 - **No way to evict a member who has an account** — you can remove guest seats and leave a group
   yourself, but not remove another account holder. Closing the group stops new joins.
-- **The in-progress game doesn't sync**, only completed/recorded ones. Resuming a half-played game
-  on another device is out of scope (that's real-time play, explicitly descoped).
+- **A COMPANION-mode in-progress game doesn't sync** (only completed/recorded ones). Online play IS
+  real-time and fully synced — this limitation is about the physical-companion recorder only. (Online
+  play superseded the old "real-time is descoped" note.)
+- **Online play — the live multi-client round-trip isn't automated-tested** (rules-enforced + host-loop
+  tested; wants a real multi-account game). Host must stay connected; no host-migration/guest-joins/chat
+  yet (all deliberately deferred — see the ONLINE PLAY section + the session-41 improvements brainstorm).
 - Google sign-in is wired but **only verified manually** — it needs a browser OAuth round-trip, so
   the automated tests cover email/password only.
-- **Votes are not tracked** (Ja/Nein counts, ties failing, dead players not voting). The table
-  votes and tells the app the outcome — the one election rule still left to honest play.
+- **Votes aren't tracked in COMPANION mode** (Ja/Nein counts, ties, dead players not voting) — the table
+  tells the app the outcome. (Online play DOES run real per-device voting.)
 - The app records what the table *tells* it (claims, conflicts, vetoes, power outcomes); it can't
   *know* a lie, only estimate its probability (which the lie-detection model now does — see above).
 - The role model's behaviour parameters (β/γ/lie-rates) are **fixed defaults, not fitted** — the
@@ -722,8 +760,14 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
 
 ## Next candidate steps
 - **The backend plan is COMPLETE** (phases 0–3 shipped and live): accounts, cross-device
-  sync, groups, invite links, invitations by person, guest-seat linking and revocable
-  invites. **Real-time/online play stays descoped.**
+  sync, groups, invite links, invitations by person, guest-seat linking and revocable invites.
+- **ONLINE PLAY is COMPLETE (sessions 40–41).** The obvious next work is the session-41 **improvements
+  brainstorm** (not yet saved to a doc — it's in that chat only): presence + "waiting on whom" +
+  host-alive indicator; diff'd/batched private writes (perf); guest joins via link (anonymous auth);
+  spectators + non-playing referee host; visual parity with the companion table; auto night-narration in
+  the online night phase; chancellor-claim capture; and an **automated multi-client integration test**
+  (the one real coverage gap). If asked to improve online play, offer to save that brainstorm as
+  `ONLINE_PLAY.md` first.
 - **Honesty + role model — SHIPPED and iterated (sessions 21–28).** The full picture (per-claim
   honesty, `P(fascist)`/`P(Hitler)` role posterior fed by every logged signal, powers-as-claims,
   calibration harness) is in the **"Current status"** section above and detailed in the lie-detection
