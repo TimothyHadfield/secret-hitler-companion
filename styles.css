@@ -1070,3 +1070,13 @@ body.lie-on span.lie-col { display: inline; }
 .ol-hrow { padding: 6px 10px; border-radius: 7px; background: var(--panel-2); border: 1px solid var(--line); }
 .ol-action .c-fac, .ol-hrow .c-fac, .ol-learned .c-fac { color: var(--fac-2); }
 .ol-action .c-lib, .ol-hrow .c-lib, .ol-learned .c-lib { color: var(--lib-2); }
+
+/* ---- Accessibility: visible keyboard focus (session 44) --------------------
+   Several controls set `outline:none`; restore a clear focus ring for keyboard
+   users only (:focus-visible), so a mouse/touch tap stays clean but Tab is
+   always visible. A global default plus overrides for the controls that opted
+   out and for the keyboard-operable seats. */
+:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.ratio-btn:focus-visible { outline: 3px solid #fff; outline-offset: -3px; }
+.ref-search:focus-visible, .note-input:focus-visible { outline: 2px solid var(--gold); outline-offset: 0; border-color: var(--gold); }
+.seatNode[role="button"]:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; border-radius: 12px; }

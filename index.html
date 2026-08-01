@@ -149,7 +149,7 @@
            <button id="btnFail" class="warn">Failed presidency</button>
            <button id="btnHitlerChan" class="hitler-btn hidden">⚑ Chancellor was Hitler</button>
          </div>
-         <div id="hint" class="hint"></div>
+         <div id="hint" class="hint" role="status" aria-live="polite"></div>
        </div>
       </div><!-- /playMain -->
      </div><!-- /playTab -->
@@ -258,7 +258,7 @@
     </div>
   </div>
 
-  <div id="toast" class="toast hidden"></div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Rules + Game Theory handbook content (offline, no network). -->
   <script src="js/reference.js"></script>

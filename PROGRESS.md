@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-08-01 (after session 43: undo-stack perf fix + `derive()` extracted to a Node-tested module)._
+_Last updated: 2026-08-01 (session 44: accessibility first pass; EM fitting + correlated-fascist model in progress)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -801,8 +801,16 @@ are removed from the prompt); a **nested Special Election** keeps the *first* re
   (`test/derive.test.js`, 47 assertions — term limits, veto, nested special elections, reshuffles,
   rotation, deaths, tracker/chaos, pile counts, plus the honesty/role dependency wiring).
   `js/stats.js` and `js/honesty.js`/`js/probability.js` were already Node-tested.
-- Accessibility: no `aria-*` or `tabindex` anywhere; seats are `div`s with `onclick`. The only key
-  handler is the review playback's ← / → scrubbing (session 29).
+- **Accessibility — first pass DONE (session 44).** Player **seats are now keyboard-operable**: when a
+  tap would act (live play, not the sitting President, not dead) a seat becomes `role="button"`,
+  `tabindex="0"`, Enter/Space sets the Chancellor; every seat carries an **`aria-label`** narrating its
+  state (President/Chancellor/term-limited/executed + the live fascist-% when that setting is on), so a
+  screen-reader gets the same read as the badges/colours. **All overlays are proper modal dialogs**
+  (`role="dialog"` + `aria-modal`), handled centrally by `initA11y()`: on open it moves focus inside,
+  **traps Tab**, **Esc closes** (clicks the box's back arrow), and **restores focus** to the trigger on
+  close — no per-call-site retrofit (a `MutationObserver` per `.overlay` drives it). Toast + the in-game
+  hint are **`aria-live` regions**. Visible **`:focus-visible`** rings restored in CSS (several controls
+  had `outline:none`). Still open: `aria-*` on the History table / stats bars, and a full audit.
 - Further statistics ideas: favourite chancellor pairings, per-round trends.
 
 ## Groups (phase 2 — live)

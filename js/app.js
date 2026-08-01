@@ -1266,6 +1266,35 @@
       node.style.top = y + "%";
       node.onclick = () => setChancellor(i);
 
+      // Accessibility: a seat is a plain informational token unless a tap would
+      // act on it (live play, not the sitting president, not dead) — then it is a
+      // keyboard-operable button. The aria-label narrates the seat's whole state so
+      // a screen-reader user gets the same read as the visual badges/colours.
+      const a11yPres = (pb ? pbPres : d.presIdx) === i;
+      const a11yChan = (pb ? pbChan : chanIdx) === i;
+      const lbl = [`Seat ${i + 1}`, p.name];
+      if (roles) lbl.push(i === roles.hitlerIdx ? "Hitler" : (roles.fascistIdxs || []).includes(i) ? "Fascist" : "Liberal");
+      else {
+        if (a11yPres) lbl.push("President");
+        else if (a11yChan) lbl.push("Chancellor");
+        if (!pb && d.termLimited.has(i) && i !== d.presIdx) lbl.push("term-limited");
+      }
+      if (p.dead) lbl.push("executed");
+      if (!roles && (settings.boardOdds || pb) && d.roleOdds && d.roleOdds[i] != null)
+        lbl.push(Math.round(d.roleOdds[i] * 100) + "% fascist");
+      const seatActive = !busy() && !p.dead && i !== d.presIdx;
+      if (seatActive) {
+        lbl.push("press Enter to set as Chancellor");
+        node.setAttribute("role", "button");
+        node.tabIndex = 0;
+        node.onkeydown = (e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") { e.preventDefault(); setChancellor(i); }
+        };
+      } else {
+        node.setAttribute("role", "img");
+      }
+      node.setAttribute("aria-label", lbl.join(", "));
+
       // one row per presidency: [3 cards | odds + details]. Consecutive failed
       // elections (with no passed presidency between them) share a single row of
       // side-by-side ✕✕ to save vertical space; a passed presidency splits the run,
@@ -4106,9 +4135,65 @@
     }
   });
 
+  // ------------------------------ accessibility ------------------------------
+  // Centralised dialog a11y so the ~7 overlays don't each need retrofitting: mark
+  // them as modal dialogs, and when one opens move focus into it, trap Tab inside,
+  // close on Esc, and restore focus to whatever was focused before it opened.
+  function initA11y() {
+    const overlays = Array.prototype.slice.call(document.querySelectorAll(".overlay"));
+    const focusablesIn = (el) =>
+      Array.prototype.slice
+        .call(el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+        .filter((n) => n.getClientRects().length > 0);
+    const isOpen = (o) => !o.classList.contains("hidden");
+    const returnFocus = new WeakMap();
+
+    overlays.forEach((o) => {
+      o.setAttribute("role", "dialog");
+      o.setAttribute("aria-modal", "true");
+      const box = o.querySelector(".overlay-box") || o;
+      const setLabel = () => {
+        const t = box.querySelector(".power-title, .role-title, h3");
+        if (t && t.textContent.trim()) o.setAttribute("aria-label", t.textContent.trim());
+      };
+      new MutationObserver(() => {
+        if (isOpen(o)) {
+          if (!returnFocus.get(o)) returnFocus.set(o, document.activeElement);
+          setLabel();
+          // focus the first real control, skipping the back arrow when there's an action
+          const f = focusablesIn(box);
+          const target = f.filter((n) => !n.classList.contains("backbtn"))[0] || f[0] || box;
+          setTimeout(() => { try { target.focus(); } catch (e) {} }, 0);
+        } else {
+          const prev = returnFocus.get(o);
+          returnFocus.set(o, null);
+          if (prev && document.contains(prev)) { try { prev.focus(); } catch (e) {} }
+        }
+      }).observe(o, { attributes: true, attributeFilter: ["class"] });
+    });
+
+    // Key handling for whichever overlay is currently open (topmost in the DOM).
+    document.addEventListener("keydown", (e) => {
+      const open = overlays.filter(isOpen);
+      if (!open.length) return;
+      const o = open[open.length - 1];
+      if (e.key === "Escape") {
+        const back = o.querySelector(".backbtn");
+        if (back) { e.preventDefault(); back.click(); }
+      } else if (e.key === "Tab") {
+        const f = focusablesIn(o);
+        if (!f.length) return;
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    });
+  }
+
   // ------------------------------ boot ---------------------------------------
   loadSettings();
   wire();
+  initA11y();
   const resumed = loadActive();
   if (resumed) {
     // resume the in-progress game exactly where it left off

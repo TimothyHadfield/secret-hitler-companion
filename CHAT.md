@@ -1569,3 +1569,37 @@ track, draw pile 14, president advanced → **SMOKE_OK**.
 
 Files: `js/derive.js` (new), `js/app.js`, `index.html`, `test/derive.test.js` (new), `PROGRESS.md`,
 `CHAT.md`.
+
+---
+
+## Session 44 — Accessibility first pass (#3), then EM fitting (#5) + correlated fascists (#6)
+
+User picked improvements **3, 5, 6** off the session-43 backlog and explicitly ruled out vote/chancellor
+data capture ("keep the site as simple as possible") — so all three are internal/opt-in, no new in-game
+data entry.
+
+### Part 1 — Accessibility (#3)
+
+The app was mostly mouse/touch-only: player seats were informational `div`s with `onclick`, dialogs had
+no focus management, and several controls set `outline:none`. (Role-recording + the ratio/menu controls
+were already real `<button>`s, and settings toggles already had `role=switch` — so the gaps were seats,
+dialogs, focus rings, and live regions.)
+
+- **Seats keyboard-operable** (`renderTable`): a seat becomes `role="button"` + `tabindex="0"` with an
+  Enter/Space handler that calls `setChancellor(i)` **only when a tap would act** (`!busy() && !dead &&
+  i!==presIdx`); otherwise it's `role="img"`. Every seat gets an **`aria-label`** listing its state
+  (seat #, name, President/Chancellor/term-limited/executed, and the live fascist-% when the board-odds
+  setting or a review playback is showing it) — the screen-reader equivalent of the visual badges.
+- **Dialogs** (`initA11y()`, called at boot): every `.overlay` is marked `role="dialog"` + `aria-modal`,
+  and a per-overlay `MutationObserver` on the `hidden` class drives focus: on open, store the trigger,
+  move focus to the first real control (skip the back arrow), **trap Tab**; global keydown **Esc** clicks
+  the box's `.backbtn`; on close, **restore focus** to the trigger. Centralised, so none of the ~7
+  `classList.remove("hidden")` call sites needed changing.
+- **Live regions:** `#toast` → `role=status aria-live=polite aria-atomic`; `#hint` → `aria-live=polite`.
+- **CSS:** restored a visible **`:focus-visible`** ring (gold) globally + overrides for the controls that
+  had opted out (`.ratio-btn`, `.ref-search`, `.note-input`) and for keyboard-operable seats.
+- **Verified** headless (real UI): toast/hint are live regions; opening Settings gives role=dialog +
+  aria-modal, focus moves to the first toggle, **Esc closes it and focus returns to the gear**; all 5
+  seats have aria-labels, actionable seats are `role=button`+tabindex 0 with a "Chancellor" hint, and
+  **pressing Enter on a focused seat sets it as Chancellor** → SMOKE_OK. Files: `js/app.js`, `index.html`,
+  `styles.css`, `PROGRESS.md`, `CHAT.md`.
