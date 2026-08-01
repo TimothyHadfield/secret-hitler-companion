@@ -784,10 +784,23 @@ records but currently ignores.
     the model is better than guessing `f/n` — this is the cheapest high-value thing to build next
     and it gates whether any of Tier 1–3 is worth it.
 
-11. ⏳ **Fit the parameters (EM), then per-player tendencies.** Once there are enough games, stop
-    guessing β, γ, and the lie rates — fit them from the archive (§7), then let each regular player
-    have their own shrinkage-estimated style (the timid Hitler, the always-push fascist). For a
-    fixed friend group this is where the model stops being generic and starts being *about them*.
+11. ✅ **Fit the lie rates (EM), shrunk to the priors (session 44 — `js/fit.js`).** The identifiable
+    part of §7 is shipped: with the recorded roles as labels, EM fits the **per-team report lie rates**
+    (`facLie`, `libLie` — how often each team misreports its hand). E-step = the §4b forward–backward DP
+    with roles fixed (reusing the exact Honesty kernels, so the fitter can't drift from the model it
+    feeds); M-step = a **Beta-posterior mean** (`λ̂_t = (κ·default_t + Σ E[misreport]) / (κ + Σ 1)`), so a
+    small archive stays near the documented prior and the rate only moves toward the data as games pile
+    up (§7b shrinkage). Validated by a **simulation-recovery test** (`test/fit.test.js`, 18 assertions:
+    generate games with known rates, EM recovers them within ±0.03; shrinkage, Hitler bucketing,
+    determinism). Surfaced on the Statistics screen as an **opt-in** "Fit lie rates to your games" panel
+    that shows the fitted vs default rates AND whether they **beat the defaults on your own games**
+    (a fitted-vs-default Brier A/B) before you apply them; applied rates feed the role posterior via a
+    `params` override and are fully reversible.
+    - **Deliberately NOT fitted: β (bury) and γ (enact-fascist).** §7c/F4: they are confounded with the
+      lie rate without **chancellor-claims or votes**, which this app does not capture (a standing product
+      choice), so fitting them from presidential claims alone would manufacture confident nonsense. They
+      stay at the documented defaults. ⏳ still open: **per-player** lie tendencies (§7b, the same machinery
+      keyed by seat) once the per-group archive is larger.
 
 12. ⏳ **Report a range, not a point.** Sweep β, γ over a plausible band and show the resulting
     interval. "62%, stable across assumptions" and "62%, but anywhere from 45–78%" are different

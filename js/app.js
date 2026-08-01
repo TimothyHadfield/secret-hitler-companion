@@ -90,16 +90,27 @@
   const SETTINGS_KEY = "secretHitler.settings.v1";
   // `boardOdds` shows a live per-player fascist % ON the shared table — off by
   // default on purpose: a table that can all see it plays a different game.
-  const settings = { lieDetection: true, boardOdds: false };
+  // `useFit`/`fitParams` (session 44): opt-in per-team lie rates fitted from the
+  // user's own recorded games (js/fit.js). Off + null by default — the model uses
+  // its documented priors until the user chooses to apply a fit.
+  const settings = { lieDetection: true, boardOdds: false, useFit: false, fitParams: null };
   function loadSettings() {
     try {
       const s = JSON.parse(lsGet(SETTINGS_KEY) || "{}");
       if (typeof s.lieDetection === "boolean") settings.lieDetection = s.lieDetection;
       if (typeof s.boardOdds === "boolean") settings.boardOdds = s.boardOdds;
+      if (typeof s.useFit === "boolean") settings.useFit = s.useFit;
+      if (s.fitParams && typeof s.fitParams.facLie === "number" && typeof s.fitParams.libLie === "number")
+        settings.fitParams = { facLie: s.fitParams.facLie, libLie: s.fitParams.libLie };
     } catch (e) { /* keep the defaults */ }
     applySettings();
   }
   function saveSettings() { lsSet(SETTINGS_KEY, JSON.stringify(settings)); }
+  // The lie-rate overrides handed to the role posterior — the fitted per-team rates
+  // when the user has opted in and a fit exists, else undefined (documented priors).
+  function activeHonestyParams() {
+    return settings.useFit && settings.fitParams ? { facLie: settings.fitParams.facLie, libLie: settings.fitParams.libLie } : undefined;
+  }
   function applySettings() {
     document.body.classList.toggle("lie-on", settings.lieDetection);
     document.body.classList.toggle("board-odds-on", settings.boardOdds);
@@ -121,9 +132,9 @@
   // the hard role deductions. Shared by derive() (live, gated by the switch) and
   // the game record (a permanent snapshot). Returns the full {pFascist,pHitler,…}
   // result, or null if the engine is absent / there's nothing to analyse.
-  function analyzeRoles(rounds, gi, hitlerElected) {
+  function analyzeRoles(rounds, gi, hitlerElected, nOverride, paramsOverride) {
     if (typeof Honesty === "undefined" || !gi.length) return null;
-    const n = state.players.length;
+    const n = nOverride != null ? nOverride : state.players.length;
     const forcedFascist = [];
     let forcedHitler = null;
     const notHitler = new Set();
@@ -155,37 +166,6 @@
         specials.push({ chooserIdx: g.presidentIdx, chosenIdx: p.chosenIdx });
     });
 
-    // Policy Peek: the peek names the top 3 cards, which are a real 3-card sample
-    // of the round pool. Two cases:
-    //  • the NEXT government in the same round drew exactly those cards → the peek
-    //    is a second report of that government's hand (tie them);
-    //  • no government has drawn them yet (or a reshuffle carried them off) → the
-    //    peek is still a report of 3 real cards, so add a PHANTOM hand to its round
-    //    so the conservation law can catch an impossible claim right away (e.g.
-    //    claiming 3 liberals when the round pool holds only 2).
-    const phantomByRound = {};
-    rounds.forEach((r) => {
-      for (let k = 0; k < r.govs.length; k++) {
-        const g = gi[r.govs[k]];
-        if (!(g.power && g.power.type === "peek" && Array.isArray(g.power.order))) continue;
-        const peekLibs = g.power.order.filter((c) => c === "L").length;
-        if (k + 1 < r.govs.length) {
-          peekByGov[r.govs[k + 1]] = { peekerIdx: g.presidentIdx, peekLibs };
-        } else {
-          (phantomByRound[r.index] = phantomByRound[r.index] || []).push({
-            presIdx: g.presidentIdx,
-            claim: peekLibs,
-            enacted: null,
-            vetoed: true, // no enacted-card constraint; still a 3-card sample
-            conflict: false,
-            facBefore: g.facBefore,
-            libBefore: g.libBefore,
-            phantom: true,
-          });
-        }
-      }
-    });
-
     return Honesty.analyzeGame({
       playerCount: n,
       fascistCount: Math.ceil(n / 2) - 1, // fascists incl. Hitler
@@ -196,27 +176,55 @@
       investigations,
       kills,
       specials,
-      rounds: rounds.map((r) => ({
-        startN: r.startN,
-        startL: r.startL,
-        chaosLibs: r.chaosLib,
-        chaosFascs: r.chaosFac,
-        govs: r.govs
-          .map((idx) => ({
-            presIdx: gi[idx].presidentIdx,
-            chanIdx: gi[idx].chancellorIdx,
-            claim: gi[idx].libs,
-            enacted: gi[idx].enacted,
-            vetoed: gi[idx].vetoed,
-            conflict: gi[idx].conflict,
-            facBefore: gi[idx].facBefore,
-            libBefore: gi[idx].libBefore,
-            peek: peekByGov[idx] || undefined,
-          }))
-          // append any phantom peek "hands" for peeks nobody has drawn yet
-          .concat((phantomByRound[r.index] || []).map((pg) => ({ chanIdx: pg.presIdx, ...pg }))),
-      })),
+      rounds: buildHonestyRounds(rounds, gi),
+      // opt-in per-team lie rates fitted from the user's own games (else priors)
+    }, paramsOverride !== undefined ? paramsOverride : activeHonestyParams());
+  }
+
+  // Build the analyzeGame `rounds` array (peek/phantom enriched) from derived
+  // rounds+gi. Shared by analyzeRoles (inference) and the lie-rate fitter, which
+  // feeds the SAME shape with the recorded true roles — so the fit can never drift
+  // from the input the model actually scores.
+  //  • a Policy Peek whose cards the NEXT government in the round drew is a second
+  //    report of that hand (tie them); a peek nobody drew becomes a PHANTOM 3-card
+  //    "hand" so the round conservation law can still catch an impossible claim.
+  function buildHonestyRounds(rounds, gi) {
+    const peekByGov = {};
+    const phantomByRound = {};
+    rounds.forEach((r) => {
+      for (let k = 0; k < r.govs.length; k++) {
+        const g = gi[r.govs[k]];
+        if (!(g.power && g.power.type === "peek" && Array.isArray(g.power.order))) continue;
+        const peekLibs = g.power.order.filter((c) => c === "L").length;
+        if (k + 1 < r.govs.length) {
+          peekByGov[r.govs[k + 1]] = { peekerIdx: g.presidentIdx, peekLibs };
+        } else {
+          (phantomByRound[r.index] = phantomByRound[r.index] || []).push({
+            presIdx: g.presidentIdx, claim: peekLibs, enacted: null, vetoed: true,
+            conflict: false, facBefore: g.facBefore, libBefore: g.libBefore, phantom: true,
+          });
+        }
+      }
     });
+    return rounds.map((r) => ({
+      startN: r.startN,
+      startL: r.startL,
+      chaosLibs: r.chaosLib,
+      chaosFascs: r.chaosFac,
+      govs: r.govs
+        .map((idx) => ({
+          presIdx: gi[idx].presidentIdx,
+          chanIdx: gi[idx].chancellorIdx,
+          claim: gi[idx].libs,
+          enacted: gi[idx].enacted,
+          vetoed: gi[idx].vetoed,
+          conflict: gi[idx].conflict,
+          facBefore: gi[idx].facBefore,
+          libBefore: gi[idx].libBefore,
+          peek: peekByGov[idx] || undefined,
+        }))
+        .concat((phantomByRound[r.index] || []).map((pg) => ({ chanIdx: pg.presIdx, ...pg }))),
+    }));
   }
 
   // A permanent snapshot for the saved game, computed even when the switch is off
@@ -2820,6 +2828,119 @@
     );
   }
 
+  // ---- fit the report lie rates from the user's own games (HONESTY_MODEL §7) ----
+  // The deps for a rules-only derive() of an archived game: no probability display,
+  // no role posterior — we just want the rounds/govs structure to feed the fitter.
+  function fitDeps() {
+    return { clamp, retrospectiveProb: Prob.retrospectiveProb, lieOn: () => false,
+      rolesOn: () => false, analyzeRound: () => null, analyzeRoles: () => null };
+  }
+  // Reconstruct a recorded game's rounds/gi purely (no global state touched).
+  function derivedForGame(g) {
+    const st = { players: (g.players || []).map((p) => ({ name: p.name, dead: false })),
+      firstPres: g.firstPres || 0, events: g.events || [], roundMods: {} };
+    if (!st.players.length) return null;
+    try { const d = Derive.derive(st, fitDeps()); return d.gi.length ? { st, d } : null; }
+    catch (e) { return null; }
+  }
+  const recordedGamesWithRoles = () =>
+    (Stats.loadAllGames ? Stats.loadAllGames() : Stats.loadGames())
+      .filter((g) => g.result && Array.isArray(g.events) && g.result.hitlerIdx != null);
+  // Labelled samples for the fitter: the analyzeGame round shape + the TRUE roles.
+  function buildFitSamples() {
+    if (typeof Fit === "undefined" || typeof Derive === "undefined") return [];
+    const out = [];
+    for (const g of recordedGamesWithRoles()) {
+      const dv = derivedForGame(g);
+      if (!dv) continue;
+      out.push({
+        playerCount: dv.st.players.length,
+        cautiousHitler: dv.st.players.length >= 7,
+        roles: { hitlerIdx: g.result.hitlerIdx, fascistIdxs: (g.result.fascistIdxs || []).slice() },
+        rounds: buildHonestyRounds(dv.d.rounds, dv.d.gi),
+      });
+    }
+    return out;
+  }
+  // Role odds for one recorded game under a given params override (undefined = the
+  // documented priors). Used for the fitted-vs-default calibration A/B.
+  function roleOddsFor(g, params) {
+    const dv = derivedForGame(g);
+    if (!dv) return null;
+    const r = analyzeRoles(dv.d.rounds, dv.d.gi, dv.d.hitlerElected, dv.st.players.length, params);
+    return r ? r.pFascist : null;
+  }
+  // Fit + score: fitted rates and whether they beat the documented defaults on the
+  // user's own games (fair A/B — both odds recomputed, differing only by params).
+  function computeFitReport() {
+    const samples = buildFitSamples();
+    if (samples.length < 3) return { enough: false, samples: samples.length };
+    const fit = Fit.fit(samples);
+    const isFascist = (g, i) => i === g.result.hitlerIdx || (g.result.fascistIdxs || []).includes(i);
+    let n = 0, bDef = 0, bFit = 0;
+    for (const g of recordedGamesWithRoles()) {
+      const def = roleOddsFor(g, undefined);
+      const fitp = roleOddsFor(g, fit.params);
+      if (!def || !fitp) continue;
+      const pc = g.playerCount || (g.players ? g.players.length : def.length);
+      for (let i = 0; i < pc; i++) {
+        if (def[i] == null || fitp[i] == null) continue;
+        const y = isFascist(g, i) ? 1 : 0;
+        bDef += (def[i] - y) * (def[i] - y);
+        bFit += (fitp[i] - y) * (fitp[i] - y);
+        n++;
+      }
+    }
+    return { enough: true, samples: samples.length, govs: fit.govs, params: fit.params,
+      base: fit.base, byTeam: fit.byTeam, brierDefault: n ? bDef / n : 0, brierFitted: n ? bFit / n : 0, seats: n };
+  }
+  function fitPanelHtml() {
+    if (!lieOn() || typeof Fit === "undefined") return "";
+    const applied = settings.useFit && settings.fitParams;
+    const cur = applied
+      ? `<p class="muted" style="margin:0 0 8px">Now using <b class="lie-good">fitted</b> rates — fascists ${pct(settings.fitParams.facLie)} · liberals ${pct(settings.fitParams.libLie)} misreport. <button class="ghost fit-reset">Use defaults</button></p>`
+      : `<p class="muted" style="margin:0 0 8px">Using the documented default rates.</p>`;
+    return (
+      `<div class="panel lie-col"><h3 class="sec-title">Fit lie rates to your games</h3>` +
+      `<p class="muted" style="margin:0 0 8px">Estimate how often each team misreports their hand from your own recorded games (roles known), shrunk toward the defaults so a few games barely move it. ` +
+      `<span class="muted">Only the identifiable report rates are fitted — the push rates β/γ can't be separated without chancellor-claims or votes, which this app doesn't record.</span></p>` +
+      cur +
+      `<button class="ghost fit-run">Fit from my games</button>` +
+      `<div class="fit-result" style="margin-top:8px"></div></div>`
+    );
+  }
+  function runAndShowFit(resultEl) {
+    if (!resultEl) return;
+    resultEl.innerHTML = `<p class="muted">Fitting…</p>`;
+    // defer so "Fitting…" paints before the (all-games) computation runs
+    setTimeout(() => {
+      let rep;
+      try { rep = computeFitReport(); } catch (e) { resultEl.innerHTML = `<p class="muted">Couldn't fit (${escapeHtml(String(e.message || e))}).</p>`; return; }
+      if (!rep.enough) {
+        resultEl.innerHTML = `<p class="muted">Needs at least 3 recorded games with roles (have ${rep.samples}).</p>`;
+        return;
+      }
+      const better = rep.brierFitted < rep.brierDefault - 1e-9;
+      resultEl.innerHTML =
+        `<div class="statgrid">` +
+        tile(`${pct(rep.params.facLie)}<div class="sub">was ${pct(rep.base.facLie)}</div>`, "Fascist misreport") +
+        tile(`${pct(rep.params.libLie)}<div class="sub">was ${pct(rep.base.libLie)}</div>`, "Liberal misreport") +
+        `</div>` +
+        `<p class="muted" style="margin:8px 0 0">From ${rep.samples} games · ${rep.govs} presidential claims. On your games the fitted rates are ` +
+        `<b class="${better ? "lie-good" : "lie-bad"}">${better ? "better than" : "no better than"}</b> the defaults ` +
+        `(Brier ${rep.brierFitted.toFixed(3)} vs ${rep.brierDefault.toFixed(3)}).</p>` +
+        `<button class="fit-apply ${better ? "primary" : "ghost"}" style="margin-top:8px">Use these rates</button>`;
+      const apply = resultEl.querySelector(".fit-apply");
+      if (apply) apply.onclick = () => {
+        settings.useFit = true;
+        settings.fitParams = { facLie: rep.params.facLie, libLie: rep.params.libLie };
+        saveSettings();
+        showToast("Now using your fitted lie rates.");
+        renderStats();
+      };
+    }, 30);
+  }
+
   function renderStatsInto(container) {
     const s = Stats.summary();
     const gid = container.id + "Games";
@@ -2872,6 +2993,7 @@
       `<div class="panel"><h3 class="sec-title">How games ended</h3>` +
       `<div class="kv-grid">${endings}</div></div>` +
       calibrationHtml() +
+      fitPanelHtml() +
       `<div class="panel"><h3 class="sec-title">Players ` +
       `<span class="sec-note">tap for the full breakdown</span></h3>` +
       `<div class="player-list">${Stats.playerStats().map(playerCard).join("")}</div></div>` +
@@ -2880,6 +3002,16 @@
       `<div class="games-list" id="${gid}"></div></div>`;
 
     renderGamesList($(gid));
+    // Fit panel wiring (scoped to this container so the two stats mounts don't clash)
+    const fitRun = container.querySelector(".fit-run");
+    if (fitRun) fitRun.onclick = () => runAndShowFit(container.querySelector(".fit-result"));
+    const fitReset = container.querySelector(".fit-reset");
+    if (fitReset) fitReset.onclick = () => {
+      settings.useFit = false;
+      saveSettings();
+      showToast("Back to the default lie rates.");
+      renderStats();
+    };
     container.querySelectorAll(".pstat-head").forEach((b) => {
       b.onclick = () => {
         const det = b.nextElementSibling;

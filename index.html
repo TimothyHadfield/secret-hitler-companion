@@ -269,6 +269,9 @@
   <!-- Lie detection. Loaded always but only ever *called* when the setting is
        on, so it costs nothing when the feature is off. See HONESTY_MODEL.md. -->
   <script src="js/honesty.js"></script>
+  <!-- Fits the report lie rates from the user's own recorded games (opt-in). Loads
+       after honesty.js (reuses its kernels), only called from the stats screen. -->
+  <script src="js/fit.js"></script>
   <script src="js/stats.js"></script>
   <!-- "In the night" narration: scripts, speech pacing, and IndexedDB clip
        storage. Classic script exposing window.Night. -->

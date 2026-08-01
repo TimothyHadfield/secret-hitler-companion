@@ -639,6 +639,13 @@ const Honesty = (() => {
     _roundMass: roundMass,
     _combinations: combinations,
     _assignments: assignments,
+    // kernels reused by the parameter fitter (js/fit.js) so it scores hands with
+    // the EXACT same model it will later feed — no risk of the two drifting apart.
+    _forwardTable: forwardTable,
+    _backwardTable: backwardTable,
+    _SUMPROD: SUMPROD,
+    _drawDistribution: (n, l) => P.drawDistribution(n, l),
+    _binom: binom,
   };
 })();
 

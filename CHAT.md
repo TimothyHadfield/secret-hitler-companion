@@ -1631,3 +1631,37 @@ flip; the defaults are gentle), plus a new **§9** (7 assertions): coordination 
 pair's odds, ally-reduction gentles a conflict while still implicating the pair over a bystander, the
 fascist count still conserves. **73 passed, 0 failed.** derive 47/0 + engine 1653/0 unaffected. Files:
 `js/honesty.js`, `test/honesty.test.js`, `HONESTY_MODEL.md`, `PROGRESS.md`, `CHAT.md`.
+
+### Part 3 — Fit lie rates to your games (#5, HONESTY_MODEL §7 / §12 #11)
+
+Scoped deliberately. The design review (§7c, F4) says β (bury) and γ (enact-fascist) are **confounded**
+with the lie rate unless you capture chancellor-claims or votes — data the user explicitly declined — so
+fitting them from presidential claims alone is the "confident nonsense" the review warns against. The
+**identifiable** quantity is the per-team **report lie rate** (how often each team misreports its hand),
+which is also the "lie tendency" wishlist stat. So v1 fits `facLie`/`libLie` only; β/γ stay at defaults.
+
+- **`js/fit.js`** — `Fit.fit(samples)`: roles-known EM. E-step runs the §4b forward–backward DP with the
+  true roles fixed (reusing Honesty's kernels — newly exported `_forwardTable/_backwardTable/_SUMPROD/
+  _binom/_drawDistribution` — so the fitter scores hands with the EXACT model it feeds). M-step is a
+  Beta-posterior mean `(κ·default + Σ E[misreport])/(κ + Σ 1)`, κ=24 pseudo-obs → a small archive stays
+  near the prior. A knowing Hitler (5–6p) buckets as fascist; a cautious Hitler (7+) is excluded (its rate
+  isn't fitted).
+- **`test/fit.test.js`** (18 assertions) — the gold-standard **simulation-recovery** check (§8): generate
+  single-gov R=0 games (hand pinned) with KNOWN lie rates, confirm EM recovers them within ±0.03; plus
+  shrinkage (few games ≈ default), Hitler bucketing, responsiveness, determinism, and an R>0 (uncertain
+  hands) convergence case that exercises the forward-backward beyond point masses.
+- **App wiring:** extracted `buildHonestyRounds(rounds, gi)` (shared by `analyzeRoles` and the fitter);
+  `analyzeRoles(...nOverride, paramsOverride)` now takes an optional player-count + lie-rate override, so
+  archived games can be re-scored under any params. `activeHonestyParams()` returns the fitted rates when
+  the user has opted in (persisted in `settings.useFit`/`settings.fitParams`), feeding the live board odds,
+  the review role odds, and every newly-recorded game's `roleOdds`. Games are reconstructed purely via
+  `Derive.derive(gameState, …)` — no global state touched.
+- **UI** (Statistics screen, `lie-col`, only when lie detection is on): a "Fit lie rates to your games"
+  panel with a **Fit** button → shows fitted vs default rates AND a **fitted-vs-default Brier A/B on the
+  user's own games** (so you see whether it actually helps before applying) → **Use these rates** persists
+  the opt-in; **Use defaults** reverts. Fully reversible, off by default.
+- **Verified:** all Node suites green (fit 18, honesty 73, derive 47, engine 1653). Headless end-to-end
+  with 4 seeded recorded games: the panel fits (fascist 53% vs 50%, liberal 4% vs 5%), shows the A/B, and
+  **Apply persists `useFit`+`fitParams`** and flips the panel to offer "Use defaults" → SMOKE_OK. Files:
+  `js/fit.js` (new), `test/fit.test.js` (new), `js/honesty.js` (kernel exports), `js/app.js`, `index.html`,
+  `styles.css`, `HONESTY_MODEL.md`, `PROGRESS.md`, `CHAT.md`.

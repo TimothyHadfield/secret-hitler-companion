@@ -1080,3 +1080,7 @@ body.lie-on span.lie-col { display: inline; }
 .ratio-btn:focus-visible { outline: 3px solid #fff; outline-offset: -3px; }
 .ref-search:focus-visible, .note-input:focus-visible { outline: 2px solid var(--gold); outline-offset: 0; border-color: var(--gold); }
 .seatNode[role="button"]:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; border-radius: 12px; }
+
+/* Fit-lie-rates panel: the "was NN%" sub-line under a fitted tile (session 44). */
+.statgrid .sub { font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+.fit-result:empty { display: none; }
