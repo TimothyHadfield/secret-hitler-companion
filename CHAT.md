@@ -1603,3 +1603,31 @@ dialogs, focus rings, and live regions.)
   seats have aria-labels, actionable seats are `role=button`+tabindex 0 with a "Chancellor" hint, and
   **pressing Enter on a focused seat sets it as Chancellor** → SMOKE_OK. Files: `js/app.js`, `index.html`,
   `styles.css`, `PROGRESS.md`, `CHAT.md`.
+
+### Part 2 — Correlated fascist behaviour (#6, HONESTY_MODEL §12.7)
+
+The role posterior treated governments as conditionally independent *given the assignment*. The key
+insight that makes a correlation term cheap: **inside a fixed assignment we already know every seat's
+role**, so a pairwise interaction is just one more per-government multiplicative factor — the round DP
+sums it exactly, no factorisation lost. Two effects, each gated on the acting seat KNOWING its ally (a
+cautious/blind Hitler in 7+ triggers neither):
+
+- **Coordinated push** (`coordBump` = 0.08): a fascist chancellor enacting fascist from a mixed pass
+  pushes harder when the president is a known ally. Added to γ and clamped (`pushMin/pushMax`), so it can
+  only ever *raise* the enact-fascist rate — a co-governing fascist pair reads as more suspicious together.
+- **Ally-framing reduction** (`falseAccuseAlly` = 0.05 vs `falseAccuseFasc` 0.30): a fascist president
+  almost never fabricates a conflict against a fascist ally, so a real conflict is gentle evidence the
+  pair are NOT coordinating fascists — mass shifts toward "exactly one of the pair is fascist".
+
+Implementation (`js/honesty.js`): `enactProb(e,p,bhv,coord,prm)` and `conflictFactor(p,bhv,framingAlly,
+prm)` gained the ally flags; `govLikelihoodTeam(...,rel)` threads a `rel = {chanKnowsPresAlly,
+presKnowsChanAlly}` computed per government from the assignment (omitting `rel` reproduces the old
+independent behaviour exactly). `analyzeGame`'s weightFn builds `rel`. Only the ROLE posterior changed —
+the per-claim honesty layer (`analyzeRound`) is untouched.
+
+Tests: the brute-force role mirror in `honesty.test.js` shares `_govLikelihoodTeam`, so it now passes the
+same `rel` (still validates DP-vs-explicit-enumeration). All 66 prior assertions still pass (no qualitative
+flip; the defaults are gentle), plus a new **§9** (7 assertions): coordination lifts the co-governing
+pair's odds, ally-reduction gentles a conflict while still implicating the pair over a bystander, the
+fascist count still conserves. **73 passed, 0 failed.** derive 47/0 + engine 1653/0 unaffected. Files:
+`js/honesty.js`, `test/honesty.test.js`, `HONESTY_MODEL.md`, `PROGRESS.md`, `CHAT.md`.

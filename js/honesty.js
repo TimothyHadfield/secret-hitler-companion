@@ -57,6 +57,20 @@ const Honesty = (() => {
     falseAccuseFasc: 0.30, // fascist president raising a bogus conflict (framing the chancellor)
     falseAccuseLib: 0.02,  // a liberal doing the same — essentially never
 
+    // ---- CORRELATED fascist behaviour (§12.7). The model is conditionally
+    // independent across governments GIVEN the assignment, but WITHIN a fixed
+    // assignment we know both seats' roles, so a factorisation-preserving pairwise
+    // term is free. Two effects, both requiring the acting seat to KNOW its ally
+    // (a cautious/blind Hitler triggers neither):
+    //  • coordBump — a fascist chancellor enacting fascist from a mixed pass pushes
+    //    HARDER when the president is a known ally (they're jointly pushing). Added
+    //    to γ and clamped, so coordination only ever RAISES the push rate.
+    coordBump: 0.08,
+    //  • falseAccuseAlly — a fascist president almost never fabricates a conflict
+    //    AGAINST a fascist ally (it burns a teammate). So a real conflict between
+    //    two players is itself gentle evidence they are NOT a coordinating pair.
+    falseAccuseAlly: 0.05,
+
     // ---- state-dependence of the push rates (§12.5). Fascists blend early and
     // push hard once fascist policies pile up or liberals near a win. These
     // shift beta/gamma by the board state; kept gentle and clamped.
@@ -386,15 +400,22 @@ const Honesty = (() => {
     return buried ? bhv.beta : 1 - bhv.beta;
   }
   // Chancellor holds `p` liberals + (2-p) fascists; enacts one, observed as `e`.
-  function enactProb(e, p, bhv) {
+  // `coord` true = the president is a KNOWN fascist ally, so a fascist chancellor
+  // pushes harder (coordination); the bump is added to γ and clamped, so it can
+  // only ever raise the enact-fascist rate.
+  function enactProb(e, p, bhv, coord, prm) {
     if (p === 2) return e === "L" ? 1 : 0;  // LL: must enact L
     if (p === 0) return e === "F" ? 1 : 0;  // FF: must enact F
-    return e === "F" ? bhv.gamma : 1 - bhv.gamma; // p===1: a real choice
+    const gamma = coord ? clamp(bhv.gamma + prm.coordBump, prm.pushMin, prm.pushMax) : bhv.gamma;
+    return e === "F" ? gamma : 1 - gamma; // p===1: a real choice
   }
   // A conflict is the president publicly asserting they passed >=1 liberal while
   // a fascist policy was enacted. Truthful when p>=1; a fabricated frame when p=0.
-  function conflictFactor(p, bhv) {
-    return p >= 1 ? 1 : bhv.falseAccuse;
+  // `framingAlly` true = the chancellor is a KNOWN fascist ally, so a fascist
+  // president almost never fabricates it (they wouldn't burn a teammate).
+  function conflictFactor(p, bhv, framingAlly, prm) {
+    if (p >= 1) return 1;
+    return framingAlly ? prm.falseAccuseAlly : bhv.falseAccuse;
   }
   // Role-specific report model: P(claim | true hand h). Mirrors the marginal
   // reportLikelihood but with a role/state-specific base lie rate.
@@ -417,17 +438,21 @@ const Honesty = (() => {
   }
   // Likelihood of ONE government's card facts given the true hand and the two
   // seats' behaviours: the president's report, and (unless vetoed) the pass→enact
-  // chain that produced the observed policy, plus any conflict.
-  function govLikelihoodTeam(g, h, bhvP, bhvC, priorClaim, prm) {
+  // chain that produced the observed policy, plus any conflict. `rel` carries the
+  // pairwise ally-knowledge for the correlated-fascist terms (§12.7); omitting it
+  // reproduces the original conditionally-independent behaviour exactly.
+  function govLikelihoodTeam(g, h, bhvP, bhvC, priorClaim, prm, rel) {
+    const coord = !!(rel && rel.chanKnowsPresAlly);       // chancellor pushes for an ally president
+    const framingAlly = !!(rel && rel.presKnowsChanAlly); // president would frame an ally chancellor
     const report = teamReport(g.claim, h, bhvP, priorClaim, prm);
     if (g.vetoed || g.enacted == null) return report; // no pass/enact observed
     let acc = 0;
     for (const p of passOptions(h)) {
       const pp = passProb(p, h, bhvP, prm);
       if (pp <= 0) continue;
-      const ep = enactProb(g.enacted, p, bhvC);
+      const ep = enactProb(g.enacted, p, bhvC, coord, prm);
       if (ep <= 0) continue;
-      const cf = g.conflict ? conflictFactor(p, bhvP) : 1;
+      const cf = g.conflict ? conflictFactor(p, bhvP, framingAlly, prm) : 1;
       acc += pp * ep * cf;
     }
     return report * acc;
@@ -538,7 +563,14 @@ const Honesty = (() => {
         };
         const weightFn = (j, h) => {
           const g = r.govs[j];
-          let w = binom(3, h) * govLikelihoodTeam(g, h, bhv(g.presIdx, g), bhv(g.chanIdx, g), r.priorClaim, prm);
+          // pairwise ally-knowledge for the correlated-fascist terms (§12.7): a
+          // seat coordinates only if it KNOWS the partner is an ally (a cautious
+          // Hitler knows nobody → both flags false → independent behaviour).
+          const rel = {
+            chanKnowsPresAlly: knowsAllies(roleOf(A, g.chanIdx)) && A.S.has(g.presIdx),
+            presKnowsChanAlly: knowsAllies(roleOf(A, g.presIdx)) && A.S.has(g.chanIdx),
+          };
+          let w = binom(3, h) * govLikelihoodTeam(g, h, bhv(g.presIdx, g), bhv(g.chanIdx, g), r.priorClaim, prm, rel);
           // a Policy Peek of these exact cards is the peeker reporting this hand —
           // scored with the peeker's own lie model, tying their honesty to the cards
           if (g.peek) w *= teamReport(g.peek.peekLibs, h, bhv(g.peek.peekerIdx, g), r.priorClaim, prm);

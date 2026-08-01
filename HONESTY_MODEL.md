@@ -746,11 +746,23 @@ records but currently ignores.
    Hitler is **systematically under-detected** — a real weakness. Splitting Hitler's behaviour out
    would fix that *and* let us output a separate, honest `P(Hitler)` per seat.
 
-7. ⏳ **Correlated fascist behaviour.** The model treats governments as conditionally independent given
-   the assignment. Fascists who know each other coordinate — back each other's stories, nominate and
-   vote for each other. A pairwise interaction term (fascist pairs nominate/cover each other more
-   than chance) would exploit the team structure the independence assumption throws away. This is
-   the direction the GRAIL/graph-model papers formalise; it costs the DP's clean factorisation.
+7. ✅ **Correlated fascist behaviour (session 44).** The model treats governments as conditionally
+   independent *given the assignment* — but **within a fixed assignment we know both seats' roles**, so a
+   pairwise interaction term is *free* and does **not** cost the DP factorisation (it is just another
+   per-government multiplicative factor, summed by the same round DP). Two effects, each gated on the
+   acting seat actually **knowing** its ally (a cautious/blind Hitler in 7+ triggers neither):
+   - **Coordinated push** (`coordBump`): a fascist chancellor enacting fascist from a mixed pass pushes
+     harder when the president is a known ally — added to γ and clamped, so it only ever *raises* the
+     enact-fascist rate. A fascist pair that keeps turning mixed passes into fascist policies now reads as
+     more suspicious *together* than two unrelated seats doing the same.
+   - **Ally-framing reduction** (`falseAccuseAlly`): a fascist president almost never *fabricates* a
+     conflict against a fascist ally (it burns a teammate), so a real conflict between two players is
+     gentle evidence they are **not** a coordinating pair — the model shifts mass toward "exactly one of
+     the pair is fascist" while still implicating the pair over a bystander.
+   Nominations / special-elections / kill-ally were already correlated affinity terms (Tier 1); this adds
+   the *card-play* coordination the independence assumption threw away. Node-tested (honesty.test.js §9:
+   coordination lifts the pair, ally-reduction gentles a conflict, fascist count still conserved, and the
+   DP still matches the brute force). Votes/story-backing remain out (no vote capture — a deliberate call).
 
 ### Tier 3 — needs new data capture (higher ceiling, taxes the table)
 

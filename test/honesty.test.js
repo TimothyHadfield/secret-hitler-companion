@@ -307,9 +307,13 @@ function bruteRole(game, prm) {
         return;
       }
       const g = r.govs[j];
+      const rel = {
+        chanKnowsPresAlly: knows(roleOf(A, g.chanIdx)) && A.S.has(g.presIdx),
+        presKnowsChanAlly: knows(roleOf(A, g.presIdx)) && A.S.has(g.chanIdx),
+      };
       for (let h = g.lo; h <= g.hi; h++) {
         if (used + h > r.T) break;
-        let step = Prob.binom(3, h) * Honesty._govLikelihoodTeam(g, h, bhv(A, g.presIdx, g), bhv(A, g.chanIdx, g), r.prior, p);
+        let step = Prob.binom(3, h) * Honesty._govLikelihoodTeam(g, h, bhv(A, g.presIdx, g), bhv(A, g.chanIdx, g), r.prior, p, rel);
         if (g.peek) step *= Honesty._teamReport(g.peek.peekLibs, h, bhv(A, g.peek.peekerIdx, g), r.prior, p);
         if (step === 0) continue;
         walk(j + 1, used + h, w * step);
@@ -459,6 +463,55 @@ const base7 = () => ({ playerCount: 7, fascistCount: 2, rounds: [] });
     govs: [{ presIdx: 0, chanIdx: 1, claim: 2, enacted: "F", vetoed: false, conflict: false, facBefore: 3, libBefore: 0 }] }] };
   const a = Honesty.analyzeGame(push);
   ok("a late fascist policy still implicates its president", a.pFascist[0] > 2 / 7, "p0=" + a.pFascist[0].toFixed(3));
+}
+
+// --------------------------------------------------------------------------
+section("9. Correlated fascist behaviour (§12.7)");
+{
+  const D = Honesty.DEFAULTS;
+  const facBhv = Honesty._roleBehaviour("F", { fac: 0, lib: 0 }, D, false);
+  // Coordination raises a fascist chancellor's enact-fascist rate from a mixed
+  // pass when the president is a known ally — and never lowers it (verified end to
+  // end via analyzeGame below; here just the rate arithmetic the model applies).
+  ok("coordinated enact-F rate > independent enact-F rate",
+     Math.min(D.pushMax, facBhv.gamma + D.coordBump) > facBhv.gamma);
+  // Framing an ally is much rarer than framing a non-ally; a truthful conflict is unaffected.
+  ok("falseAccuseAlly < falseAccuseFasc (framing a teammate is rare)", D.falseAccuseAlly < D.falseAccuseFasc);
+
+  // Integration — isolate coordination (coordBump only). A pair that repeatedly
+  // co-governs and enacts fascist from mixed-pass-capable hands reads as MORE
+  // fascist together with coordination on than with it off. 5p ⇒ Hitler knows the
+  // fascist, so both seats coordinate.
+  const g = { playerCount: 5, fascistCount: 2, forcedFascist: [], rounds: [{
+    startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0,
+    govs: [
+      { presIdx: 0, chanIdx: 1, claim: 1, enacted: "F", vetoed: false, conflict: false, facBefore: 0, libBefore: 0 },
+      { presIdx: 0, chanIdx: 1, claim: 1, enacted: "F", vetoed: false, conflict: false, facBefore: 1, libBefore: 0 },
+    ] }] };
+  const on = Honesty.analyzeGame(g);
+  const off = Honesty.analyzeGame(g, { coordBump: 0 });
+  ok("coordination raises the co-governing pair's fascist odds (pres)",
+     on.pFascist[0] > off.pFascist[0] + 1e-9, `on=${on.pFascist[0].toFixed(4)} off=${off.pFascist[0].toFixed(4)}`);
+  ok("coordination raises the co-governing pair's fascist odds (chan)",
+     on.pFascist[1] > off.pFascist[1] + 1e-9, `on=${on.pFascist[1].toFixed(4)} off=${off.pFascist[1].toFixed(4)}`);
+  // Turning both correlated terms off leaves marginals still summing to the fascist count.
+  close("correlated model still conserves the fascist count", on.pFascist.reduce((x, y) => x + y, 0), 2, 1e-9);
+}
+{
+  // The ally-reduction makes a conflict weaker evidence that the pair are BOTH
+  // fascist: with it on, the model shifts mass toward "exactly one of the pair is
+  // fascist", so the expected # fascists among the pair (p0+p1) is no larger than
+  // with the reduction disabled (falseAccuseAlly = falseAccuseFasc).
+  const g = { playerCount: 7, fascistCount: 2, forcedFascist: [], rounds: [{
+    startN: 17, startL: 6, chaosLibs: 0, chaosFascs: 0,
+    govs: [{ presIdx: 0, chanIdx: 1, claim: 1, enacted: "F", vetoed: false, conflict: true, facBefore: 0, libBefore: 0 }] }] };
+  const on = Honesty.analyzeGame(g);
+  const off = Honesty.analyzeGame(g, { falseAccuseAlly: Honesty.DEFAULTS.falseAccuseFasc });
+  ok("a conflict is gentler evidence the pair are BOTH fascist",
+     (on.pFascist[0] + on.pFascist[1]) <= (off.pFascist[0] + off.pFascist[1]) + 1e-9,
+     `on=${(on.pFascist[0] + on.pFascist[1]).toFixed(4)} off=${(off.pFascist[0] + off.pFascist[1]).toFixed(4)}`);
+  // …but the conflict still implicates the pair over a bystander.
+  ok("conflict still lifts the pair over a bystander", on.pFascist[0] > on.pFascist[5] && on.pFascist[1] > on.pFascist[5]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
