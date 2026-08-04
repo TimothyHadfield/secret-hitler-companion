@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-08-01 (session 44: accessibility pass + correlated-fascist model + opt-in lie-rate fitting — all shipped)._
+_Last updated: 2026-08-01 (session 45: Game theory rebuilt from the user's own strategy doc — categories → bullet pages + per-category chat)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -177,7 +177,7 @@ real table game) and is now **also a full online game engine**. Feature pillars:
 | `PROBABILITY_MODEL.md` | Math/game-theory derivation of the probability model. |
 | `js/engine.js` | **Pure authoritative game engine for online play** (sessions 40–41). NO network/DOM/randomness of its own (callers pass an rng → deterministic/replayable). Full state machine: `initGame` (roles + shuffled 11F/6L deck), `applyAction(state,action,rng)` (nominate/vote/president_play/chancellor_play/veto/powers — pure reducer returning a fresh state or an error), win detection (5L / 6F / Hitler-chancellor / Hitler-executed), `publicView` (leaks no secrets), `privateView` (one player's role + current hand + learned power results), `toRecordedGame` (analyzer-compatible record). Classic script (`window.Engine`) + `module.exports`; Node-tested (`test/engine.test.js`, **1653 assertions** incl. 60 full simulated games). |
 | `js/online.js` | **Real-time ONLINE PLAY** (sessions 40–41). ES module (`window.Online` + `online:*` events), loaded AFTER cloud.js and **reuses the same Firebase app**. Host-authoritative: the host's browser runs `engine.js` as dealer/referee. Data under `groups/{gid}/tables/{tid}`: table doc (public projection, host-write), `players/{uid}` (lobby seat, own-write), `private/{uid}` (secrets — only that player reads, host writes), `host/state` (the FULL secret state as a JSON blob — host-only, for reload/resume), `actions/` (each player submits their own move; the host processes them). Host loop: `processActions` drains the queue → `applyAction` → `pushState` (secret + public + every private) → deletes the action; `submitAction` for players; on game over `finishGame` emits `online:finished` → app records it to the group. |
-| `js/reference.js` | **Rules + Game Theory handbook content** (session 38). Classic script exposing `window.Reference`: two trees (`RULES`, `THEORY`) organised category → subcategory → item ("bullet"), each item with a **stable `id`** used as the community-comment target (`${kind}:${id}` — never renumber, or comments orphan). Plus `flatten`/`search`/`findItem` helpers. Offline, no network; rules content is kept in sync with `SECRET_HITLER_RULES.md`. |
+| `js/reference.js` | **Rules + Game Theory content.** `RULES` (session 38) = a category → subcategory → item tree, each item with a **stable `id`** used as the community-comment target (`${kind}:${id}` — never renumber). `STRATEGY` (session 45) = the **user's own game-theory write-up**: a FLAT list of main categories, each with recursive `bullets` (`{t, subs?, wip?}`) — `wip:true` marks the source doc's "red" (debated) items. Rules use the drill-down/search renderer; Game theory uses the simpler `renderTheory()` (categories → a page of bullet/sub-bullet notes + a per-category chat). `flatten`/`search`/`findItem` now cover RULES only. Offline, no network. |
 | `js/night.js` | **"In the night" narration** (session 33–34). The two fascist-reveal scripts (5–6 vs 7+) as speakable segments with timed pauses; script selection by player count; device-speech (Web Speech API) playback with natural-voice preference; IndexedDB blob storage for a user's own recorded/uploaded clips; **base64↔Blob helpers + shared-voice caching** for group sync. Classic script exposing `window.Night`; pure parts Node-tested (`test/night.test.js`). |
 | `js/honesty.js` | **Lie detection engine** (opt-in). Min-lie hard logic + the per-claim honesty posterior, both on one DP over the round's conservation law; plus `analyzeGame()`, the **role posterior** — P(each player is fascist) AND P(each is Hitler) by exact enumeration of the ≤360 (fascist-set, Hitler) assignments. Consumes claims, enactments, conflicts, **nominations, investigations, executions, special elections, and policy-peek cross-checks**, with **state-dependent push rates**, a **distinct cautious-Hitler** role, and **correlated-fascist card-play** (session 44: coordinated pres/chan push + ally-framing reduction, gated on knowing the ally — factorisation-preserving). Pure functions, Node-tested (73 assertions incl. a from-scratch brute-force mirror). |
 | `js/fit.js` | **Lie-rate fitter** (session 44, opt-in). `Fit.fit(samples)` fits the **per-team report lie rates** (`facLie`/`libLie`) from the user's own recorded games by roles-known EM — E-step = the honesty forward–backward DP with roles fixed (reuses Honesty's exported kernels so it can't drift from the model it feeds), M-step = a **Beta-posterior mean** shrunk to the documented defaults (κ pseudo-obs). Deliberately does NOT fit β/γ (confounded without chancellor-claims/votes — §7c). Classic `Fit` global + `module.exports`. Node-tested (`test/fit.test.js`, 18 assertions incl. a **simulation-recovery** check). Surfaced as an opt-in Statistics panel with a fitted-vs-default calibration A/B. |
@@ -292,9 +292,18 @@ real table game) and is now **also a full online game engine**. Feature pillars:
 - **Menu ⇄ group sync:** `renderAcctChip()` also refreshes the menu's group label, so switching /
   renaming / leaving a group in the account modal updates the box sitting behind it.
 
-## Rules & Game Theory handbook + community notes (session 38)
-- **Two new main-menu sections**, each its own screen (`#rulesScreen` / `#theoryScreen`) sharing one
-  markup template and one renderer (`renderReference(kind)` in `app.js`, `kind` = `"rule"` | `"theory"`):
+## Rules & Game Theory handbook + community notes (session 38; Game theory rebuilt session 45)
+- **⚠️ Game theory was REBUILT in session 45** — it no longer shares the rules renderer. It now shows the
+  **user's own strategy write-up** (`STRATEGY` in `reference.js`): a flat list of **main categories**
+  (Summary, Vocabulary, General notes, Liberal optimization, Fascist lying & manipulation, Using human
+  emotion, Unique scenarios, House rules), each opening a **page of bullet / sub-bullet notes** (recursive
+  `bullets`, `wip:true` = the doc's "red"/debated items shown with a `debated` tag). Its own renderer
+  `renderTheory()` (categories → page + "← All sections"); **comments are a simpler per-CATEGORY chat**
+  behind a 💬 toggle (`loadTheoryChat`/`paintTheoryChat`, target `theory:<catId>`, same Firestore comment
+  backend). **Rules are unchanged** (still `renderReference("rule")` with search + drill-down + per-item
+  notes). The rest of this section describes the session-38 Rules side.
+- **Two main-menu sections**, each its own screen (`#rulesScreen` / `#theoryScreen`). RULES uses
+  `renderReference("rule")` (search + category → subcategory → item drill-down); theory uses `renderTheory()`:
   - **Rules** — an authoritative, searchable rules reference ("find any rule, fast").
   - **Game theory** — a curated strategy guide ("strategy & community notes").
 - **Content is bundled offline in `js/reference.js`** (`window.Reference`): two trees organised

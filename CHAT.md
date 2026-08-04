@@ -1665,3 +1665,32 @@ which is also the "lie tendency" wishlist stat. So v1 fits `facLie`/`libLie` onl
   **Apply persists `useFit`+`fitParams`** and flips the panel to offer "Use defaults" → SMOKE_OK. Files:
   `js/fit.js` (new), `test/fit.test.js` (new), `js/honesty.js` (kernel exports), `js/app.js`, `index.html`,
   `styles.css`, `HONESTY_MODEL.md`, `PROGRESS.md`, `CHAT.md`.
+
+---
+
+## Session 45 — Game theory rebuilt from the user's own strategy doc
+
+The user supplied their own Secret Hitler game-theory write-up (a 6-page doc) and asked to **replace the
+placeholder Game Theory content entirely** with it, keep the bullet/sub-bullet levels but **not
+over-nest** (flat main categories → a page of bullets), and make comments **way simpler** — a chat icon
+that opens a mini chat instead of the per-item notes panel. **Rules were left untouched.**
+
+- **`js/reference.js`:** replaced the old `THEORY` tree with **`STRATEGY`** — a flat list of 8 main
+  categories (Summary, Vocabulary, General notes, Liberal optimization, Fascist lying & manipulation,
+  Using human emotion, Unique scenarios, House rules) each with recursive `bullets` (`{t, subs?, wip?}`),
+  faithful to the doc. `wip:true` marks the doc's "red" (debated / work-in-progress) items. Removed the
+  old THEORY array; `TREES` is now `{rule: RULES}` and `flatten/search/findItem` cover RULES only;
+  exported `window.Reference.strategy`.
+- **`js/app.js`:** `openTheory()` now calls a dedicated **`renderTheory()`** (theory no longer shares the
+  rules renderer). Category list → category page (`← All sections` back, title, blurb, recursive
+  `bulletsHtml`, `debated` tags). Comments are a **per-category chat** behind a 💬 toggle
+  (`loadTheoryChat`/`paintTheoryChat`), reusing the same Firestore backend (`Cloud.addComment/
+  listComments/deleteComment`) with target `theory:<catId>` — signed-out shows a sign-in prompt. The
+  rules machinery (`renderReference`, `refBrowser`, per-item notes) is unchanged.
+- **`styles.css`:** `.thy-cats/.thy-cat`, `.thy-page-head/.thy-title/.thy-chat-toggle`, `.thy-list/
+  .thy-bullet/.thy-sublist` (left-bordered nested list), `.thy-wip` (debated pill), `.thy-chat` mini-chat.
+- **Verified** headless: 8 categories; a category page shows the title, 11 top-level bullets, nested
+  sub-bullets, and a `debated` tag; the 💬 toggle opens the chat (signed-out → sign-in prompt); `← All
+  sections` returns to the list → SMOKE_OK. Screenshot confirmed the layout. Note: old per-item theory
+  comments (targets like `theory:liberal.fund.trust`) are orphaned by the content swap — expected.
+  Files: `js/reference.js`, `js/app.js`, `styles.css`, `PROGRESS.md`, `CHAT.md`.

@@ -1084,3 +1084,53 @@ body.lie-on span.lie-col { display: inline; }
 /* Fit-lie-rates panel: the "was NN%" sub-line under a fitted tile (session 44). */
 .statgrid .sub { font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
 .fit-result:empty { display: none; }
+
+/* ---- Game theory: categories -> page of bullets + per-category chat (session 45) */
+.thy-cats { display: flex; flex-direction: column; gap: 8px; }
+.thy-cat {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  text-align: left; padding: 14px 16px; border-radius: 10px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); cursor: pointer;
+}
+.thy-cat:hover { border-color: var(--gold); background: #322a22; }
+.thy-cat-title { font-weight: 700; font-size: 16px; }
+.thy-cat-meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
+
+.thy-back {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font: inherit; font-size: 13px; padding: 2px 0; margin-bottom: 6px;
+}
+.thy-back:hover { color: var(--gold); }
+.thy-page-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.thy-title { margin: 0; flex: 1; font-size: 20px; color: var(--gold); }
+.thy-chat-toggle {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; font-size: 18px;
+  background: var(--panel-2); border: 1px solid var(--line); cursor: pointer; line-height: 1;
+}
+.thy-chat-toggle[aria-expanded="true"] { border-color: var(--gold); background: #322a22; }
+.thy-blurb { color: var(--muted); margin: 0 0 12px; font-size: 14px; }
+
+.thy-list, .thy-sublist { list-style: none; margin: 0; padding: 0; }
+.thy-list > .thy-bullet { padding: 10px 0; border-top: 1px solid var(--line); }
+.thy-list > .thy-bullet:first-child { border-top: none; }
+.thy-b-text { display: block; line-height: 1.5; }
+.thy-bullet.wip > .thy-b-text { color: #e6b9a0; }
+.thy-wip {
+  font-size: 11px; color: #d98a5a; border: 1px solid #7a4a30; border-radius: 999px;
+  padding: 0 7px; margin-left: 4px; vertical-align: middle; white-space: nowrap;
+}
+.thy-sublist { margin: 8px 0 2px; padding-left: 18px; border-left: 2px solid var(--line); }
+.thy-sublist .thy-bullet { padding: 6px 0; }
+.thy-sublist .thy-b-text { color: var(--muted); font-size: 14px; }
+
+.thy-chat {
+  background: #171310; border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px; margin-bottom: 14px;
+}
+.thy-msgs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; max-height: 40vh; overflow-y: auto; }
+.thy-msg-meta { font-size: 12px; margin-bottom: 2px; }
+.thy-msg-text { line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.thy-msg-del { background: none; border: none; color: #d98a5a; cursor: pointer; font-size: 12px; padding: 0 4px; }
+.thy-chat-add { display: flex; gap: 8px; align-items: flex-end; }
+.thy-chat-input { flex: 1; resize: vertical; min-height: 40px; }
+.thy-send { flex: none; }

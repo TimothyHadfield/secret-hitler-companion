@@ -359,7 +359,114 @@
   function openSetup() { renderSetup(); navTo("setupScreen"); }
   function openStats() { renderStatsInto($("statsBody")); navTo("statsScreen"); }
   function openRules() { refReset("rule"); navTo("rulesScreen"); renderReference("rule"); }
-  function openTheory() { refReset("theory"); navTo("theoryScreen"); renderReference("theory"); }
+  function openTheory() { theoryView.catId = null; theoryView.chatOpen = false; navTo("theoryScreen"); renderTheory(); }
+
+  // ------------------------------ GAME THEORY (session 45) -------------------
+  // The user's own strategy write-up (js/reference.js `STRATEGY`): flat main
+  // categories, each opening a page of bullet / sub-bullet notes. Comments are a
+  // simple per-category chat behind a 💬 toggle (reuses the same Firestore comment
+  // backend as the rules notes, target `theory:<catId>`).
+  const theoryView = { catId: null, chatOpen: false };
+  const strategy = () => (window.Reference && window.Reference.strategy) || [];
+  const countBullets = (bs) => (bs || []).reduce((a, b) => a + 1 + countBullets(b.subs), 0);
+  function bulletsHtml(bullets) {
+    return (bullets || []).map((b) =>
+      `<li class="thy-bullet${b.wip ? " wip" : ""}">` +
+      `<span class="thy-b-text">${escapeHtml(b.t)}` +
+      (b.wip ? ` <span class="thy-wip" title="Debated / work in progress">debated</span>` : "") +
+      `</span>` +
+      (b.subs && b.subs.length ? `<ul class="thy-sublist">${bulletsHtml(b.subs)}</ul>` : "") +
+      `</li>`).join("");
+  }
+  function renderTheory() {
+    const box = $("theoryBody");
+    if (!box) return;
+    const cats = strategy();
+    if (!theoryView.catId) {
+      box.innerHTML =
+        `<div class="ref-head"><h2 class="ref-title">Game theory</h2>` +
+        `<p class="ref-tagline">Strategy notes for the table. Open a section to read it; tap 💬 to discuss it with your group.</p></div>` +
+        `<div class="thy-cats">` +
+        cats.map((c) =>
+          `<button class="thy-cat" data-cat="${escapeHtml(c.id)}">` +
+          `<span class="thy-cat-title">${escapeHtml(c.title)}</span>` +
+          `<span class="thy-cat-meta">${countBullets(c.bullets)} notes ▸</span></button>`).join("") +
+        `</div>`;
+      box.querySelectorAll(".thy-cat").forEach((b) =>
+        b.onclick = () => { theoryView.catId = b.dataset.cat; theoryView.chatOpen = false; renderTheory(); });
+      return;
+    }
+    const cat = cats.find((c) => c.id === theoryView.catId);
+    if (!cat) { theoryView.catId = null; return renderTheory(); }
+    box.innerHTML =
+      `<button class="thy-back" aria-label="Back to all sections">← All sections</button>` +
+      `<div class="thy-page-head">` +
+      `<h2 class="thy-title">${escapeHtml(cat.title)}</h2>` +
+      `<button class="thy-chat-toggle" aria-label="Comments on this section" aria-expanded="${theoryView.chatOpen}" title="Comments">💬</button>` +
+      `</div>` +
+      (cat.blurb ? `<p class="thy-blurb">${escapeHtml(cat.blurb)}</p>` : "") +
+      `<div class="thy-chat${theoryView.chatOpen ? "" : " hidden"}" id="thyChat"></div>` +
+      `<ul class="thy-list">${bulletsHtml(cat.bullets)}</ul>`;
+    box.querySelector(".thy-back").onclick = () => { theoryView.catId = null; theoryView.chatOpen = false; renderTheory(); };
+    box.querySelector(".thy-chat-toggle").onclick = () => {
+      theoryView.chatOpen = !theoryView.chatOpen;
+      renderTheory();
+      if (theoryView.chatOpen) loadTheoryChat(cat.id);
+    };
+    if (theoryView.chatOpen) loadTheoryChat(cat.id);
+  }
+  async function loadTheoryChat(catId) {
+    const el = $("thyChat");
+    if (!el) return;
+    const c = cloud();
+    if (!c || !c.user) {
+      el.innerHTML = `<div class="thy-chat-inner"><p class="muted" style="margin:0">Sign in to read and add comments. <button class="linklike" id="thySignin">Sign in</button></p></div>`;
+      const b = $("thySignin");
+      if (b) b.onclick = () => openAccount();
+      return;
+    }
+    el.innerHTML = `<div class="thy-chat-inner"><p class="muted" style="margin:0">Loading…</p></div>`;
+    let list = [];
+    try { list = await c.listComments("theory:" + catId); } catch (e) { list = []; }
+    paintTheoryChat(catId, list);
+  }
+  function paintTheoryChat(catId, list) {
+    const el = $("thyChat");
+    if (!el) return;
+    const target = "theory:" + catId;
+    const rows = list.length
+      ? list.map((n) =>
+          `<div class="thy-msg"><div class="thy-msg-meta"><b>${escapeHtml(n.authorName)}</b> ` +
+          `<span class="muted">${escapeHtml(relTime(n.at))}</span>` +
+          (n.mine ? ` <button class="thy-msg-del" data-id="${escapeHtml(n.id)}">delete</button>` : "") +
+          `</div><div class="thy-msg-text">${noteText(n.text)}</div></div>`).join("")
+      : `<p class="muted" style="margin:0 0 8px">No comments yet — start the conversation.</p>`;
+    el.innerHTML =
+      `<div class="thy-chat-inner"><div class="thy-msgs">${rows}</div>` +
+      `<div class="thy-chat-add">` +
+      `<textarea class="thy-chat-input" id="thyInput" maxlength="1000" rows="2" placeholder="Add a comment…" aria-label="Add a comment"></textarea>` +
+      `<button class="primary thy-send" id="thySend">Send</button></div></div>`;
+    const send = $("thySend"), input = $("thyInput");
+    send.onclick = async () => {
+      const text = (input.value || "").trim();
+      if (!text) return;
+      send.disabled = true; send.textContent = "Sending…";
+      const r = await cloud().addComment(target, text);
+      if (r.ok) {
+        input.value = "";
+        let l = []; try { l = await cloud().listComments(target); } catch (e) {}
+        paintTheoryChat(catId, l);
+      } else { send.disabled = false; send.textContent = "Send"; showToast(r.message || "Couldn't post that comment."); }
+    };
+    el.querySelectorAll(".thy-msg-del").forEach((b) =>
+      b.onclick = () => askConfirm(
+        { title: "Delete your comment?", body: "This removes it for everyone.", confirm: "Delete", cancel: "Keep", danger: true },
+        async () => {
+          const r = await cloud().deleteComment(b.dataset.id);
+          if (r.ok) { let l = []; try { l = await cloud().listComments(target); } catch (e) {} paintTheoryChat(catId, l); }
+          else showToast(r.message || "Couldn't delete that comment.");
+        }));
+  }
 
   // ------------------------------ RULES / GAME THEORY handbook ---------------
   // A browsable, searchable reference (content bundled in js/reference.js) with a

@@ -183,140 +183,198 @@
     },
   ];
 
-  // Game theory — curated strategy. Opinionated but sound; the community can add
-  // their own notes to any item. Not rules — ideas.
-  const THEORY = [
+  // Game theory — the user's own strategy write-up (session 45). A flat list of
+  // main categories; each opens a page of bullet / sub-bullet notes (recursive
+  // `subs`). `wip:true` marks the "red" (debated / work-in-progress) items from the
+  // source doc. The community can leave comments per CATEGORY (a chat, not per-item
+  // notes). This is deliberately NOT the RULES shape — it renders with renderTheory,
+  // not the drill-down/search renderer the rules use.
+  const STRATEGY = [
     {
-      id: "liberal", title: "Playing as a Liberal", subcats: [
-        {
-          id: "fund", title: "Fundamentals", items: [
-            { id: "liberal.fund.trust", title: "Trust is earned by policy, not by talk",
-              body: "You have no secret information, so lean on what's provable: who enacted what, whose claims are consistent with the known pile, and who benefits. Don't hand trust to a smooth talker before they've passed Liberal policies." },
-            { id: "liberal.fund.track", title: "Track the odds, not the vibes",
-              body: "Fascist policies far outnumber Liberal ones in the deck (11 vs 6), so an early Fascist policy is often just a bad draw, not proof of treachery. Use the app's per-government probability to tell a genuinely suspicious government from an unlucky one." },
-            { id: "liberal.fund.vote", title: "Use votes as information",
-              body: "Every vote is a signal. Note who is eager to elect an unproven pair and who blocks a Liberal-looking government — patterns across several elections expose Fascists better than any single round." },
-          ],
-        },
-        {
-          id: "powers", title: "Using powers well", items: [
-            { id: "liberal.powers.investigate", title: "Investigate the influential, not the quiet",
-              body: "An investigation is precious (once per target, ever). Spend it on someone whose loyalty actually changes decisions — a leading voice, or the player about to hold the Chancellorship — not on a random quiet seat." },
-            { id: "liberal.powers.execute", title: "Executions are your Hitler answer",
-              body: "Killing Hitler wins on the spot. As the Fascist track approaches 3, weigh executing your best-supported Hitler suspect — even a coin-flip kill can be worth it if a Fascist win is otherwise imminent." },
-          ],
-        },
+      id: "summary", title: "Summary",
+      blurb: "Where the theory starts, and whose job is what.",
+      bullets: [
+        { t: "Game theory should always start from the “optimal” liberal strategy for every situation — even the fascists should (at least publicly) support it. The other side is analysing how and when the fascists should lie." },
+        { t: "Liberals build systems that restrict the fascists’ opportunities to lie and manipulate. It is the liberals’ job to logically work through the possibilities (past and future), draw conclusions, and make the best decision." },
+        { t: "The fascists try to break through those systems however they can — loopholes, tricks, or behaviour." },
+        { t: "Items marked “debated” were highlighted in the source as a work in progress and/or something reasonable players may disagree on.", wip: true },
       ],
     },
     {
-      id: "fascist", title: "Playing as a Fascist", subcats: [
-        {
-          id: "blend", title: "Blending in", items: [
-            { id: "fascist.blend.playliberal", title: "Play like a Liberal for as long as you can",
-              body: "The strongest Fascists look exactly like helpful Liberals: pass the occasional Liberal policy, make correct-sounding accusations, and build credit you can spend on one decisive lie later." },
-            { id: "fascist.blend.overreach", title: "Don't over-defend or over-accuse",
-              body: "Loudly defending a fellow Fascist, or aggressively burying an innocent Liberal, is how you get caught. Let doubt fall naturally; a Fascist who talks too much becomes the story." },
-          ],
-        },
-        {
-          id: "agenda", title: "Advancing the agenda", items: [
-            { id: "fascist.agenda.chaos", title: "Manufacture chaos when it favours you",
-              body: "Three failed elections top-deck a policy with no power and no blame — and the deck is Fascist-heavy, so forced top-decks tend to help Fascists. Engineering deadlock can be safer than personally enacting a Fascist policy." },
-            { id: "fascist.agenda.conflict", title: "Use the President's discard as cover",
-              body: "A Fascist President can honestly claim a bad hand ('I was forced') because only they saw the third card. Blaming the draw is your safest lie: it's unfalsifiable and consistent with a Fascist-heavy deck." },
-            { id: "fascist.agenda.protecthitler", title: "Protect Hitler's cover, not Hitler's votes",
-              body: "In 7+ games you don't even know who Hitler is, so the job is to keep suspicion diffuse rather than to shield a specific seat. Steer investigations and executions toward Liberals and away from quiet, un-tested players." },
-          ],
-        },
+      id: "vocab", title: "Vocabulary",
+      blurb: "The shorthand this guide uses.",
+      bullets: [
+        { t: "Golden — 2 Fascist, 1 Liberal." },
+        { t: "Silver — 1 Fascist, 2 Liberal." },
+        { t: "Bronze — 0 Fascist, 3 Liberal." },
+        { t: "Coal — 3 Fascist, 0 Liberal." },
+        { t: "Lying up — claiming you received more liberals than you did." },
+        { t: "Lying down — claiming you received more fascists than you did." },
+        { t: "Testing — receiving Silver, discarding a liberal, and letting the chancellor choose which policy to enact." },
+        { t: "Conflict — when one person’s claim directly contradicts another person’s claim." },
+        { t: "Hitler Territory — once the third fascist policy is played (fascists now win by electing Hitler chancellor)." },
+        { t: "Round — when the draw pile has fewer than 3 policies, the discard pile reshuffles in, beginning a new round. A game has at most 3 rounds." },
+        { t: "Round Modifier — each presidency contributes: lying up (+1), lying down (−1), truth (0). They add to a per-round modifier; each round is separate, since presidencies can’t affect another round’s odds." },
+        { t: "Frozen — players involved in a conflict are often “frozen” by not being allowed into the presidency." },
+        { t: "Forcing — giving the chancellor 2 liberals or 2 fascists." },
       ],
     },
     {
-      id: "hitler", title: "Playing as Hitler", subcats: [
-        {
-          id: "count", title: "By player count", items: [
-            { id: "hitler.count.56", title: "5–6 players: you have a partner",
-              body: "You know your Fascist and they know you, so you can coordinate — but the Chancellor path to victory is short here. Look moderate, avoid being the one to enact Fascist policies, and let your partner take risks." },
-            { id: "hitler.count.7plus", title: "7+ players: play a genuine Liberal",
-              body: "You're blind to your team, so the winning Hitler is often literally playing the best Liberal at the table — passing Liberal policies, making good reads — to become the trusted player everyone is happy to elect Chancellor later." },
-          ],
-        },
-        {
-          id: "win", title: "Winning as Hitler", items: [
-            { id: "hitler.win.quiet", title: "Boring is safe",
-              body: "Hitler almost never wants to be interesting. Avoid powers that force you to reveal a bias, don't push hard for the Chancellorship early, and don't get investigated by looking suspicious." },
-            { id: "hitler.win.window", title: "Know your Chancellor window",
-              body: "Electing Hitler Chancellor only wins after 3 Fascist policies. Before that it's harmless, so early Chancellorships can even build your trust; the danger begins the moment the 3rd Fascist policy lands — that's when Liberals should stop electing you, and when you should look maximally safe." },
-          ],
-        },
+      id: "general", title: "General notes",
+      blurb: "Factual, not speculative — what is actually possible.",
+      bullets: [
+        { t: "Lying Down", subs: [
+          { t: "A fascist president can lie down 1: receive Golden and claim Coal, receive Silver and claim Golden, or receive Bronze and claim Silver." },
+          { t: "A fascist president and chancellor together can lie down 2: receive Silver and claim Coal, or receive Bronze and claim Golden." },
+          { t: "Lying down is useful to enact fascist policies, or to make the perceived odds of drawing a liberal higher." },
+        ] },
+        { t: "Lying Up", subs: [
+          { t: "A fascist president can lie up 1: receive Silver and claim Bronze." },
+          { t: "A fascist president and chancellor can lie up 1: receive Golden and claim Silver." },
+          { t: "A fascist president and chancellor can lie up 2: receive Golden and claim Bronze." },
+          { t: "If testing is normalized, a fascist president can also lie up 1 by receiving Golden and claiming Silver (by testing the chancellor)." },
+        ] },
+        { t: "Minimum / Maximum Round Modifier", subs: [
+          { t: "If the total fascists or liberals claimed is more than the number that started in the draw pile (which is known), the round modifier must be positive / negative — it cannot be zero." },
+        ] },
+        { t: "Conflicts", subs: [
+          { t: "As Chancellor: a fascist chancellor who receives one of each can play the fascist and claim they received 2 of each." },
+          { t: "As President: a fascist president who forces 2 fascists onto a liberal chancellor can claim they gave the chancellor one of each (and received Golden)." },
+          { t: "President investigates a fascist." },
+          { t: "A policy peek was different than claimed." },
+        ] },
       ],
     },
     {
-      id: "president", title: "As President", subcats: [
-        {
-          id: "draw", title: "The draw", items: [
-            { id: "president.draw.discard", title: "Think about the story your discard tells",
-              body: "You choose which card to bury and what to claim. As a Liberal, discard to give your Chancellor the best honest hand; as a Fascist, keep your claim consistent with what a Liberal would plausibly have drawn." },
-            { id: "president.draw.claim", title: "Claim precisely and consistently",
-              body: "State exactly what you drew (e.g. 'two Fascist, one Liberal'). Vague or shifting claims read as lies. The app prices your claim against the known pile — an impossible claim gets flagged immediately." },
-          ],
-        },
-        {
-          id: "info", title: "Powers as information", items: [
-            { id: "president.info.power", title: "A power is a chance to gather or launder information",
-              body: "As a Liberal, use Investigate/Peek to genuinely learn and then share truthfully. As a Fascist, a power is a stage to tell a convincing lie — but remember a later contradiction (a peek that doesn't match the next hand) is exactly what the app catches." },
-          ],
-        },
+      id: "liberal", title: "Liberal optimization",
+      blurb: "Systems that limit what the fascists can get away with.",
+      bullets: [
+        { t: "Always tell the truth to the table." },
+        { t: "When Silver is drawn, always discard the fascist and force the 2 liberals.", subs: [
+          { t: "Some people “test” the chancellor by giving one of each, but the chancellor will nearly always discard the fascist — so the test doesn’t really do anything." },
+          { t: "If testing is normalized, fascists gain a new way to lie up with Golden (previously only Silver→Bronze, or a coordinated pres+chan Golden→Silver), letting them manipulate the perceived odds even more." },
+        ] },
+        { t: "When in Hitler Territory", subs: [
+          { t: "Occasionally (maybe 5–10% of the time) electing the most fascist-looking player as chancellor is a calculated risk — Hitler often tries hard not to look fascist. Don’t make it a pattern, or Hitler will start intentionally acting fascist to get elected.", wip: true },
+          { t: "Once a player is revealed non-Hitler (elected chancellor in Hitler territory), elect them every time they’re eligible to avoid risking Hitler. Alternating two such players back and forth can avoid electing Hitler entirely." },
+        ] },
+        { t: "Forced chancellor position until the second–third fascist is played", wip: true, subs: [
+          { t: "Because fascists can lie up or down twice when they hold both seats, they try to be in power together. Counter it with a system where the president always elects a specific person, and hope the fascists don’t get lucky with positioning." },
+          { t: "This doesn’t work in Hitler territory (liberals want to be intentional about the chancellor); since the prior presidency restricts the next chancellor, stopping the system once the second fascist is played can be best." },
+        ] },
+        { t: "Skipping the last 2 presidencies", wip: true, subs: [
+          { t: "In a 7-player game at 4 liberals / 1 fascist, the fascists may never have had a chance to lie (no Golden) or were never president (6th/7th seat). Skipping the last two can avoid risking more fascist policies." },
+        ] },
+        { t: "Minimum / Maximum Round Modifier", wip: true, subs: [
+          { t: "If a forced positive / negative round modifier narrows down who could have lied that round, you can draw valuable conclusions from it." },
+        ] },
+        { t: "Top decking / Policy Peek", subs: [
+          { t: "If the fascists are 1 away from winning, only top deck as a very last resort." },
+          { t: "L, (L/F), (L/F): top deck until either a fascist is played or claimed. E.g. if the president claims LLF, top deck the first 2 liberals and then vote. This is worse the fewer liberals are on the board, since a fascist going 5–3 or 5–2 is increasingly worth sacrificing a player." },
+          { t: "FLL: do not top deck." },
+        ] },
+        { t: "Available players", wip: true, subs: [
+          { t: "If many players collectively decide a player should or should not be selected for something, the president should obey as long as the reason is relatively justified (a conflict, a voting scenario, lying probability, etc.)." },
+        ] },
+        { t: "Investigation", wip: true, subs: [
+          { t: "To restrict fascists controlling the game, liberals should agree a system for who the president always investigates. The next president in line is a good choice — it gives information the table can use to approve that election or not." },
+        ] },
+        { t: "Next 3 potential presidents", subs: [
+          { t: "Because there can never be 3 players in a row who don’t get the presidency, view it as: “of the next three players, who is the best option?”" },
+        ] },
+        { t: "Kill power", subs: [
+          { t: "The president should not kill anyone until all players have had a chance to speak." },
+        ] },
       ],
     },
     {
-      id: "chancellor", title: "As Chancellor", subcats: [
-        {
-          id: "choices", title: "Choices at the table", items: [
-            { id: "chancellor.choices.enact", title: "Your enact is a public commitment",
-              body: "Unlike the President's hidden discard, what you enact is seen by everyone. Enacting Fascist when you could have claimed a forced hand is a strong tell — be ready to explain the two cards you say you were passed." },
-            { id: "chancellor.choices.veto", title: "Veto is a negotiation, not just a button",
-              body: "Once veto is unlocked, proposing it tests the President: a Liberal President often refuses to burn a Liberal policy, while agreement can quietly bury one. Watch who wants to veto what — it leaks alignment." },
-          ],
-        },
+      id: "fascist", title: "Fascist lying & manipulation",
+      blurb: "When and how to break the liberal systems.",
+      bullets: [
+        { t: "Drifting from optimal play", subs: [
+          { t: "Generally, fascists should argue for and support liberal game theory so they don’t reveal themselves and instead gain trust." },
+          { t: "Only shift slightly away from optimal play, to give the fascists an advantage when it counts." },
+        ] },
+        { t: "Consistent behaviour", subs: [
+          { t: "In a group that knows each other, keep the same habits you have in your other games." },
+        ] },
+        { t: "Reverse psychology", subs: [
+          { t: "If you’re confident you can predict what a liberal (or the liberals) will think, act a certain way to manipulate them." },
+          { t: "Example: a fascist tests someone. A liberal knows that fascist is against testing and concludes they’re intentionally looking fascist to hide Hitler — but the fascist predicted exactly that and is actually Hitler all along." },
+        ] },
+        { t: "Lying down", subs: [
+          { t: "If the other 1–2 liberals and 0 fascists have already claimed Golden or Coal, lying down can raise everyone’s (and your own) apparent odds of lying — especially useful as a non-Hitler fascist." },
+        ] },
+        { t: "Lying up", subs: [
+          { t: "If a fascist (especially Hitler) previously claimed Coal, lying up makes that scenario much more plausible and makes that fascist look more liberal." },
+        ] },
+        { t: "Special election", subs: [
+          { t: "A non-Hitler fascist should often choose a president who trusts Hitler, or choose Hitler if Hitler is on term limits — assuming those players are genuine options." },
+        ] },
+        { t: "Silver as Hitler", subs: [
+          { t: "If Hitler receives Silver as president with a liberal chancellor, they should force the two liberals to reduce their odds of lying. There’s also no reason to lie." },
+        ] },
       ],
     },
     {
-      id: "reading", title: "Reading the table", subcats: [
-        {
-          id: "signals", title: "Signals & tells", items: [
-            { id: "reading.signals.votes", title: "Voting blocs",
-              body: "Fascists tend to vote together on the governments that matter. Two players who repeatedly back the same risky elections — or who both go quiet on a key vote — are worth watching." },
-            { id: "reading.signals.claims", title: "Claim vs. outcome",
-              body: "Compare what Presidents claimed to what Chancellors enacted and to the known pile. A President who 'never sees Liberals' while the pile is still Liberal-rich is telling an increasingly expensive story." },
-            { id: "reading.signals.conflict", title: "Who benefits from the chaos",
-              body: "When a government goes bad, ask who gained: whose Chancellorship it enabled, whose investigation it dodged, who avoided a kill. Fascist plans usually leave a beneficiary." },
-          ],
-        },
-        {
-          id: "tools", title: "Using the app", items: [
-            { id: "reading.tools.odds", title: "Let the model do the arithmetic",
-              body: "Turn on lie detection to see each government's fascist odds and any impossible claims, and use the game review's step-by-step replay to watch the role probabilities evolve. It won't out a liar for you, but it tells you where to look." },
-          ],
-        },
+      id: "emotion", title: "Using human emotion",
+      blurb: "The table is people, not just cards.",
+      bullets: [
+        { t: "Self advocacy", subs: [
+          { t: "People often distrust anyone who advocates for themselves at all, regardless of the evidence. If you really want the chancellorship, sometimes the best move is not to mention yourself." },
+        ] },
+        { t: "Voting alignment", subs: [
+          { t: "People who vote together on certain elections often trust each other — you can vote with someone to make them trust you." },
+        ] },
+        { t: "Intense emotions", subs: [
+          { t: "Visibly getting upset, confused, annoyed, or conflicted reads as a liberal emotion. Faking it — or genuinely feeling it — as a fascist is a great way to fool the liberals. Really try not to actually hurt anyone; the whole point is to have a good time." },
+        ] },
       ],
     },
     {
-      id: "endgame", title: "Endgame", subcats: [
-        {
-          id: "critical", title: "Critical moments", items: [
-            { id: "endgame.critical.3f", title: "The Hitler zone (3 Fascist policies)",
-              body: "Once 3 Fascist policies are down, ANY Chancellor could win the game if they're Hitler. Liberals should now only elect players they can effectively vouch for, and be willing to fail elections rather than gamble the game." },
-            { id: "endgame.critical.4l", title: "Liberals at 4 policies",
-              body: "One Liberal policy from victory, Fascists must block every Liberal enact — which forces them into the open. Expect Neins on safe-looking governments and Fascist enacts from 'forced' hands; that pressure is itself information." },
-            { id: "endgame.critical.assassinate", title: "Timing the assassination",
-              body: "If you hold an Execution as the Fascist track gets dangerous, don't sit on it hoping for certainty. A well-reasoned kill on your strongest Hitler read can win outright — and even a miss removes a player and buys information." },
-          ],
-        },
+      id: "scenarios", title: "Unique scenarios",
+      blurb: "Edge cases worth thinking through ahead of time.",
+      bullets: [
+        { t: "Fascist–fascist conflict.", wip: true },
+        { t: "Fascist (Hitler) killing a fascist.", wip: true },
+        { t: "Liberal lying.", wip: true },
+        { t: "Liberal discarding a liberal policy", subs: [
+          { t: "If a liberal president gets kill power by enacting a fascist policy, receives Golden, and doesn’t trust the other liberals to decide correctly, they can discard the liberal, force a fascist to be played, and try to kill a fascist / Hitler. This only makes sense if they had a conflict with someone and weren’t about to win outright by enacting a liberal." },
+        ] },
+        { t: "Top-decking twice", subs: [
+          { t: "If the bottom 5 cards of the draw pile are all liberal (~0.1% at modifier 0), the group can top deck the first 2 and then position accordingly." },
+        ] },
+        { t: "Double conflict in a single presidency", subs: [
+          { t: "A Policy Peek conflict and a President–Chancellor conflict in the same presidency. This can make the president look bad — a fascist might be most likely to do it to freeze 2 liberals and themselves (potentially worth it)." },
+        ] },
+        { t: "Hitler acting fascist", subs: [
+          { t: "A rare case, virtually only involving reverse psychology." },
+        ] },
+      ],
+    },
+    {
+      id: "houserules", title: "House rules for a better game",
+      blurb: "Optional table conventions that keep games clean and fun.",
+      bullets: [
+        { t: "The president and chancellor should always shuffle the cards they receive, so they can discard any one without it looking fascist." },
+        { t: "In the night, everyone should open their eyes, see the other players’ eyes, put a thumb up, and return to position without any movement or adjusting whatsoever.", subs: [
+          { t: "Any slight hint that someone moved during the night can ruin an entire game. Always ask whether there were problems in the night, or whether anyone suspects another player because of it." },
+          { t: "A consistent narrator who follows the same script and turns their head side to side while speaking (in case they’re a fascist) reduces hints. A recorded / played “in the night” audio that’s always identical removes the risk entirely." },
+        ] },
+        { t: "During a Policy Peek, require the president to go into a private room for 1 minute to think before returning.", subs: [
+          { t: "Optimal liberal play makes the best fascist claim incredibly hard to calculate, and nearly impossible to do on the spot." },
+        ] },
+        { t: "Randomize the seats and the first president at the start — it makes for more diverse games and prevents set-ups or repeated games." },
+        { t: "Dead players cannot speak at all, from the moment the president says “I’m killing ___” and they respond “I am not Hitler.”" },
+        { t: "No human (playing or spectating) may ever look at a player’s role (dead or alive) outside of an investigation." },
       ],
     },
   ];
 
-  const TREES = { rule: RULES, theory: THEORY };
+
+  // Only RULES uses the drill-down/search tree now; game theory is STRATEGY, a flat
+  // category list rendered by the app's renderTheory().
+  const TREES = { rule: RULES };
 
   function tree(kind) { return TREES[kind] || []; }
 
@@ -350,5 +408,5 @@
     return flatten(kind).find((e) => e.item.id === itemId) || null;
   }
 
-  window.Reference = { tree, flatten, search, findItem, targetOf: (kind, id) => kind + ":" + id };
+  window.Reference = { tree, flatten, search, findItem, strategy: STRATEGY, targetOf: (kind, id) => kind + ":" + id };
 })();
