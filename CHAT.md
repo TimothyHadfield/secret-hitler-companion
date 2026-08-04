@@ -1694,3 +1694,37 @@ that opens a mini chat instead of the per-item notes panel. **Rules were left un
   sections` returns to the list → SMOKE_OK. Screenshot confirmed the layout. Note: old per-item theory
   comments (targets like `theory:liberal.fund.trust`) are orphaned by the content swap — expected.
   Files: `js/reference.js`, `js/app.js`, `styles.css`, `PROGRESS.md`, `CHAT.md`.
+
+---
+
+## Session 46 — Admin account can edit Game theory live (rules-enforced)
+
+The user made an account on `timhadfield7@gmail.com` and asked for it to have special privileges no other
+account has — for now, the ability to **add/edit any aspect of Game theory, permanently, for everyone**.
+
+**Key point made to the user:** the real privilege boundary is Firestore rules, not the client — hiding a
+button in JS stops nobody. So the content moved from bundled-only into Firestore, gated by a rule.
+
+- **Data + rules:** new `content/gameTheory` doc = `{strategy, updatedAt, updatedBy}`.
+  `firestore.rules`: added `isAdmin()` = `request.auth.token.email == 'timhadfield7@gmail.com'` (signed
+  Auth token, unspoofable; the email is uniquely claimed so no one else can present it) and
+  `match /content/{docId} { read: if true; write: if isAdmin() }`. **Public read** so signed-out visitors
+  also get edits; admin-only write. Deployed (config-only, safe). Rule left email-only (not
+  `email_verified`) to avoid locking the user out regardless of sign-in method; noted as tightenable.
+  `isAdmin()` is written as a reusable hook for future admin-only privileges.
+- **cloud.js:** `Cloud.isAdmin` (getter), `Cloud.getGameTheory()` (public read → `{strategy}|null`),
+  `Cloud.saveGameTheory(strategy)` (admin-guarded; setDoc, not merge, so deletions stick).
+- **app.js:** `strategy()` now returns `remoteStrategy || bundled STRATEGY`; `remoteStrategy` is cached in
+  `localStorage["secretHitler.gameTheory.v1"]` and refreshed via `refreshGameTheory()` on openTheory + on
+  `cloud:auth`. Admin editor: "＋ Add section" + ↑/↓ reorder on the list, "✎ Edit" on a section page →
+  editor (title / blurb / bullets-textarea). `commitStrategy(next)` saves cloud-first and only updates the
+  local view on success (no divergence). Editing uses `Reference.serializeBullets`/`parseBullets`.
+- **reference.js:** added pure `serializeBullets`/`parseBullets` (nested bullets ⇄ indented text; 2-space
+  or tab indent, trailing ` [debated]` = wip) + `blankCategory`; made the module Node-loadable (guarded
+  `window`, added `module.exports`). `test/reference.test.js` = 19 assertions (round-trips every bundled
+  category, nesting, tabs, [debated], blank/whitespace, blankCategory).
+- **Verified:** all Node suites green (reference 19, honesty 73, derive 47, fit 18, engine 1653). Headless
+  with a mock `Cloud`: admin adds a section (bullets parsed with nesting + debated), edits one (prefilled +
+  persisted), list grows → SMOKE_OK; **non-admin: no Add/Edit/reorder, content still renders** → SMOKE_OK.
+  Files: `firestore.rules`, `js/cloud.js`, `js/app.js`, `js/reference.js`, `styles.css`,
+  `test/reference.test.js` (new), `PROGRESS.md`, `CHAT.md`.

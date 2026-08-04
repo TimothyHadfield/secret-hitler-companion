@@ -408,5 +408,60 @@
     return flatten(kind).find((e) => e.item.id === itemId) || null;
   }
 
-  window.Reference = { tree, flatten, search, findItem, strategy: STRATEGY, targetOf: (kind, id) => kind + ":" + id };
+  // ---- admin editor: nested bullets ⇄ indented plain text -------------------
+  // The game-theory editor lets the admin edit a section's bullets as indented
+  // lines (2 spaces per level, a trailing " [debated]" marks a work-in-progress
+  // item). These pure functions convert between that text and the nested `bullets`
+  // shape, so the editor never has to build the tree by hand. Round-trip safe.
+  function serializeBullets(bullets, depth) {
+    depth = depth || 0;
+    let out = "";
+    for (const b of bullets || []) {
+      out += "  ".repeat(depth) + b.t + (b.wip ? " [debated]" : "") + "\n";
+      if (b.subs && b.subs.length) out += serializeBullets(b.subs, depth + 1);
+    }
+    return out;
+  }
+  function parseBullets(text) {
+    const root = { subs: [] };
+    // stack[i] = the node whose children live at indent level i
+    const stack = [{ indent: -1, node: root }];
+    const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+    for (const raw of lines) {
+      if (!raw.trim()) continue;
+      // tabs count as one level; otherwise every 2 leading spaces is a level
+      const lead = raw.match(/^[ \t]*/)[0];
+      const indent = lead.replace(/\t/g, "  ").length;
+      let t = raw.trim();
+      let wip = false;
+      const m = t.match(/\s*\[debated\]\s*$/i);
+      if (m) { wip = true; t = t.slice(0, m.index).trim(); }
+      if (!t) continue;
+      // find the parent: the deepest stack entry with a smaller indent
+      while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
+      const parent = stack[stack.length - 1].node;
+      const node = wip ? { t, wip: true, subs: [] } : { t, subs: [] };
+      (parent.subs = parent.subs || []).push(node);
+      stack.push({ indent, node });
+    }
+    // strip empty subs arrays so the stored shape matches the authored one
+    const clean = (bs) => bs.map((b) => {
+      const o = b.wip ? { t: b.t, wip: true } : { t: b.t };
+      if (b.subs && b.subs.length) o.subs = clean(b.subs);
+      return o;
+    });
+    return clean(root.subs);
+  }
+  // A blank category the admin can start from.
+  function blankCategory(id) {
+    return { id: id || ("section-" + Math.random().toString(36).slice(2, 8)), title: "New section", blurb: "", bullets: [] };
+  }
+
+  const API = {
+    tree, flatten, search, findItem, strategy: STRATEGY,
+    serializeBullets, parseBullets, blankCategory,
+    targetOf: (kind, id) => kind + ":" + id,
+  };
+  if (typeof window !== "undefined") window.Reference = API;
+  if (typeof module !== "undefined" && module.exports) module.exports = API;
 })();

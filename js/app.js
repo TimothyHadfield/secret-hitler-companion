@@ -359,15 +359,30 @@
   function openSetup() { renderSetup(); navTo("setupScreen"); }
   function openStats() { renderStatsInto($("statsBody")); navTo("statsScreen"); }
   function openRules() { refReset("rule"); navTo("rulesScreen"); renderReference("rule"); }
-  function openTheory() { theoryView.catId = null; theoryView.chatOpen = false; navTo("theoryScreen"); renderTheory(); }
+  function openTheory() {
+    theoryView.catId = null; theoryView.chatOpen = false; theoryView.editing = false; pendingNewCat = null;
+    navTo("theoryScreen"); renderTheory();
+    refreshGameTheory(); // pull the admin's latest shared edits (public read)
+  }
 
   // ------------------------------ GAME THEORY (session 45) -------------------
   // The user's own strategy write-up (js/reference.js `STRATEGY`): flat main
   // categories, each opening a page of bullet / sub-bullet notes. Comments are a
   // simple per-category chat behind a 💬 toggle (reuses the same Firestore comment
   // backend as the rules notes, target `theory:<catId>`).
-  const theoryView = { catId: null, chatOpen: false };
-  const strategy = () => (window.Reference && window.Reference.strategy) || [];
+  // Content = the ADMIN's shared edits from Firestore when present (cached locally
+  // so it shows instantly and offline), else the bundled STRATEGY. `remoteStrategy`
+  // is the last content we fetched/saved; null means "use the bundled fallback".
+  const THEORY_KEY = "secretHitler.gameTheory.v1";
+  let remoteStrategy = null;
+  try { const cached = JSON.parse(lsGet(THEORY_KEY)); if (Array.isArray(cached)) remoteStrategy = cached; } catch (e) {}
+  const strategy = () => remoteStrategy || (window.Reference && window.Reference.strategy) || [];
+  const theoryView = { catId: null, chatOpen: false, editing: false };
+  let pendingNewCat = null; // a section being added, not yet saved
+  const catById = (id) => (id && pendingNewCat && pendingNewCat.id === id) ? pendingNewCat : strategy().find((c) => c.id === id);
+  // Admin = the one privileged account; the app only HIDES the editor for others —
+  // firestore.rules is what actually rejects a non-admin write.
+  const isAdmin = () => { const c = cloud(); return !!(c && c.isAdmin); };
   const countBullets = (bs) => (bs || []).reduce((a, b) => a + 1 + countBullets(b.subs), 0);
   function bulletsHtml(bullets) {
     return (bullets || []).map((b) =>
@@ -378,42 +393,149 @@
       (b.subs && b.subs.length ? `<ul class="thy-sublist">${bulletsHtml(b.subs)}</ul>` : "") +
       `</li>`).join("");
   }
+  // Pull the admin's shared content (public read — works signed-out) and cache it.
+  async function refreshGameTheory() {
+    const c = cloud();
+    if (!c || !c.getGameTheory) return;
+    let r = null;
+    try { r = await c.getGameTheory(); } catch (e) { return; }
+    if (r && Array.isArray(r.strategy)) {
+      remoteStrategy = r.strategy;
+      try { lsSet(THEORY_KEY, JSON.stringify(r.strategy)); } catch (e) {}
+      if (!$("theoryScreen").classList.contains("hidden") && !theoryView.editing) renderTheory();
+    }
+  }
+  // Persist the whole content (admin only). Saves first, commits locally only on
+  // success, so a rejected write can never leave the view out of sync with cloud.
+  async function commitStrategy(next, okMsg) {
+    const c = cloud();
+    if (!c || !c.saveGameTheory) { showToast("Sign in as the admin to edit."); return false; }
+    const r = await c.saveGameTheory(next);
+    if (!r.ok) { showToast(r.message || "Couldn't save that change."); return false; }
+    remoteStrategy = next;
+    try { lsSet(THEORY_KEY, JSON.stringify(next)); } catch (e) {}
+    if (okMsg) showToast(okMsg);
+    return true;
+  }
+  const cloneStrategy = () => JSON.parse(JSON.stringify(strategy()));
+
   function renderTheory() {
     const box = $("theoryBody");
     if (!box) return;
+    if (theoryView.editing && theoryView.catId) return renderTheoryEditor(box);
     const cats = strategy();
+    // ---- category list
     if (!theoryView.catId) {
+      const admin = isAdmin();
       box.innerHTML =
         `<div class="ref-head"><h2 class="ref-title">Game theory</h2>` +
         `<p class="ref-tagline">Strategy notes for the table. Open a section to read it; tap 💬 to discuss it with your group.</p></div>` +
+        (admin ? `<button class="ghost thy-add" style="margin-bottom:10px">＋ Add section</button>` : "") +
         `<div class="thy-cats">` +
-        cats.map((c) =>
+        cats.map((c, i) =>
+          `<div class="thy-cat-row">` +
           `<button class="thy-cat" data-cat="${escapeHtml(c.id)}">` +
           `<span class="thy-cat-title">${escapeHtml(c.title)}</span>` +
-          `<span class="thy-cat-meta">${countBullets(c.bullets)} notes ▸</span></button>`).join("") +
+          `<span class="thy-cat-meta">${countBullets(c.bullets)} notes ▸</span></button>` +
+          (admin
+            ? `<span class="thy-cat-move"><button class="thy-mv" data-mv="up" data-i="${i}" aria-label="Move up" ${i === 0 ? "disabled" : ""}>↑</button>` +
+              `<button class="thy-mv" data-mv="down" data-i="${i}" aria-label="Move down" ${i === cats.length - 1 ? "disabled" : ""}>↓</button></span>`
+            : "") +
+          `</div>`).join("") +
         `</div>`;
       box.querySelectorAll(".thy-cat").forEach((b) =>
         b.onclick = () => { theoryView.catId = b.dataset.cat; theoryView.chatOpen = false; renderTheory(); });
+      const add = box.querySelector(".thy-add");
+      if (add) add.onclick = () => {
+        pendingNewCat = window.Reference.blankCategory();
+        theoryView.catId = pendingNewCat.id; theoryView.editing = true; renderTheory();
+      };
+      box.querySelectorAll(".thy-mv").forEach((b) =>
+        b.onclick = async () => {
+          const i = +b.dataset.i, j = b.dataset.mv === "up" ? i - 1 : i + 1;
+          const next = cloneStrategy();
+          if (j < 0 || j >= next.length) return;
+          const t = next[i]; next[i] = next[j]; next[j] = t;
+          b.disabled = true;
+          if (await commitStrategy(next)) renderTheory();
+        });
       return;
     }
-    const cat = cats.find((c) => c.id === theoryView.catId);
+    // ---- a section page
+    const cat = catById(theoryView.catId);
     if (!cat) { theoryView.catId = null; return renderTheory(); }
+    const admin = isAdmin();
     box.innerHTML =
       `<button class="thy-back" aria-label="Back to all sections">← All sections</button>` +
       `<div class="thy-page-head">` +
       `<h2 class="thy-title">${escapeHtml(cat.title)}</h2>` +
+      (admin ? `<button class="thy-edit" aria-label="Edit this section" title="Edit">✎ Edit</button>` : "") +
       `<button class="thy-chat-toggle" aria-label="Comments on this section" aria-expanded="${theoryView.chatOpen}" title="Comments">💬</button>` +
       `</div>` +
       (cat.blurb ? `<p class="thy-blurb">${escapeHtml(cat.blurb)}</p>` : "") +
       `<div class="thy-chat${theoryView.chatOpen ? "" : " hidden"}" id="thyChat"></div>` +
-      `<ul class="thy-list">${bulletsHtml(cat.bullets)}</ul>`;
+      (cat.bullets && cat.bullets.length
+        ? `<ul class="thy-list">${bulletsHtml(cat.bullets)}</ul>`
+        : `<p class="muted">This section is empty${admin ? " — tap ✎ Edit to add notes." : "."}</p>`);
     box.querySelector(".thy-back").onclick = () => { theoryView.catId = null; theoryView.chatOpen = false; renderTheory(); };
     box.querySelector(".thy-chat-toggle").onclick = () => {
       theoryView.chatOpen = !theoryView.chatOpen;
       renderTheory();
       if (theoryView.chatOpen) loadTheoryChat(cat.id);
     };
+    const edit = box.querySelector(".thy-edit");
+    if (edit) edit.onclick = () => { theoryView.editing = true; renderTheory(); };
     if (theoryView.chatOpen) loadTheoryChat(cat.id);
+  }
+
+  // ---- admin editor for one section (title + blurb + indented-bullet textarea) --
+  function renderTheoryEditor(box) {
+    const cat = catById(theoryView.catId);
+    const isNew = !!(pendingNewCat && pendingNewCat.id === theoryView.catId);
+    if (!cat) { theoryView.editing = false; pendingNewCat = null; theoryView.catId = null; return renderTheory(); }
+    const bulletsText = window.Reference.serializeBullets(cat.bullets || []);
+    box.innerHTML =
+      `<button class="thy-back" aria-label="Cancel editing">← ${isNew ? "Cancel new section" : "Cancel"}</button>` +
+      `<h2 class="thy-title" style="margin:2px 0 12px">${isNew ? "New section" : "Edit section"}</h2>` +
+      `<div class="thy-editor">` +
+      `<label>Title<input id="thyEdTitle" type="text" maxlength="60" value="${escapeHtml(cat.title || "")}"></label>` +
+      `<label>Short description (optional)<input id="thyEdBlurb" type="text" maxlength="140" value="${escapeHtml(cat.blurb || "")}"></label>` +
+      `<label>Notes — one bullet per line. Indent with 2 spaces (or a tab) to make a sub-bullet; add “ [debated]” at the end of a line to flag it.` +
+      `<textarea id="thyEdBullets" rows="16" spellcheck="true">${escapeHtml(bulletsText)}</textarea></label>` +
+      `<div class="thy-ed-actions">` +
+      `<button class="primary" id="thyEdSave">Save</button>` +
+      `<button class="ghost" id="thyEdCancel">Cancel</button>` +
+      (isNew ? "" : `<button class="ghost danger thy-ed-del" id="thyEdDelete">Delete section</button>`) +
+      `</div></div>`;
+    const cancel = () => {
+      theoryView.editing = false;
+      if (isNew) { pendingNewCat = null; theoryView.catId = null; }
+      renderTheory();
+    };
+    box.querySelector(".thy-back").onclick = cancel;
+    $("thyEdCancel").onclick = cancel;
+    $("thyEdSave").onclick = async () => {
+      const title = ($("thyEdTitle").value || "").trim() || "Untitled section";
+      const blurb = ($("thyEdBlurb").value || "").trim();
+      const bullets = window.Reference.parseBullets($("thyEdBullets").value || "");
+      const edited = { id: cat.id, title, blurb, bullets };
+      const next = cloneStrategy();
+      if (isNew) next.push(edited);
+      else { const k = next.findIndex((c) => c.id === cat.id); if (k >= 0) next[k] = edited; else next.push(edited); }
+      $("thyEdSave").disabled = true; $("thyEdSave").textContent = "Saving…";
+      if (await commitStrategy(next, "Saved.")) {
+        pendingNewCat = null; theoryView.editing = false; renderTheory();
+      } else { $("thyEdSave").disabled = false; $("thyEdSave").textContent = "Save"; }
+    };
+    const del = $("thyEdDelete");
+    if (del) del.onclick = () => askConfirm(
+      { title: "Delete this section?", body: `“${cat.title}” and its notes will be removed for everyone.`, confirm: "Delete", cancel: "Keep", danger: true },
+      async () => {
+        const next = cloneStrategy().filter((c) => c.id !== cat.id);
+        if (await commitStrategy(next, "Section deleted.")) {
+          theoryView.editing = false; theoryView.catId = null; pendingNewCat = null; renderTheory();
+        }
+      });
   }
   async function loadTheoryChat(catId) {
     const el = $("thyChat");
@@ -3708,6 +3830,12 @@
       if (!$("accountModal").classList.contains("hidden")) renderAccount();
     };
     document.addEventListener("cloud:auth", refresh);
+    // Signing in/out can change admin status and the shared content — re-render the
+    // Game theory screen (so the admin's Edit controls appear/disappear) and refetch.
+    document.addEventListener("cloud:auth", () => {
+      if (!$("theoryScreen").classList.contains("hidden") && !theoryView.editing) renderTheory();
+      refreshGameTheory();
+    });
     document.addEventListener("cloud:status", refresh);
     document.addEventListener("cloud:groups", () => {
       refresh();

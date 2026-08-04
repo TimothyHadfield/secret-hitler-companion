@@ -1134,3 +1134,34 @@ body.lie-on span.lie-col { display: inline; }
 .thy-chat-add { display: flex; gap: 8px; align-items: flex-end; }
 .thy-chat-input { flex: 1; resize: vertical; min-height: 40px; }
 .thy-send { flex: none; }
+
+/* ---- Game theory: admin editing (session 46) ------------------------------ */
+.thy-cat-row { display: flex; align-items: stretch; gap: 6px; }
+.thy-cat-row .thy-cat { flex: 1; }
+.thy-cat-move { display: flex; flex-direction: column; gap: 4px; }
+.thy-mv {
+  width: 34px; flex: 1; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); color: var(--ink); cursor: pointer; font-size: 13px; line-height: 1;
+}
+.thy-mv:hover:not(:disabled) { border-color: var(--gold); }
+.thy-mv:disabled { opacity: 0.35; cursor: default; }
+.thy-add { align-self: flex-start; }
+.thy-edit {
+  flex: none; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 13px; white-space: nowrap;
+}
+.thy-edit:hover { border-color: var(--gold); }
+
+.thy-editor { display: flex; flex-direction: column; gap: 12px; }
+.thy-editor label { display: block; font-size: 13px; color: var(--muted); }
+.thy-editor input, .thy-editor textarea {
+  width: 100%; margin-top: 4px; box-sizing: border-box;
+  font: inherit; background: #120e0b; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+}
+.thy-editor textarea {
+  min-height: 220px; resize: vertical; line-height: 1.5;
+  font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 13px; white-space: pre;
+}
+.thy-ed-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.thy-ed-actions .thy-ed-del { margin-left: auto; }

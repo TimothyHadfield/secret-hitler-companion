@@ -29,6 +29,15 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function uid()      { return request.auth.uid; }
 
+    // ---- admin ----
+    // A single privileged account (the site owner). Enforced HERE, in the rules —
+    // this is the real boundary; the app only hides UI. `request.auth.token.email`
+    // comes from the signed Firebase Auth token, so it cannot be spoofed, and the
+    // email is uniquely claimed by one account, so no one else can present it.
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == 'timhadfield7@gmail.com';
+    }
+
     // Membership check. Reads the parent group doc, so it costs ONE document
     // read per query (not per document returned) — which is exactly why
     // memberUids is denormalised onto the group instead of living only in the
@@ -274,6 +283,17 @@ service cloud.firestore {
                     && request.resource.data.authorName.size() <= 60;
       allow update: if false;
       allow delete: if signedIn() && resource.data.authorUid == uid();
+    }
+
+    // ---- site content edited by the admin (e.g. the Game Theory handbook) ----
+    // Public strategy text that the site owner curates and every visitor reads.
+    // READ is open to the world (including signed-out visitors) so an edit reaches
+    // everyone; WRITE is the admin ONLY. This is the actual privilege boundary —
+    // the app's "Edit" button is just UI. Nothing here touches recorded history,
+    // and there's no per-user data, so a public read exposes nothing sensitive.
+    match /content/{docId} {
+      allow read:  if true;
+      allow write: if isAdmin();
     }
 
     // Anything not matched above is denied.
