@@ -6,7 +6,7 @@
 > reference. **After any meaningful change you MUST update this file + `CHAT.md`** (the user
 > periodically deletes the chat and relies entirely on these docs).
 
-_Last updated: 2026-08-01 (session 47: Rules joined the same editable handbook model as Game theory; House rules moved to the bottom of Rules)._
+_Last updated: 2026-08-04 (sessions 43–47: undo perf + `derive.js`; accessibility; correlated fascists + lie-rate fitting; Game-theory rebuild; admin-editable Rules + Game theory)._
 
 ## ⚙️ Working on this project (operational brief — read once)
 - **Project dir (absolute):** `c:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Secret_Hitler`
@@ -98,7 +98,7 @@ real table game) and is now **also a full online game engine**. Feature pillars:
 5. **Online play** (sessions 40–41) — host a live game for your group; the app deals roles, runs every
    step, and records the finished game. The companion mode (record a physical game) still exists too.
 
-## Current status: ✅ live and working (as of session 42)
+## Current status: ✅ live and working (as of session 47)
 - Static site (HTML/CSS/vanilla JS), auto-deployed via **GitHub Pages** on push to `main`.
 - All features below verified with headless-Chrome smoke tests + screenshots (no build step).
 - **All four pillars are shipped, PLUS full online play.** The backend plan (accounts → cross-device
@@ -115,12 +115,33 @@ real table game) and is now **also a full online game engine**. Feature pillars:
 - **Data safety is RULE ZERO (session 36) — see `DATA_SAFETY.md`.** Recorded games must never be lost;
   no wholesale Firestore deletes; the destructive prod test is hard-gated; "Clear all statistics" now
   backs up first. Read it before touching anything Firebase.
-- **Shipped since session 35 (see the dedicated sections + `CHAT.md`):**
+- **Shipped in sessions 43–47 (most recent — see the dedicated sections + `CHAT.md`):**
+  - **Perf + first Node test of the rules engine** (session 43): the undo stack moved out of the
+    per-render save (was O(n²)); `derive()` was extracted to `js/derive.js` and Node-tested
+    (`test/derive.test.js`, 47 assertions).
+  - **Accessibility first pass** (session 44): keyboard-operable seats, modal dialogs (focus trap + Esc +
+    focus-return), `aria-live` toast/hint, visible focus rings. See the **Interaction model** / Known
+    limitations notes.
+  - **Correlated-fascist card-play in the role posterior** (session 44, `HONESTY_MODEL.md` §12.7):
+    coordinated pres/chan push + ally-framing reduction, factorisation-preserving. honesty tests → 73.
+  - **Fit lie rates to your games** (session 44, `js/fit.js`, opt-in): roles-known EM fits the per-team
+    report lie rates, Beta-shrunk to the defaults, with a fitted-vs-default calibration A/B on the
+    Statistics screen. Simulation-recovery tested (`test/fit.test.js`, 18). β/γ deliberately NOT fitted
+    (confounded without chancellor-claims/votes).
+  - **Game theory rebuilt from the user's own strategy doc** (session 45): flat categories → bullet pages
+    + a per-category 💬 chat (replaced the old drill-down + per-item notes for theory).
+  - **🔑 Admin-editable handbooks** (sessions 46–47): the account **`timhadfield7@gmail.com`** can
+    add/edit/reorder/delete sections of **both Game theory AND Rules**, live, for everyone. Content lives
+    in Firestore (`content/gameTheory`, `content/rules`); the write is gated in `firestore.rules` to that
+    email (the real boundary — the UI only hides the editor). **House rules moved to the bottom of Rules**
+    (session 47). See the handbook section.
+- **Shipped in sessions 37–42 (see the dedicated sections + `CHAT.md`):**
   - **Editable display name** (session 37): change it in the account view; propagates to your profile +
     every group roster seat that is you, so others see the new name.
-  - **Rules & Game Theory handbook** (session 38): two searchable, categorized main-menu sections
-    (`js/reference.js`) with a **wiki-style community-comments** layer (a global `comments` collection)
-    — anyone signed in can attach attributed notes to any rule/strategy item.
+  - **Rules & Game Theory handbook** (session 38; **reworked s45–47**): two main-menu sections. Both now
+    use one **flat category → bullet-page** model with a **per-category 💬 chat**, and both are
+    **admin-editable** (see the handbook section + sessions 45–47 above). (Rules originally had search +
+    per-item wiki notes; that renderer is now dead. The `comments` collection is still the chat backend.)
   - **Label & favorite recorded games** (session 39): a ★ on each game box floats favorites to the top;
     games can be named; both are per-user, synced via `profiles/{uid}/gameMeta`.
   - **Edit a recorded game's roles** (session 42): author-only correction of a mis-recorded role in the
@@ -143,13 +164,16 @@ real table game) and is now **also a full online game engine**. Feature pillars:
     `P(each player is fascist)` and `P(Hitler)` from every signal in the log (claims, enactments,
     conflicts, nominations, investigations, executions, special elections, policy peeks), the
     powers-as-claims lie estimates, and a **Model calibration** panel scoring stored predictions
-    against recorded roles. Engine: `js/honesty.js` (+`test/honesty.test.js`, 66 assertions). Theory
+    against recorded roles. Engine: `js/honesty.js` (+`test/honesty.test.js`, 73 assertions). Adds
+    **correlated-fascist card-play** (s44) and **opt-in fitted lie rates** (s44, `js/fit.js`). Theory
     + design review + improvement brainstorm in `HONESTY_MODEL.md`.
   - **Fascist odds on the table** (⚙ Settings, **off by default**): live fascist-% chip on each
     player's circle. Deliberately opt-in — it changes how the table plays.
-- **Still open (deliberately):** vote tracking and chancellor-claim capture (both need new in-game
-  data entry — a product call), EM parameter fitting (needs game volume; the calibration panel is
-  the prerequisite), correlated-fascist modelling. See `HONESTY_MODEL.md` §12 (⏳-tagged).
+- **Still open (deliberately):** **vote tracking** and **chancellor-claim capture** — both need new
+  in-game data entry, which the user has explicitly declined for now ("keep the site simple"). Also
+  **per-player** lie tendencies (the s44 fitter does per-team only) once the archive is bigger.
+  (Correlated-fascist modelling and per-team EM lie-rate fitting were the other ⏳ items — both SHIPPED
+  in session 44.) See `HONESTY_MODEL.md` §12.
 - **The user periodically wipes the chat and relies entirely on this file + `CHAT.md`.** Keep
   both current after every meaningful change.
 
@@ -170,7 +194,7 @@ real table game) and is now **also a full online game engine**. Feature pillars:
 | `js/cloud.js` | **ES module** (the only one): Firebase auth, cross-device sync, groups, game delete, and **shared night voices** (base64 audio in Firestore). Loads the SDK from a CDN, so still no build step. Talks to the app only via `window.Cloud` + `cloud:*` events. |
 | `js/firebase-config.js` | Public Firebase project identifiers. Safe to commit — `firestore.rules` is the security boundary. |
 | `firestore.rules` / `firebase.json` / `.firebaserc` / `firestore.indexes.json` | Deployed security rules + Firebase CLI config. |
-| `test/` | Dev-only. `honesty.test.js` = 39 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **HARD-GATED (session 36): it refuses to run without `SH_PROD_RULES_TEST=i-understand`, and cleans up ONLY the exact `__test_<runId>` docs it created, per-document, through the rules — no wholesale wipe exists in the file.** (The older warning that its teardown "empties ALL collections" was overstated — every committed version scoped itself to a test group; the gate + per-doc cleanup now design the risk out. See `DATA_SAFETY.md`.) It covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not) and voice permissions (§7c); still, prefer the mock-Cloud CDP approach and don't run it unless you truly must. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). `engine.test.js` = **1653 assertions** for the online-play engine (`node test/engine.test.js`, no deps): role deal (team sizes 5–10, per-role night knowledge, determinism) + 60 full simulated games (17-card conservation, term limits, veto, both Hitler wins, public-view privacy). Has its own `package.json`; the site stays dependency-free. `derive.test.js` = **47 assertions** for the pure rules engine `js/derive.js` (`node test/derive.test.js`, no deps): pile counting + reshuffles, presidential rotation (incl. nested special-election resume points), deaths + rotation-skip, term limits (5 vs 7 players), the election tracker, veto, chaos (resets tracker + term limits), investigations, Hitler-elected, state mutation, determinism, and the honesty/role dependency wiring. `fit.test.js` = **18 assertions** for the lie-rate fitter `js/fit.js` (`node test/fit.test.js`, no deps): a **simulation-recovery** check (generate games with known lie rates, EM recovers them within ±0.03), Beta shrinkage, knowing-vs-cautious-Hitler bucketing, responsiveness, determinism, and uncertain-hand (R>0) EM convergence. `reference.test.js` = **28 assertions** for the Game-theory editor's bullet parser (`node test/reference.test.js`): round-trips every bundled category, plus indentation nesting, tabs, `[debated]`, blank/whitespace, and `blankCategory`. |
+| `test/` | Dev-only. `honesty.test.js` = 73 assertions, runnable with bare `node test/honesty.test.js` (no deps); it cross-checks the DP against an independently written brute-force enumeration. `night.test.js` = 39 assertions for the narration (script selection, pacing, voice picking, base64↔Blob round-trip, shared-voice caching; the IndexedDB parts run when `fake-indexeddb` — a dev dependency — is present, and are skipped, not failed, otherwise). `rules.prod.test.js` = adversarial assertions against the **deployed** rules (real accounts on the live project). ⚠️ **HARD-GATED (session 36): it refuses to run without `SH_PROD_RULES_TEST=i-understand`, and cleans up ONLY the exact `__test_<runId>` docs it created, per-document, through the rules — no wholesale wipe exists in the file.** (The older warning that its teardown "empties ALL collections" was overstated — every committed version scoped itself to a test group; the gate + per-doc cleanup now design the risk out. See `DATA_SAFETY.md`.) It covers game-delete permissions (§7b: author/owner may delete, other members / non-members may not) and voice permissions (§7c); still, prefer the mock-Cloud CDP approach and don't run it unless you truly must. `rules.test.js` = the emulator variant, kept but unused (the emulator won't start on this machine). `engine.test.js` = **1653 assertions** for the online-play engine (`node test/engine.test.js`, no deps): role deal (team sizes 5–10, per-role night knowledge, determinism) + 60 full simulated games (17-card conservation, term limits, veto, both Hitler wins, public-view privacy). Has its own `package.json`; the site stays dependency-free. `derive.test.js` = **47 assertions** for the pure rules engine `js/derive.js` (`node test/derive.test.js`, no deps): pile counting + reshuffles, presidential rotation (incl. nested special-election resume points), deaths + rotation-skip, term limits (5 vs 7 players), the election tracker, veto, chaos (resets tracker + term limits), investigations, Hitler-elected, state mutation, determinism, and the honesty/role dependency wiring. `fit.test.js` = **18 assertions** for the lie-rate fitter `js/fit.js` (`node test/fit.test.js`, no deps): a **simulation-recovery** check (generate games with known lie rates, EM recovers them within ±0.03), Beta shrinkage, knowing-vs-cautious-Hitler bucketing, responsiveness, determinism, and uncertain-hand (R>0) EM convergence. `reference.test.js` = **28 assertions** for the Game-theory editor's bullet parser (`node test/reference.test.js`): round-trips every bundled category, plus indentation nesting, tabs, `[debated]`, blank/whitespace, and `blankCategory`. |
 | `.hintrc` | webhint config — pins the two advisory rules we deliberately don't follow, so warnings stay meaningful. |
 | `icon.svg`, `apple-touch-icon.png`, `icon-512.png` | Original logo (round table + gold keyhole + red/blue player dots). Favicon + iOS home-screen icon. |
 | `SECRET_HITLER_RULES.md` | Rules the app encodes. |
@@ -333,7 +357,7 @@ real table game) and is now **also a full online game engine**. Feature pillars:
     bullet per line, 2-space/tab indent = sub-bullet, trailing ` [debated]` = wip). Save persists the
     whole content cloud-first (`commitStrategy` — only commits locally on a successful write, so a rejected
     save can't diverge). `Reference.serializeBullets`/`parseBullets` (pure, round-trip Node-tested in
-    `test/reference.test.js`, 19 assertions) convert the nested `bullets` ⇄ the indented text.
+    `test/reference.test.js`, 28 assertions) convert the nested `bullets` ⇄ the indented text.
   - **Verified** headless with a mock `Cloud`: admin adds a section (nested + `[debated]` bullets parsed
     correctly) → `saveGameTheory` called, list grows, edit prefills + persists; **non-admin sees no
     Add/Edit/reorder** yet content still renders → both SMOKE_OK.
