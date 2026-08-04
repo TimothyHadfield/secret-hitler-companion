@@ -352,24 +352,41 @@
         ] },
       ],
     },
-    {
-      id: "houserules", title: "House rules for a better game",
-      blurb: "Optional table conventions that keep games clean and fun.",
-      bullets: [
-        { t: "The president and chancellor should always shuffle the cards they receive, so they can discard any one without it looking fascist." },
-        { t: "In the night, everyone should open their eyes, see the other players’ eyes, put a thumb up, and return to position without any movement or adjusting whatsoever.", subs: [
-          { t: "Any slight hint that someone moved during the night can ruin an entire game. Always ask whether there were problems in the night, or whether anyone suspects another player because of it." },
-          { t: "A consistent narrator who follows the same script and turns their head side to side while speaking (in case they’re a fascist) reduces hints. A recorded / played “in the night” audio that’s always identical removes the risk entirely." },
-        ] },
-        { t: "During a Policy Peek, require the president to go into a private room for 1 minute to think before returning.", subs: [
-          { t: "Optimal liberal play makes the best fascist claim incredibly hard to calculate, and nearly impossible to do on the spot." },
-        ] },
-        { t: "Randomize the seats and the first president at the start — it makes for more diverse games and prevents set-ups or repeated games." },
-        { t: "Dead players cannot speak at all, from the moment the president says “I’m killing ___” and they respond “I am not Hitler.”" },
-        { t: "No human (playing or spectating) may ever look at a player’s role (dead or alive) outside of an investigation." },
-      ],
-    },
   ];
+
+  // Moved to the BOTTOM OF THE RULES section (session 46). Optional table
+  // conventions rather than strategy, so they live with the rules, not the theory.
+  const HOUSE_RULES = {
+    id: "houserules", title: "House rules for a better game",
+    blurb: "Optional table conventions that keep games clean and fun.",
+    bullets: [
+      { t: "The president and chancellor should always shuffle the cards they receive, so they can discard any one without it looking fascist." },
+      { t: "In the night, everyone should open their eyes, see the other players’ eyes, put a thumb up, and return to position without any movement or adjusting whatsoever.", subs: [
+        { t: "Any slight hint that someone moved during the night can ruin an entire game. Always ask whether there were problems in the night, or whether anyone suspects another player because of it." },
+        { t: "A consistent narrator who follows the same script and turns their head side to side while speaking (in case they’re a fascist) reduces hints. A recorded / played “in the night” audio that’s always identical removes the risk entirely." },
+      ] },
+      { t: "During a Policy Peek, require the president to go into a private room for 1 minute to think before returning.", subs: [
+        { t: "Optimal liberal play makes the best fascist claim incredibly hard to calculate, and nearly impossible to do on the spot." },
+      ] },
+      { t: "Randomize the seats and the first president at the start — it makes for more diverse games and prevents set-ups or repeated games." },
+      { t: "Dead players cannot speak at all, from the moment the president says “I’m killing ___” and they respond “I am not Hitler.”" },
+      { t: "No human (playing or spectating) may ever look at a player’s role (dead or alive) outside of an investigation." },
+    ],
+  };
+
+  // The RULES section now uses the SAME editable category→bullets model as game
+  // theory (session 46), so the admin can edit it too. This derives that flat
+  // shape from the authoritative RULES tree above (subcategory → a heading bullet,
+  // item → a "Title — body" sub-bullet), then appends the House rules section at
+  // the end. It is only the OFFLINE FALLBACK — `content/rules` in Firestore is the
+  // live source once the admin edits anything.
+  const RULES_CONTENT = RULES.map((cat) => ({
+    id: cat.id, title: cat.title, blurb: "",
+    bullets: (cat.subcats || []).map((sc) => ({
+      t: sc.title,
+      subs: (sc.items || []).map((it) => ({ t: it.title + " — " + it.body })),
+    })),
+  })).concat([HOUSE_RULES]);
 
 
   // Only RULES uses the drill-down/search tree now; game theory is STRATEGY, a flat
@@ -458,7 +475,9 @@
   }
 
   const API = {
-    tree, flatten, search, findItem, strategy: STRATEGY,
+    tree, flatten, search, findItem,
+    strategy: STRATEGY,   // game-theory content (bundled fallback)
+    rules: RULES_CONTENT, // rules content in the same editable shape (bundled fallback)
     serializeBullets, parseBullets, blankCategory,
     targetOf: (kind, id) => kind + ":" + id,
   };

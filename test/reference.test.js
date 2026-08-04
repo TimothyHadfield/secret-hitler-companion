@@ -8,11 +8,16 @@ let pass = 0, fail = 0;
 function ok(cond, label, extra) { if (cond) pass++; else { fail++; console.log("  FAIL " + label + (extra ? "  (" + extra + ")" : "")); } }
 const eq = (a, b, label) => ok(JSON.stringify(a) === JSON.stringify(b), label, JSON.stringify(a) + " !== " + JSON.stringify(b));
 
-// ---- every bundled category survives a round trip unchanged
+// ---- every bundled category (both handbooks) survives a round trip unchanged
 R.strategy.forEach((c) => {
-  const back = R.parseBullets(R.serializeBullets(c.bullets));
-  eq(back, c.bullets, `round-trip: ${c.id}`);
+  eq(R.parseBullets(R.serializeBullets(c.bullets)), c.bullets, `theory round-trip: ${c.id}`);
 });
+R.rules.forEach((c) => {
+  eq(R.parseBullets(R.serializeBullets(c.bullets)), c.bullets, `rules round-trip: ${c.id}`);
+});
+// ---- House rules moved OUT of game theory and INTO the bottom of rules
+ok(!R.strategy.some((c) => c.id === "houserules"), "house rules removed from game theory");
+ok(R.rules[R.rules.length - 1].id === "houserules", "house rules is the last rules section");
 
 // ---- nesting from indentation
 eq(R.parseBullets("A\n  A1\n  A2\nB"),

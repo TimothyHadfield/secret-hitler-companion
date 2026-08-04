@@ -1728,3 +1728,35 @@ button in JS stops nobody. So the content moved from bundled-only into Firestore
   persisted), list grows → SMOKE_OK; **non-admin: no Add/Edit/reorder, content still renders** → SMOKE_OK.
   Files: `firestore.rules`, `js/cloud.js`, `js/app.js`, `js/reference.js`, `styles.css`,
   `test/reference.test.js` (new), `PROGRESS.md`, `CHAT.md`.
+
+---
+
+## Session 47 — Rules joined the editable handbook model; House rules moved to the bottom of Rules
+
+Two asks: (1) move "House rules for a better game" from Game theory to the bottom of the Rules section;
+(2) let `timhadfield7@gmail.com` edit the Rules section too. Since Rules used a different (search +
+category→subcategory→item drill-down) renderer than the now-editable Game theory, the clean way to do both
+was to **put Rules on the same flat, editable category→bullets model** — then House rules drops in naturally
+and Rules becomes admin-editable with zero new machinery.
+
+- **Unified renderer (app.js):** the session-45/46 theory code was generalized to `renderHandbook(kind)`
+  (`kind` = "theory" | "rules") + `renderHandbookEditor` + `loadHandbookChat`/`paintHandbookChat`, driven by
+  a `HB[kind]` config (mount, screen, Firestore doc, comment-target prefix, bundled fallback) and per-kind
+  `hbState`. `openRules()`/`openTheory()` → `openHandbook(kind)`. Element lookups are now **box-scoped
+  (querySelector on classes)** instead of fixed ids, so the two handbook screens can't collide. The old
+  `renderReference`/`refBrowser`/per-item-notes code is now dead but left in place (never called).
+- **Rules content (reference.js):** `Reference.rules` is DERIVED from the authoritative `RULES` tree at
+  load (subcategory → heading bullet, item → "Title — body" sub-bullet), so `RULES`/`SECRET_HITLER_RULES.md`
+  stays the source of truth; the flat shape is just the render/edit form + offline fallback. `content/rules`
+  in Firestore is the live source once edited. **House rules moved out of `STRATEGY` into a `HOUSE_RULES`
+  const appended to `RULES_CONTENT`** — Game theory now 7 categories, Rules 8 (House rules last).
+- **cloud.js:** generalized to `Cloud.getContent(name)` / `saveContent(name, strategy)` (admin-gated);
+  `getGameTheory`/`saveGameTheory` kept as aliases. **No firestore.rules change** — `match /content/{docId}`
+  already covers `content/rules` (public read, admin write).
+- **Tests:** `reference.test.js` now round-trips BOTH handbooks' bundled content through the editor parser
+  + asserts House rules moved (19 → 28 assertions). All suites green (reference 28, honesty 73, derive 47,
+  fit 18, engine 1653). Headless mock-Cloud: admin Add/Edit on **Rules** saves to the `rules` doc, House
+  rules is the last Rules section, Game theory has 7 sections with no House rules, **non-admin sees no edit
+  controls on either** → SMOKE_OK (×3).
+- Note: search over Rules was dropped with the drill-down model. Files: `js/reference.js`, `js/app.js`,
+  `js/cloud.js`, `test/reference.test.js`, `PROGRESS.md`, `CHAT.md` (no rules/CSS change needed).

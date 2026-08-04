@@ -823,12 +823,12 @@ const ADMIN_EMAIL = "timhadfield7@gmail.com";
 function isAdmin() {
   return !!(currentUser && currentUser.email && currentUser.email.toLowerCase() === ADMIN_EMAIL);
 }
-// Read the shared Game Theory content. Public (works signed-out), so every visitor
-// sees the admin's edits; returns null when it hasn't been edited yet (use the
-// bundled fallback) or on any error (offline).
-async function getGameTheory() {
+// Read a shared content doc (e.g. "gameTheory", "rules"). Public (works signed-out),
+// so every visitor sees the admin's edits; returns null when it hasn't been edited
+// yet (use the bundled fallback) or on any error (offline).
+async function getContent(name) {
   try {
-    const snap = await getDoc(doc(db, "content", "gameTheory"));
+    const snap = await getDoc(doc(db, "content", String(name)));
     if (snap.exists()) {
       const d = snap.data();
       if (Array.isArray(d.strategy)) return { strategy: d.strategy };
@@ -836,18 +836,21 @@ async function getGameTheory() {
   } catch (e) { /* offline / not readable → fall back to bundled content */ }
   return null;
 }
-// Persist the whole Game Theory content. Admin only; the rules reject anyone else
-// even if they bypass the UI. setDoc (not merge) so removed sections truly go away.
-async function saveGameTheory(strategy) {
-  if (!isAdmin()) return { ok: false, message: "Only the site admin can edit game theory." };
+// Persist a whole content doc. Admin only; the rules reject anyone else even if they
+// bypass the UI. setDoc (not merge) so removed sections truly go away.
+async function saveContent(name, strategy) {
+  if (!isAdmin()) return { ok: false, message: "Only the site admin can edit this." };
   if (!Array.isArray(strategy)) return { ok: false, message: "That content is not valid." };
   try {
-    await setDoc(doc(db, "content", "gameTheory"), {
+    await setDoc(doc(db, "content", String(name)), {
       strategy, updatedAt: serverTimestamp(), updatedBy: currentUser.uid,
     });
     return { ok: true };
   } catch (e) { return { ok: false, message: humanError(e) }; }
 }
+// Back-compat aliases (the Game Theory handbook used these before Rules joined).
+const getGameTheory = () => getContent("gameTheory");
+const saveGameTheory = (strategy) => saveContent("gameTheory", strategy);
 
 // ------------------------------------------------- invite links (?join=…)
 // Captured immediately, because the visitor may not be signed in yet: the id is
@@ -917,6 +920,8 @@ window.Cloud = {
   ready,
   get user() { return currentUser; },
   get isAdmin() { return isAdmin(); },
+  getContent,
+  saveContent,
   getGameTheory,
   saveGameTheory,
   get status() { return status; },
