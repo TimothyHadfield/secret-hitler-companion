@@ -6,3 +6,6 @@ Thumbs.db
 # Local dev
 node_modules/
 .vscode/
+
+# Claude's test-account login and saved browser state. This repo is public.
+.claude/test/
