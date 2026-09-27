@@ -101,6 +101,7 @@ No active build. The app is feature-complete (companion + analyzer + accounts/gr
 - D38 · 2026-08-04 · Game theory = Tim's own strategy doc, flat categories → bullet pages + per-category 💬 chat.
 - D39 · 2026-08-04 · Admin privileges via `isAdmin()` in `firestore.rules` (token email == `timhadfield7@gmail.com`); UI only hides the editor. Reusable hook — extend it.
 - D40 · 2026-08-04 · Rules + Game theory share one renderer `renderHandbook(kind)`; Rules content derived from `RULES` tree; Firestore `content/rules` / `content/gameTheory` live when present, bundled fallback. House rules moved to the bottom of Rules.
+- D41 · 2026-09-27 · Phone rounds strip (≤640px) uses tighter block spacing so two round blocks fit whole at 375px; before, the strip scrolled to the current round and cut ~19–37px off Round 1. With 3+ rounds older blocks still scroll off (by design).
 
 ## NOT verified
 - Real multi-client online game (several accounts, each reading only its private doc, host processing remote actions) · needs a real multi-device game.

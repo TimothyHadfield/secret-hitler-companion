@@ -379,6 +379,16 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .round-mod b { min-width: 22px; display: inline-block; text-align: center; }
 .round-bottom { display: flex; gap: 3px; align-items: center; }
 .round-bottom .miniCard { width: 13px; height: 19px; }
+/* phone strip: slightly tighter spacing so two round blocks fit side by side at
+   375–393px — otherwise the strip scrolls to the current round and cuts off Round 1 */
+@media (max-width: 640px) {
+  .rounds-bar { gap: 5px; }
+  .round-block { padding: 5px 6px; gap: 6px; }
+  .round-head { gap: 5px; }
+  .round-mod { gap: 4px; }
+  .round-mod button { padding: 2px 6px; }
+  .round-mod b { min-width: 20px; }
+}
 
 /* desktop: the rounds bar sits in the right control column, above the policy options */
 .rounds-slot { display: none; }
