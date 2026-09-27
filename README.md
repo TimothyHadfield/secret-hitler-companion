@@ -1,14 +1,32 @@
-# Secret Hitler — Companion
+# Secret Hitler Companion
 
-A web companion & analyzer for the board game **Secret Hitler**. Use it alongside a real
-table game for **randomization**, live **probability** analysis, **statistics**, an optional
-**"in the night" narration**, and — with a free account — **cross-device sync and shared group
-stats**. Real-time online play is intentionally out of scope; this is a table companion.
+A table companion for the board game **Secret Hitler**: it seats the players, tracks every government, and shows live odds of whether each President's claim could be true. Built for a group playing in person, with a phone or laptop on the table.
 
-🔗 **Live site:** https://timothyhadfield.github.io/secret-hitler-companion/
-📦 **Repo:** https://github.com/TimothyHadfield/secret-hitler-companion
+**[▶ Open the live app](https://timothyhadfield.github.io/secret-hitler-companion/)** · works on phone and laptop
+
+<p align="center">
+  <img src="docs/screenshots/desktop.png" alt="Laptop view: seven players around the table, both policy boards, and the draw odds for each possible hand" width="68%">
+  &nbsp;
+  <img src="docs/screenshots/phone.png" alt="Phone view of the same game in progress" width="24%">
+</p>
 
 ## Features
+- **Live probability**: the odds of each hand the President could have drawn, updated as the round is revealed.
+- **Lie and role modeling**: flags claims that can't all be true and estimates each player's chance of being a Fascist.
+- **One-tap recording**: tap the Chancellor, tap the claimed hand; the enacted policy, powers, term limits, veto and chaos are handled for you.
+- **Presidential powers** (investigation, peek, special election, execution) recorded against whoever used them.
+- **Statistics and replays**: per-player stats across games, and any finished game can be replayed turn by turn.
+- **Optional accounts and groups** to sync games across devices and share a group's stats; it works fully offline without one.
+- **"In the night" narration**, online play, and built-in Rules and Game theory handbooks.
+
+<p align="center">
+  <img src="docs/screenshots/desktop-history.png" alt="History tab: every government with its claim, enacted policy, odds and lie flags" width="68%">
+</p>
+
+## Built with
+Plain HTML, CSS and JavaScript with no build step, hosted on GitHub Pages; optional Firebase (Auth + Firestore, free plan) for accounts and sync.
+
+## Full feature list
 - **Randomization** — shuffles seating and picks the first President.
 - **Bird's-eye table** — players seated around a rectangular table (top/bottom only on phones,
   all four sides on a laptop, never on a corner). Each President's hands, the retrospective
@@ -38,6 +56,8 @@ stats**. Real-time online play is intentionally out of scope; this is a table co
   5–6 vs 7+ script is chosen automatically). Use a built-in voice or record/upload your own.
 - **Accounts & groups** (optional) — sign in to sync your games across devices and share a group's
   stats; the app works fully offline and signed-out. A shared night voice syncs to your group too.
+- **Play online** — host or join a live game from the main menu.
+- **Rules & Game theory handbooks** — a searchable rules reference and a strategy guide with community notes.
 
 ## How to use
 0. The app opens on a **main menu** — pick **Start game** (or **Statistics**). Optional: sign in from
