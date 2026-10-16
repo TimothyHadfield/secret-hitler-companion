@@ -220,5 +220,99 @@ ok(Object.keys(endings).length >= 2, "multiple distinct endings occurred: " + JS
   ok("roleOf" in E.publicView(S), "game-over public view reveals roles");
 })();
 
+// ---- sweep 2026-10-16 regressions ----------------------------------------
+(function firstPresIsPublished() {
+  // The night screen labels t.firstPres as "first President"; it must be the
+  // seat the engine actually starts at, not always seat 0.
+  let hits = 0;
+  for (let seed = 1; seed <= 20; seed++) {
+    const S = E.initGame(["a", "b", "c", "d", "e", "f", "g"].map((u) => ({ uid: u, name: u })), rng(seed));
+    if (E.publicView(S).firstPres === S.presIdx) hits++;
+  }
+  ok(hits === 20, `public view's firstPres is the engine's first President (${hits}/20)`);
+})();
+
+(function vetoRefusedOnce() {
+  let S = E.initGame(["a", "b", "c", "d", "e"].map((u) => ({ uid: u, name: u })), rng(13));
+  S.phase = "chancellor_play"; S.facEnacted = 5; S.chancellorUid = E.aliveUids(S).find((u) => u !== E.presUid(S));
+  S.passed = ["F", "L"]; S.presClaim = 1; S.tracker = 0;
+  const chan = S.chancellorUid, pres = E.presUid(S);
+  let r = E.applyAction(S, { type: "chancellor_play", by: chan, veto: true }, rng(1));
+  r = E.applyAction(r.state, { type: "veto", by: pres, agree: false }, rng(1));
+  ok(r.ok && r.state.phase === "chancellor_play", "a refused veto sends the Chancellor back to enact");
+  const again = E.applyAction(r.state, { type: "chancellor_play", by: chan, veto: true }, rng(1));
+  ok(!again.ok, "after a refused veto the Chancellor must enact (no second veto proposal)");
+  ok(E.publicView(r.state).vetoRefused === true, "public view tells the table the veto was refused");
+})();
+
+(function specialReturnSeatExecuted() {
+  // 7p: seat0 calls a special election on seat3 (return seat = 1); seat3's
+  // government enacts the 4th Fascist and executes seat1. The presidency must
+  // resume at the next LIVING seat (2), never hand it to the dead seat 1.
+  let S = E.initGame(["a", "b", "c", "d", "e", "f", "g"].map((u) => ({ uid: u, name: u })), rng(5));
+  const so = S.seatOrder;
+  S.presIdx = 0; S.facEnacted = 3; S.phase = "power_special";
+  S.events.push({ type: "gov", presidentIdx: 0, chancellorIdx: 4, claimLibs: 0, enacted: "F" });
+  S._powerEventIdx = 0;
+  let r = E.applyAction(S, { type: "power", by: so[0], target: so[3] }, rng(1));
+  ok(r.ok && E.presUid(r.state) === so[3], "special election hands the presidency to the chosen seat");
+  S = r.state;
+  S.facEnacted = 4; S.phase = "power_execute"; S.chancellorUid = so[5];
+  S.events.push({ type: "gov", presidentIdx: 3, chancellorIdx: 5, claimLibs: 0, enacted: "F" });
+  S._powerEventIdx = S.events.length - 1;
+  const victim = so[1] === S.hitlerUid ? null : so[1];
+  if (victim) {
+    r = E.applyAction(S, { type: "power", by: so[3], target: victim }, rng(1));
+    ok(r.ok && E.isAlive(r.state, E.presUid(r.state)), "presidency never resumes at an executed seat");
+    ok(r.ok && E.presUid(r.state) === so[2], "it resumes at the next living seat after the special election's caller");
+  } else ok(true, "return seat was Hitler (skip)");
+})();
+
+(function recordedGameReplaysThroughDerive() {
+  // A finished online game is saved as an ordinary game; stats/replay read its
+  // powers with the companion's vocabulary (kill/invest/special/peek) and its
+  // firstPres. Check the record against what the engine actually did.
+  const Derive = require("../js/derive.js");
+  const Prob = require("../js/probability.js");
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const deps = { clamp, retrospectiveProb: Prob.retrospectiveProb, lieOn: () => false, rolesOn: () => false };
+  let games = 0, deathsOk = 0, powersOk = 0, firstOk = 0, killsSeen = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const { S } = runGame(seed, seed % 3 === 0 ? "mix" : "ja");
+    if (S.phase !== "gameover") continue;
+    games++;
+    const rec = E.toRecordedGame(S);
+    const firstGov = S.events.find((e) => e.type === "gov" || e.type === "fail" || e.type === "hitler");
+    if (!firstGov || rec.firstPres === firstGov.presidentIdx) firstOk++;
+    const known = rec.events.every((e) => !e.power || ["invest", "special", "peek", "kill"].indexOf(e.power.type) >= 0);
+    const shapes = rec.events.every((e) => {
+      const p = e.power; if (!p) return true;
+      if (p.type === "invest") return Number.isInteger(p.targetIdx) && (p.party === "L" || p.party === "F");
+      if (p.type === "special") return Number.isInteger(p.chosenIdx);
+      if (p.type === "peek") return Array.isArray(p.order) && p.order.length === 3;
+      if (p.type === "kill") return Number.isInteger(p.killedIdx) && typeof p.wasHitler === "boolean";
+      return false;
+    });
+    if (known && shapes) powersOk++;
+    const st = { players: rec.players.map((p) => ({ name: p.name, dead: false })), firstPres: rec.firstPres, events: rec.events, roundMods: {} };
+    const d = Derive.derive(st, deps);
+    const engineDead = S.deadUids.filter((u) => u !== S.hitlerUid).map((u) => S.seatOrder.indexOf(u)).sort().join(",");
+    killsSeen += S.deadUids.length;
+    if ([...d.deadSet].sort().join(",") === engineDead) deathsOk++;
+  }
+  ok(games > 0 && killsSeen > 0, `bot games include executions (games ${games}, kills ${killsSeen})`);
+  ok(firstOk === games, `recorded firstPres = the first President (${firstOk}/${games})`);
+  ok(powersOk === games, `recorded powers use the companion's shapes (${powersOk}/${games})`);
+  ok(deathsOk === games, `replaying the recorded game reproduces the executions (${deathsOk}/${games})`);
+  // Mid-game the PUBLIC event log must not carry secrets (party / peeked cards).
+  const live = E.initGame(["a", "b", "c", "d", "e", "f", "g", "h", "i"].map((u) => ({ uid: u, name: u })), rng(77));
+  live.phase = "power_investigate"; live.facEnacted = 1;
+  live.events.push({ type: "gov", presidentIdx: live.presIdx, chancellorIdx: (live.presIdx + 1) % 9, claimLibs: 0, enacted: "F" });
+  live._powerEventIdx = 0;
+  const tgt = live.seatOrder.find((u) => u !== E.presUid(live));
+  const rr = E.applyAction(live, { type: "power", by: E.presUid(live), target: tgt }, rng(1));
+  ok(rr.ok && !JSON.stringify(E.publicView(rr.state).events).match(/party|"order"|Liberal|Fascist"/), "public events carry no investigation result mid-game");
+})();
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

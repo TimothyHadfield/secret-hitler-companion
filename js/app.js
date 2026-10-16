@@ -1199,7 +1199,7 @@
         const cards = pv.passed;
         wrap.innerHTML = `<div class="ol-prompt">You were passed these 2. Enact ONE:</div>` +
           `<div class="ol-cards">${cards.map((c, i) => `<button class="ol-card ${c === "F" ? "f" : "l"}" data-i="${i}">Enact ${c === "F" ? "Fascist" : "Liberal"}</button>`).join("")}</div>` +
-          (t.facEnacted >= 5 ? `<div class="control-row"><button id="olVeto" class="ghost-danger">Propose veto</button></div>` : "");
+          (t.facEnacted >= 5 && !t.vetoRefused ? `<div class="control-row"><button id="olVeto" class="ghost-danger">Propose veto</button></div>` : "");
         wrap.querySelectorAll(".ol-card").forEach((b) => b.onclick = () => send({ type: "chancellor_play", enact: +b.dataset.i }, b));
         if ($("olVeto")) $("olVeto").onclick = (e) => send({ type: "chancellor_play", veto: true }, e.target);
       } else wrap.innerHTML = waiting(t.chancellorUid);

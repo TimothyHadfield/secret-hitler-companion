@@ -102,13 +102,13 @@
       roleOf: s.roleOf, hitlerUid: s.hitlerUid, fascistUids: s.fascistUids, reveals: s.reveals,
       deck: shuffleInPlace(makeDeck(), rng), discard: [],
       libEnacted: 0, facEnacted: 0, tracker: 0,
-      presIdx: s.firstPres,
+      presIdx: s.firstPres, firstPres: s.firstPres,
       nomineeUid: null, chancellorUid: null,
       lastPresUid: null, lastChanUid: null,
       deadUids: [], investigatedUids: [],
       phase: "nominate",
       votes: {}, lastElection: null,
-      drawn: null, presClaim: null, passed: null,
+      drawn: null, presClaim: null, passed: null, vetoRefused: false,
       learned: {},                 // uid -> [{type:'investigate',target,party} | {type:'peek',cards}]
       specialTarget: null, specialReturnIdx: null,
       events: [], winner: null, winReason: null,
@@ -156,14 +156,19 @@
 
   function clearTurn(S) {
     S.nomineeUid = null; S.chancellorUid = null; S.votes = {};
-    S.drawn = null; S.presClaim = null; S.passed = null;
+    S.drawn = null; S.presClaim = null; S.passed = null; S.vetoRefused = false;
   }
 
   function advancePresident(S) {
     clearTurn(S);
     let idx;
     if (S.specialTarget != null) { idx = seatIndex(S, S.specialTarget); S.specialTarget = null; }
-    else if (S.specialReturnIdx != null) { idx = S.specialReturnIdx; S.specialReturnIdx = null; }
+    else if (S.specialReturnIdx != null) {
+      // Resume left of the President who called the special election; if that
+      // seat was executed meanwhile, the next LIVING seat after it.
+      idx = S.specialReturnIdx; S.specialReturnIdx = null;
+      if (!isAlive(S, S.seatOrder[idx])) idx = nextPresIdx(S, idx);
+    }
     else idx = nextPresIdx(S, S.presIdx);
     S.presIdx = idx;
     S.phase = "nominate";
@@ -259,6 +264,8 @@
         // Veto (only once 5 Fascist policies are enacted).
         if (action.veto) {
           if (S.facEnacted < 5) return err("veto not available");
+          // A refused veto is final: the Chancellor must now enact a policy.
+          if (S.vetoRefused) return err("the President refused the veto");
           S.phase = "veto"; return done();
         }
         const ei = action.enact;
@@ -279,6 +286,7 @@
           if (S.phase !== "gameover") advancePresident(S);
         } else {
           S.phase = "chancellor_play"; // chancellor must now enact
+          S.vetoRefused = true;
         }
         return done();
       }
@@ -366,7 +374,8 @@
       termLimited: Object.keys(termLimited(S)),
       votedUids: Object.keys(S.votes),
       deckCount: S.deck.length, discardCount: S.discard.length,
-      firstPres: null,
+      firstPres: S.firstPres != null ? S.firstPres : null,
+      vetoRefused: !!S.vetoRefused,
       winner: S.winner, winReason: S.winReason,
     };
     // At game over, reveal every role so the table (and the recorded game) shows them.
@@ -398,11 +407,36 @@
   function toRecordedGame(S) {
     const players = S.seatOrder.map((u) => ({ name: S.names[u] || "Player" }));
     const fascistIdxs = S.fascistUids.map((u) => seatIndex(S, u));
+    // The live public log uses online-only power names (no secrets in it). The
+    // recorded game must speak the companion's vocabulary (js/stats.js header) so
+    // replay, deaths, special elections and stats read it; roles are public now.
+    const peeksByUid = {};
+    Object.keys(S.learned || {}).forEach((u) => {
+      peeksByUid[u] = (S.learned[u] || []).filter((l) => l.type === "peek");
+    });
+    const events = S.events.map((e) => {
+      if (!e || !e.power) return e;
+      const p = e.power, out = Object.assign({}, e);
+      if (p.type === "investigation") {
+        const u = S.seatOrder[p.target];
+        out.power = { type: "invest", targetIdx: p.target, party: S.roleOf[u] === "liberal" ? "L" : "F" };
+      } else if (p.type === "special-election") {
+        out.power = { type: "special", chosenIdx: p.target };
+      } else if (p.type === "execution") {
+        out.power = { type: "kill", killedIdx: p.target, wasHitler: S.seatOrder[p.target] === S.hitlerUid };
+      } else if (p.type === "policy-peek") {
+        const pk = (peeksByUid[S.seatOrder[e.presidentIdx]] || []).shift();
+        out.power = pk ? { type: "peek", order: pk.cards.slice() } : { type: "peek" };
+      }
+      return out;
+    });
+    const firstPres = S.firstPres != null ? S.firstPres
+      : (S.events[0] && S.events[0].presidentIdx != null ? S.events[0].presidentIdx : 0);
     return {
       players,
       playerCount: S.n,
-      firstPres: 0,
-      events: S.events,
+      firstPres,
+      events,
       roundMods: {},
       result: { winner: S.winner, hitlerIdx: seatIndex(S, S.hitlerUid), fascistIdxs },
     };

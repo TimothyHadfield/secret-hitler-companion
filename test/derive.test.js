@@ -136,6 +136,14 @@ function run(state, deps) {
     gov(5, 6, "L"),
   ]));
   ok(nested.presIdx === 1, "a nested special election keeps the FIRST resume seat");
+  // The special-elected president executes the resume seat: the rotation must
+  // move on to the next LIVING seat (2), not hand the presidency to dead seat 1.
+  const killedResume = run(mkState(7, [
+    gov(0, 4, "F", { power: { type: "special", chosenIdx: 3 } }),
+    gov(3, 5, "F", { power: { type: "kill", killedIdx: 1, wasHitler: false } }),
+  ]));
+  ok(!killedResume.deadSet.has(killedResume.presIdx), "the presidency never resumes at an executed seat");
+  ok(killedResume.presIdx === 2, "it resumes at the next living seat after the special election's caller");
 })();
 
 // ------------------------------------------------------------------ reshuffle

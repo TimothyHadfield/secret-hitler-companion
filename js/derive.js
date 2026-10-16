@@ -68,7 +68,8 @@ const Derive = (() => {
         if (pendingResume === null) pendingResume = nextAlive(presIdx);
         pointer = ev.power.chosenIdx;
       } else if (pendingResume !== null) {
-        pointer = pendingResume;
+        // If the resume seat was executed during the detour, the next living seat.
+        pointer = deadSet.has(pendingResume) ? nextAlive(pendingResume) : pendingResume;
         pendingResume = null;
       } else {
         pointer = nextAlive(presIdx);
