@@ -101,6 +101,21 @@ No active build. The app is feature-complete (companion + analyzer + accounts/gr
 - D38 · 2026-08-04 · Game theory = Tim's own strategy doc, flat categories → bullet pages + per-category 💬 chat.
 - D39 · 2026-08-04 · Admin privileges via `isAdmin()` in `firestore.rules` (token email == `timhadfield7@gmail.com`); UI only hides the editor. Reusable hook — extend it.
 - D40 · 2026-08-04 · Rules + Game theory share one renderer `renderHandbook(kind)`; Rules content derived from `RULES` tree; Firestore `content/rules` / `content/gameTheory` live when present, bundled fallback. House rules moved to the bottom of Rules.
+- Sweep · 2026-10-16 · Bug sweep (no visual or wording changes). Engine fixes:
+  - publishes the first President
+  - one veto refusal per turn
+  - a special election's return seat now skips executed players
+  - recorded online games use the companion power shapes
+  - derive.js skips a killed resume seat.
+
+  Other fixes:
+  - cloud sync no longer drops a game recorded mid-sync
+  - a menu group switch no longer moves a live online table
+  - review from the in-game Stats tab returns to the game
+  - XSS escaping on the winner and peek text
+  - double escaping removed in two confirms.
+
+  Also: meta description, gstatic preconnect, icon-512 lossless recompression, and a new `CLAUDE.md`. Report: laptop-ops `coding-and-claude/reports/sweep-2026-10-16/secret-hitler-companion.md`.
 - D41 · 2026-09-27 · Phone rounds strip (≤640px) uses tighter block spacing so two round blocks fit whole at 375px; before, the strip scrolled to the current round and cut ~19–37px off Round 1. With 3+ rounds older blocks still scroll off (by design).
 
 ## NOT verified
