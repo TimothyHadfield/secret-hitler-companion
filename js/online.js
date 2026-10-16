@@ -117,6 +117,8 @@ function cleanupLocal() {
   if (actionsUnsub) { try { actionsUnsub(); } catch (e) {} actionsUnsub = null; }
   tableId = null; table = null; players = []; myPrivate = null;
   hostState = null; processing = false; rerun = false; recorded = false;
+  // Back at the browser: pick up whichever group is active now.
+  if (window.Cloud && window.Cloud.groupId) gid = window.Cloud.groupId;
 }
 
 // ----------------------------------------------------------- lobby actions
@@ -297,6 +299,7 @@ async function finishGame() {
   try { await updateDoc(pathTable(tableId), { status: "finished" }); } catch (e) {}
   const rec = E().toRecordedGame(hostState);
   rec.id = newId();
+  rec.groupId = gid; // the table's group, even if the host switched groups meanwhile
   emit("online:finished", { record: rec, isHost: isHost() });
 }
 
@@ -321,10 +324,12 @@ onAuthStateChanged(auth, (u) => {
 // The active group is owned by cloud.js; mirror it so a group switch is seen here.
 document.addEventListener("cloud:groups", (e) => {
   const next = (e.detail && e.detail.activeGroupId) || (window.Cloud && window.Cloud.groupId) || null;
-  if (next !== gid) { gid = next; if (tableId) { /* stay; group of the table is fixed */ } }
+  // While at a table, its group is fixed: every table path is built from `gid`,
+  // so following a group switch would aim the game's writes at another group.
+  if (next !== gid && !tableId) gid = next;
 });
 document.addEventListener("cloud:ready-to-sync", () => {
-  gid = (window.Cloud && window.Cloud.groupId) || gid;
+  if (!tableId) gid = (window.Cloud && window.Cloud.groupId) || gid;
 });
 
 function humanError(e) {

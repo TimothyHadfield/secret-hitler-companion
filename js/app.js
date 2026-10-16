@@ -1897,7 +1897,15 @@
   function closeReview() {
     state = stashedState;
     stashedState = null;
-    // a review is always opened from the Statistics page — return to it
+    // Opened from a live game's own Stats tab: go back to that game, not to the
+    // Statistics page (whose ← leads to the menu, with no way back into the game).
+    if (state && !state.review) {
+      show("gameScreen");
+      renderGame();
+      switchTab("stats");
+      return;
+    }
+    // otherwise it was opened from the Statistics page — return to it
     renderStatsInto($("statsBody"));
     show("statsScreen");
   }
@@ -1915,7 +1923,7 @@
       {
         title: "Delete this game?",
         body: shared
-          ? "This removes the game from “" + escapeHtml(activeGroupLabel()) +
+          ? "This removes the game from “" + activeGroupLabel() + // askConfirm escapes the body
             "” for everyone in the group, and from your statistics. This can’t be undone."
           : "This permanently deletes this game from your statistics. This can’t be undone.",
         confirm: "Delete game",
@@ -2052,7 +2060,7 @@
       const fails = full.filter((e) => e.type === "fail").length;
       const facNames = (r.fascistIdxs || []).map((i) => (g.players[i] ? escapeHtml(g.players[i].name) : "?")).join(", ");
       body =
-        `<div class="role-winner ${r.winner === "Fascist" ? "c-fac" : "c-lib"}">${r.winner}s won</div>` +
+        `<div class="role-winner ${r.winner === "Fascist" ? "c-fac" : "c-lib"}">${escapeHtml(r.winner)}s won</div>` +
         `<div class="review-stat"><b>${d.lib}</b> Liberal &middot; <b>${d.fac}</b> Fascist policies</div>` +
         `<div class="review-stat">${govs} governments &middot; ${fails} failed elections</div>` +
         `<div class="review-stat">Hitler: <b class="c-hit">${g.players[r.hitlerIdx] ? escapeHtml(g.players[r.hitlerIdx].name) : "?"}</b></div>` +
@@ -2230,7 +2238,7 @@
           `title="${g.favorite ? "Remove from favorites" : "Add to favorites"}" ` +
           `aria-label="${g.favorite ? "Remove from favorites" : "Add to favorites"}">${g.favorite ? "★" : "☆"}</span>` +
           (g.label ? `<div class="gl-label">${escapeHtml(g.label)}</div>` : "") +
-          `<div class="gl-win">${g.result.winner} win</div>` +
+          `<div class="gl-win">${escapeHtml(g.result.winner)} win</div>` +
           `<div class="gl-hitler">♛ ${escapeHtml(hit)}</div>` +
           `<div class="gl-facs">${facs.map((f) => `<span>${escapeHtml(f)}</span>`).join("")}</div>` +
           `</div>`
@@ -2742,7 +2750,7 @@
         const stale = curRound != null && ev.round != null && ev.round < curRound;
         s += `<div class="pres-detail${stale ? " stale" : ""}"${
           stale ? ' title="reshuffled since — no longer describes the pile"' : ""
-        }>👁 ${p.order.join("·")}${stale ? " (reshuffled)" : ""}</div>`;
+        }>👁 ${escapeHtml(p.order.join("·"))}${stale ? " (reshuffled)" : ""}</div>`;
       } else if (p.type === "kill" && p.killedIdx != null) {
         s += `<div class="pres-detail c-fac">💀 ${escapeHtml(state.players[p.killedIdx].name)}</div>`;
       }
@@ -2762,7 +2770,7 @@
       return ` <span style="color:var(--gold)">⚡→ ${escapeHtml(state.players[power.chosenIdx].name)}</span>`;
     }
     if (power.type === "peek" && power.order) {
-      return ` <span class="muted">👁 ${power.order.join("·")}</span>`;
+      return ` <span class="muted">👁 ${escapeHtml(power.order.join("·"))}</span>`;
     }
     if (power.type === "kill" && power.killedIdx != null) {
       return ` <span style="color:var(--fac-2)">💀 ${escapeHtml(state.players[power.killedIdx].name)}${
@@ -3827,7 +3835,7 @@
       try {
         const c = cloud();
         const rec = d.record;
-        if (c && c.groupId) rec.groupId = c.groupId; // record straight into the active group
+        if (c && c.groupId && !rec.groupId) rec.groupId = c.groupId; // record straight into the table's (else the active) group
         if (c && c.user) rec.createdBy = c.user.uid; // the host recorded it → they can edit its roles
         Stats.recordGame(rec);
         applyScope();
@@ -4127,8 +4135,9 @@
       {
         title: "Delete this voice?",
         body: s && s.shared
-          ? `“${escapeHtml(s.name)}” will be removed from your group for everyone, and from this device. This can't be undone.`
-          : `“${escapeHtml((s && s.name) || "This voice")}” and both of its recordings will be removed from this device. This can't be undone.`,
+          ? `“${s.name}” will be removed from your group for everyone, and from this device. This can't be undone.`
+          // askConfirm escapes the body
+          : `“${(s && s.name) || "This voice"}” and both of its recordings will be removed from this device. This can't be undone.`,
         confirm: "Delete", cancel: "Keep it", danger: true,
       },
       async () => {

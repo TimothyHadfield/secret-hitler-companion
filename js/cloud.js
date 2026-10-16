@@ -512,6 +512,31 @@ function inviteLink(gid) {
 
 // ------------------------------------------------------------------- sync
 let syncing = null; // in-flight promise, so concurrent triggers coalesce
+let syncAgain = false; // a trigger arrived mid-sync (e.g. a game was just recorded)
+
+// The sync's network calls take seconds. A game recorded, deleted or edited on
+// this device in that window is already in localStorage, so write the sync's
+// changes INTO the current list rather than putting back the stale snapshot
+// (which silently dropped a game recorded mid-sync). `start` = id -> JSON of each
+// game when the sync read the list: a game the sync changed takes the sync's copy;
+// one gone from the list since was deleted, so it stays gone.
+function mergeIntoLocal(start, ours) {
+  const now = readLocal();
+  const changed = new Map();
+  ours.forEach((g) => {
+    if (g && g.id && (!start.has(g.id) || start.get(g.id) !== JSON.stringify(g))) changed.set(g.id, g);
+  });
+  const nowIds = new Set();
+  const out = now.map((g) => {
+    if (!g || !g.id) return g;
+    nowIds.add(g.id);
+    return changed.get(g.id) || g;
+  });
+  for (const g of ours) {
+    if (g && g.id && !start.has(g.id) && !nowIds.has(g.id)) out.push(g); // downloaded this pass
+  }
+  return out;
+}
 
 async function sync() {
   if (!currentUser || !activeGroupId) return { uploaded: 0, downloaded: 0, skipped: true };
@@ -519,7 +544,7 @@ async function sync() {
     setStatus("offline");
     return { uploaded: 0, downloaded: 0, offline: true };
   }
-  if (syncing) return syncing;
+  if (syncing) { syncAgain = true; return syncing; }
 
   syncing = (async () => {
     setStatus("syncing");
@@ -529,6 +554,8 @@ async function sync() {
       if (!myGroups.some((g) => g.id === activeGroupId)) activeGroupId = myGroups[0].id;
 
       const local = readLocal();
+      const start = new Map();
+      local.forEach((g) => { if (g && g.id) start.set(g.id, JSON.stringify(g)); });
       const synced = readSynced();
       const mayUpload = uploadAllowed() !== false;
       let uploaded = 0, downloaded = 0, dirty = false;
@@ -610,7 +637,7 @@ async function sync() {
         }
       } catch (e) { /* metadata is best-effort */ }
 
-      if (dirty) writeLocal(local);
+      if (dirty) writeLocal(mergeIntoLocal(start, local));
       writeSynced(synced);
 
       setStatus("idle");
@@ -623,6 +650,9 @@ async function sync() {
       return { uploaded: 0, downloaded: 0, error: e.message || String(e) };
     } finally {
       syncing = null;
+      // Something asked to sync while this pass ran (typically a game recorded
+      // mid-sync): run once more so it uploads now rather than at the next trigger.
+      if (syncAgain) { syncAgain = false; setTimeout(() => { sync(); }, 0); }
     }
   })();
   return syncing;
