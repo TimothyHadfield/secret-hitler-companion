@@ -19,9 +19,11 @@ A table companion for the board game Secret Hitler. It seats the players, record
 
 ## Run, test, deploy
 - No build step and no dependencies. To serve locally, run `python -m http.server <port>` in the repo folder and open `http://localhost:<port>/`.
-- Tests are plain Node scripts: `node test/honesty.test.js`, `night`, `engine`, `derive`, `fit` and `reference`. Night's IndexedDB part needs `test/node_modules` (`cd test && npm install`).
-- Results on 2026-10-16: honesty 73/0, night 42/0, engine 3001/0, derive 49/0, fit 18/0, reference 28/0.
-- Deploy means pushing `main`; Pages rebuilds. To check the build: `python ~/.claude/hooks/live-check.py <repo folder>`.
+- Tests are plain Node scripts: `node test/honesty.test.js`, `night`, `engine`, `derive`, `fit`, `reference`, `stats` and `build`. Night's IndexedDB part needs `test/node_modules` (`cd test && npm install --no-package-lock`).
+- Browser tests (Safari's engine, mocks only, never touches Firebase): `node test/app.browser.test.mjs`. Needs Playwright (found in `~/.claude/tools/node_modules`, or set `PLAYWRIGHT_DIR`); it prints SKIPPED without it.
+- Results on 2026-10-17: honesty 73/0, night 42/0, engine 3001/0, derive 49/0, fit 18/0, reference 28/0, stats 15/0, build 21/0, app.browser 30/0.
+- **Every change that ships bumps the build: `node test/bump-build.js`** (rewrites `js/build.js`, `version.json` and every `?v=` in `index.html`), then `node test/build.test.js` must pass. Open phones see `version.json` (fetched no-store) and move to the new build on their own: at startup, or on return to the app while on the plain main menu. The build id shows at the bottom of Settings.
+- Deploy means pushing `main`; Pages rebuilds. To check the build: `python ~/.claude/hooks/live-check.py <repo folder>`, and `curl` the live `version.json`.
 
 ## Traps
 - The app has live users and real Firestore data (groups, games, comments). Never write to the live project while testing.

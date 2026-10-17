@@ -35,6 +35,11 @@
     { libs: 2, name: "Silver", cls: "silver", sub: "1F / 2L" },
     { libs: 3, name: "Bronze", cls: "bronze", sub: "3L" },
   ];
+  // A recorded claim from another device, an import or an older online game can
+  // hold a malformed claimLibs (null, a string, 7…). Look it up safely so one bad
+  // event can't crash History or the review stepper (2026-10-17).
+  const UNKNOWN_RATIO = { libs: null, name: "?", cls: "", sub: "—" };
+  const ratioOf = (libs) => RATIOS[libs] || UNKNOWN_RATIO;
   // background colour scales full red (0 liberals) → full blue (3 liberals)
   function ratioColor(libs) {
     const t = libs / 3;
@@ -70,16 +75,21 @@
   // A failed save used to be invisible, so a full quota silently stopped the
   // game from being persisted — the next refresh would lose it. Warn once.
   let storageWarned = false;
+  const STORAGE_FULL_MSG = "Storage is full — this game may not survive a refresh. Export your data.";
   const lsSet = (k, v) => {
     try { localStorage.setItem(k, v); return true; }
     catch (e) {
       if (!storageWarned) {
         storageWarned = true;
-        setTimeout(() => showToast("Storage is full — this game may not survive a refresh. Export your data."), 0);
+        setTimeout(() => showToast(STORAGE_FULL_MSG), 0);
       }
       return false;
     }
   };
+  // The recorded-games list (stats.js) reports its failed writes here, every
+  // time: saving a finished game must never fail silently (2026-10-17).
+  if (typeof Stats !== "undefined" && Stats.setSaveErrorHandler)
+    Stats.setSaveErrorHandler(() => showToast(STORAGE_FULL_MSG));
   const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
 
   // ------------------------------ settings -----------------------------------
@@ -1838,7 +1848,9 @@
       // right away (not only after the upload round-trip). Null when signed out.
       createdBy: (cloud() && cloud().user && cloud().user.uid) || null,
     };
-    Stats.recordGame(record);
+    // Storage full: stay on this screen with the game still in memory (and in
+    // its autosave) so nothing is lost; the save-error handler has told the user.
+    if (!Stats.recordGame(record)) return;
     goHome(); // back to the main menu, not the players list
     showToast("Game saved to statistics.");
     // cloud.js listens for this and syncs; a no-op when signed out or offline.
@@ -1935,7 +1947,7 @@
           const r = await c.deleteGame(g.id, g.groupId);
           if (!r || !r.ok) { showToast((r && r.message) || "Couldn’t delete this game — try again."); return; }
         }
-        Stats.deleteGame(g.id);
+        if (!Stats.deleteGame(g.id) && Stats.loadAllGames().some((x) => x && x.id === g.id)) return; // storage full
         closeReview();
         showToast("Game deleted.");
       }
@@ -1998,7 +2010,7 @@
       const r = await c.updateGameResult(g.id, g.groupId, newResult);
       if (!r || !r.ok) { showToast((r && r.message) || "Couldn’t save — try again."); return; }
     }
-    Stats.setResult(g.id, newResult);
+    if (!Stats.setResult(g.id, newResult)) return; // storage full — the handler said so
     g.result = newResult; state._origResult = newResult; state.result = newResult;
     state.editRoles = null;
     renderGame();
@@ -2131,7 +2143,7 @@
       // a gov: use its own round (a reshuffle may have advanced d.round since)
       const gInfo = d.gi.length ? d.gi[d.gi.length - 1] : null;
       if (gInfo) round = gInfo.round + 1;
-      const ratio = RATIOS[ev.claimLibs];
+      const ratio = ratioOf(ev.claimLibs);
       const enact = ev.vetoed
         ? `<span class="c-gold">⊘ vetoed — no policy</span>`
         : ev.enacted === "L"
@@ -2403,7 +2415,7 @@
           `<td>Fascists win</td><td>—</td>`;
       } else {
         const g = d.gi[ev.giIdx];
-        const ratio = RATIOS[g.libs];
+        const ratio = ratioOf(g.libs);
         tr.innerHTML =
           `<td>${idx + 1}</td>` +
           `<td class="tag-round">${g.round + 1}</td>` +
@@ -3162,7 +3174,10 @@
       `<div class="fit-result" style="margin-top:8px"></div></div>`
     );
   }
-  function runAndShowFit(resultEl) {
+  // `rerender` redraws the stats mount the fit panel lives in (2026-10-17: it
+  // used to always redraw the Statistics screen, so the in-game Stats tab
+  // never showed the change).
+  function runAndShowFit(resultEl, rerender) {
     if (!resultEl) return;
     resultEl.innerHTML = `<p class="muted">Fitting…</p>`;
     // defer so "Fitting…" paints before the (all-games) computation runs
@@ -3189,7 +3204,7 @@
         settings.fitParams = { facLie: rep.params.facLie, libLie: rep.params.libLie };
         saveSettings();
         showToast("Now using your fitted lie rates.");
-        renderStats();
+        rerender();
       };
     }, 30);
   }
@@ -3257,13 +3272,14 @@
     renderGamesList($(gid));
     // Fit panel wiring (scoped to this container so the two stats mounts don't clash)
     const fitRun = container.querySelector(".fit-run");
-    if (fitRun) fitRun.onclick = () => runAndShowFit(container.querySelector(".fit-result"));
+    const redraw = () => renderStatsInto(container);
+    if (fitRun) fitRun.onclick = () => runAndShowFit(container.querySelector(".fit-result"), redraw);
     const fitReset = container.querySelector(".fit-reset");
     if (fitReset) fitReset.onclick = () => {
       settings.useFit = false;
       saveSettings();
       showToast("Back to the default lie rates.");
-      renderStats();
+      redraw();
     };
     container.querySelectorAll(".pstat-head").forEach((b) => {
       b.onclick = () => {
@@ -3358,6 +3374,7 @@
         showToast(err instanceof SyntaxError ? "That file isn't valid JSON." : err.message);
         return;
       }
+      if (res.saveFailed) return; // storage full — the handler said so
       renderStats();
       const skipped = res.skipped ? `, ${res.skipped} already saved` : "";
       showToast(
@@ -3837,7 +3854,7 @@
         const rec = d.record;
         if (c && c.groupId && !rec.groupId) rec.groupId = c.groupId; // record straight into the table's (else the active) group
         if (c && c.user) rec.createdBy = c.user.uid; // the host recorded it → they can edit its roles
-        Stats.recordGame(rec);
+        if (!Stats.recordGame(rec)) return; // storage full — the handler said so
         applyScope();
         if (!$("statsScreen").classList.contains("hidden")) renderStats();
         if (c && c.user) c.sync();
@@ -3959,7 +3976,8 @@
       `<span class="muted">This is a strong nudge that the whole table can see — it changes how the game plays. Off by default.</span></div>` +
       `</div>` +
       toggle("setBoard", bo) +
-      `</div>`;
+      `</div>` +
+      `<p class="muted" style="font-size:12px;margin:8px 0 0">build ${escapeHtml(BUILD)}</p>`;
     $("setBack").onclick = () => $("settingsModal").classList.add("hidden");
     const apply = () => {
       saveSettings();
@@ -4276,12 +4294,30 @@
   }
   function stopRecTimer() { if (recTimer) { clearInterval(recTimer); recTimer = null; } }
 
+  // The mic request is async (the permission prompt can sit open), so it carries
+  // a ticket on the draft. A second tap while one is pending is ignored, and if
+  // the user leaves (Back, Cancel, Close) before it resolves, the ticket is
+  // dropped and the granted stream is stopped at once, so the mic is never left
+  // on (2026-10-17 fix).
   async function nightStartRecording(key) {
-    if (nightDraft.recording) return;
+    const draft = nightDraft;
+    if (!draft || draft.recording || draft.micTicket) return;
     if (!navigator.mediaDevices || !window.MediaRecorder) { showToast("Recording isn't supported in this browser — try Upload file."); return; }
+    const ticket = {};
+    draft.micTicket = ticket;
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch (e) { showToast("Microphone permission is needed to record — or use Upload file."); return; }
+    catch (e) {
+      if (draft.micTicket !== ticket) return; // user already left; say nothing
+      draft.micTicket = null;
+      showToast("Microphone permission is needed to record — or use Upload file."); return;
+    }
+    if (nightDraft !== draft || draft.micTicket !== ticket || nightView !== "record") {
+      try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+      if (draft.micTicket === ticket) draft.micTicket = null;
+      return;
+    }
+    draft.micTicket = null;
     const chunks = [];
     let rec;
     // A modest bitrate keeps a spoken clip small enough to sync (well under the
@@ -4293,13 +4329,14 @@
       const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
       stream.getTracks().forEach((t) => t.stop());
       stopRecTimer();
-      if (nightDraft) { nightDraft.recording = null; if (blob.size) nightSetClip(key, blob, "recorded"); else renderNight(); }
+      if (nightDraft === draft) { draft.recording = null; if (blob.size) nightSetClip(key, blob, "recorded"); else renderNight(); }
     };
-    nightDraft.recording = { key, rec, stream, startedAt: performance.now() };
+    draft.recording = { key, rec, stream, startedAt: performance.now() };
     rec.start();
     renderNight();
   }
   function nightStopRecording(discard) {
+    if (nightDraft && discard) nightDraft.micTicket = null; // cancel a pending mic request
     const r = nightDraft && nightDraft.recording;
     if (!r) return;
     if (discard) { // abandon without saving the take
@@ -4326,6 +4363,7 @@
   function nightDiscardDraft() {
     if (recTimer) stopRecTimer();
     if (nightDraft) {
+      nightDraft.micTicket = null; // a pending mic request stops its stream when it resolves
       if (nightDraft.recording) { try { nightDraft.recording.rec.onstop = null; nightDraft.recording.rec.stop(); } catch (e) {} try { nightDraft.recording.stream.getTracks().forEach((t) => t.stop()); } catch (e) {} }
       ["small", "large"].forEach((k) => { const c = nightDraft.clips[k]; if (c && c.url) { try { URL.revokeObjectURL(c.url); } catch (e) {} } });
     }
@@ -4584,6 +4622,58 @@
     });
   }
 
+  // ------------------------------ new-build check ----------------------------
+  // GitHub Pages caches files for 10 minutes and a phone can keep a tab open for
+  // days, so a fix could take a long time to reach the table. js/build.js holds
+  // this page's build id; version.json (fetched past every cache) holds the
+  // newest. When they differ, reload onto a cache-busting URL (?b=<new>, every
+  // other query/hash kept, so invite links still work), but only when that
+  // can't interrupt anything: before the first tap, or on the plain main menu
+  // with no dialog, typing, online table or voice recording. sessionStorage
+  // remembers the attempt, so a stale host can never cause a reload loop.
+  const BUILD = window.SH_BUILD || "dev";
+  const RELOAD_KEY = "secretHitler.reloadedFor";
+  let userActed = false;
+  ["pointerdown", "keydown"].forEach((t) => window.addEventListener(t, () => { userActed = true; }, { capture: true, once: true }));
+  function updateIsSafe() {
+    if (!userActed) return true; // nothing on screen has been touched yet
+    if ($("menuScreen").classList.contains("hidden")) return false; // game, review, stats, rules, setup, online…
+    if (document.querySelector(".overlay:not(.hidden)")) return false; // any dialog
+    const a = document.activeElement;
+    if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return false;
+    const O = online();
+    if (O && O.tableId) return false;
+    if (nightDraft) return false;
+    return true;
+  }
+  let updateChecking = false;
+  function checkForUpdate() {
+    if (updateChecking || !window.fetch || BUILD === "dev") return;
+    updateChecking = true;
+    fetch("version.json?t=" + Date.now(), { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => {
+        const latest = v && typeof v.build === "string" ? v.build : null;
+        if (!latest || latest === BUILD || !updateIsSafe()) return;
+        let tried = null;
+        try { tried = sessionStorage.getItem(RELOAD_KEY); } catch (e) { return; } // no guard → never reload
+        if (tried === latest) return; // already reloaded for this build once
+        try { sessionStorage.setItem(RELOAD_KEY, latest); } catch (e) { return; }
+        const u = new URL(location.href);
+        u.searchParams.set("b", latest);
+        location.replace(u.href);
+      })
+      .catch(() => {})
+      .then(() => { updateChecking = false; });
+  }
+  // Tidy the address bar after an update reload (keeps every other parameter).
+  try {
+    const u = new URL(location.href);
+    if (u.searchParams.has("b")) { u.searchParams.delete("b"); history.replaceState(history.state, "", u.pathname + u.search + u.hash); }
+  } catch (e) {}
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkForUpdate(); });
+  window.addEventListener("pageshow", (e) => { if (e.persisted) checkForUpdate(); }); // back-forward cache restore
+
   // ------------------------------ boot ---------------------------------------
   loadSettings();
   wire();
@@ -4605,4 +4695,5 @@
     } catch (e) {}
     show("menuScreen");
   }
+  checkForUpdate(); // startup: always allowed until the first tap
 })();

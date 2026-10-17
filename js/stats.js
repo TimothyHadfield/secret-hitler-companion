@@ -72,16 +72,29 @@ const Stats = (() => {
     return scope ? all.filter(scope) : all;
   }
 
+  // A full storage quota makes setItem throw. Catch it here so every write
+  // returns false instead of crashing its caller (2026-10-17: recording a game
+  // on a full phone used to throw and say nothing). The app installs a handler
+  // that tells the user; the stored list is left exactly as it was.
+  let onSaveError = null;
+  function setSaveErrorHandler(fn) { onSaveError = typeof fn === "function" ? fn : null; }
   function saveGames(games) {
-    localStorage.setItem(KEY, JSON.stringify(games));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(games));
+      return true;
+    } catch (e) {
+      if (onSaveError) { try { onSaveError(e); } catch (e2) {} }
+      return false;
+    }
   }
 
-  /** Append a completed game record and persist it. */
+  /** Append a completed game record and persist it. Returns the new game count,
+   *  or false when storage is full (nothing was written). */
   function recordGame(game) {
     const games = loadAllGames(); // never a filtered view — writes replace the whole array
     if (!game.id) game.id = uuid();
     games.push(game);
-    saveGames(games);
+    if (!saveGames(games)) return false;
     return games.length;
   }
 
@@ -126,7 +139,7 @@ const Stats = (() => {
       games.push(g);
       added++;
     });
-    if (added) saveGames(games);
+    if (added && !saveGames(games)) return { added: 0, skipped, saveFailed: true };
     return { added, skipped };
   }
 
@@ -146,8 +159,7 @@ const Stats = (() => {
     const idx = games.findIndex((g) => g && g.id === id);
     if (idx < 0) return false;
     games.splice(idx, 1);
-    saveGames(games);
-    return true;
+    return saveGames(games);
   }
 
   /**
@@ -165,8 +177,7 @@ const Stats = (() => {
     if (!g) return false;
     const clean = String(label || "").trim().slice(0, 60);
     if (clean) g.label = clean; else delete g.label;
-    saveGames(games);
-    return true;
+    return saveGames(games);
   }
 
   function setFavorite(id, fav) {
@@ -175,8 +186,7 @@ const Stats = (() => {
     const g = games.find((x) => x && x.id === id);
     if (!g) return false;
     if (fav) g.favorite = true; else delete g.favorite;
-    saveGames(games);
-    return true;
+    return saveGames(games);
   }
 
   /**
@@ -194,8 +204,7 @@ const Stats = (() => {
       hitlerIdx: result.hitlerIdx,
       fascistIdxs: (result.fascistIdxs || []).slice(),
     };
-    saveGames(games);
-    return true;
+    return saveGames(games);
   }
 
   /**
@@ -442,6 +451,7 @@ const Stats = (() => {
     loadGames,
     loadAllGames,
     setScope,
+    setSaveErrorHandler,
     recordGame,
     deleteGame,
     setLabel,
