@@ -1,7 +1,7 @@
 # Secret Hitler Companion — progress (handoff for Claude)
 
 ## START HERE
-_Last updated 2026-09-21 (format migration only; last code change 2026-08-04, session 47). For Claude only; Tim doesn't read this. Catch-up authorizes nothing: only "Authorized next steps" below is approved work._
+_Last updated 2026-10-17 (batch 1: auto-update to new builds + four sweep bug fixes, commit `3d43c5b`). For Claude only; Tim doesn't read this. Catch-up authorizes nothing: only "Authorized next steps" below is approved work._
 1. Read this file (it's short on purpose). There is no `direction.md`.
 2. **Before touching anything Firebase, read `DATA_SAFETY.md`** (rule zero). Deep detail on any feature: the pre-migration snapshot `docs/archive/progress-2026-09-21.md` (95 KB, full feature-by-feature notes).
 3. Skim the last 3 entries of `CHAT.md`. Sessions 1–27: `docs/archive/chat-archive.md`.
@@ -60,6 +60,8 @@ No active build. The app is feature-complete (companion + analyzer + accounts/gr
 - Reference item ids are comment targets (`${kind}:${id}`): never renumber. Old per-item theory comments were orphaned by the s45 rebuild (expected).
 - Firestore doc cap 1 MiB → shared voice clips capped ~700 KB raw (~990 K base64 chars). Firebase Storage is NOT provisioned (bucket 404s).
 - The Pages build hook (global CLAUDE.md) reports live status after push; by hand `python ~/.claude/hooks/live-check.py <repo>`.
+- **Every shipped change: `node test/bump-build.js` first** (rewrites `js/build.js`, `version.json`, every `?v=` in index.html); `node test/build.test.js` fails if they disagree. A new local script/css in index.html needs `?v=<build>` too. Build id shows at the bottom of Settings.
+- Worktrees: make them outside `.claude` (e.g. `C:/Users/timha/wt/<name>`); writes under `.claude` raise permission prompts for Tim.
 
 ## Decisions
 - D1 · 2026-07-21 · Headline % is **retrospective only** (conditioned on other hands in the round); formula in `PROBABILITY_MODEL.md`.
@@ -117,17 +119,21 @@ No active build. The app is feature-complete (companion + analyzer + accounts/gr
   - double escaping removed in two confirms.
 
   Also: meta description, gstatic preconnect, icon-512 lossless recompression, and a new `CLAUDE.md`. Report: laptop-ops `coding-and-claude/reports/sweep-2026-10-16/secret-hitler-companion.md`.
+- D42 · 2026-10-17 · Auto-update: `version.json` fetched no-store at startup + on return to visible; differs → `location.replace(?b=<new>)` keeping query/hash, only before the first tap or on the plain menu (no dialog, typing, online table, night draft); sessionStorage `secretHitler.reloadedFor` = one try per build, never loops.
+- D43 · 2026-10-17 · Batch-1 fixes: fit "Use these rates"/"Use defaults" redraw their own stats mount; `Stats` writes return false on a full quota (handler shows the existing storage-full toast; saveRoles stays on screen); `ratioOf()` falls back to "?" for malformed `claimLibs`; night recorder mic request carries a ticket (re-entrant taps ignored, stream stopped if the user left).
 - D41 · 2026-09-27 · Phone rounds strip (≤640px) uses tighter block spacing so two round blocks fit whole at 375px; before, the strip scrolled to the current round and cut ~19–37px off Round 1. With 3+ rounds older blocks still scroll off (by design).
 
 ## NOT verified
 - Real multi-client online game (several accounts, each reading only its private doc, host processing remote actions) · needs a real multi-device game.
-- Night narration real voice quality + mic recording · needs a real device.
+- Night narration real voice quality + mic recording · needs a real device. The 10-17 mic-left-on fix is proven with a mocked getUserMedia/MediaRecorder in WebKit only, not a real iPhone mic.
+- Auto-update on a real iPhone (home-screen app, Safari back-forward cache, Pages CDN timing) · proven only in WebKit with a local server (old page → new build once; stale host → one try, no loop; no reload mid-game or with Settings open).
+- Phones still running a pre-10-17 build have no update check; they pick it up on their next normal load (≤10 min cache) or a hard refresh.
 - Shared night voices between two real accounts (Firestore round-trip) · needs 2 accounts; only mock-Cloud tested.
 - Google sign-in · verified manually only (OAuth round-trip can't be automated).
 - `rules.prod.test.js` §7b/§7c (game delete, voices) · never run (gated; live project).
 - Label/favorite changed offline may not reach the cloud until changed again online (best-effort push).
 - Model calibration on real data · needs more recorded games (harness needs ≥3).
-- `js/probability.js` and `js/stats.js` are called "Node-tested" in old notes, but no committed test file exists for them (checks in s1/s14/s16 were ad hoc) · measured 2026-09-21.
+- `js/probability.js` has no committed test file (old notes call it "Node-tested"; checks were ad hoc). `js/stats.js` writes are now covered by `test/stats.test.js` (aggregation still untested).
 
 ## Rejected / parked
 - ~~Supabase~~ · 2026-07-23 · free tier pauses after ~1 week idle; Tim required permanently free.
@@ -162,5 +168,5 @@ No active build. The app is feature-complete (companion + analyzer + accounts/gr
 - `firestore.rules`, `firebase.json`, `.firebaserc`, `firestore.indexes.json` · deployed rules + CLI config.
 - `DATA_SAFETY.md` (rule zero) · `BACKEND_PLAN.md` (backend + console setup) · `HONESTY_MODEL.md` (lie/role model theory) · `PROBABILITY_MODEL.md` · `SECRET_HITLER_RULES.md` · `README.md`.
 - `docs/archive/` · `progress-2026-09-21.md` (old PROGRESS, full detail) + `chat-archive.md` (sessions 1–27).
-- Tests: `node test/<name>.test.js` for honesty, night, engine, derive, fit, reference (night's IndexedDB part needs `test/node_modules` fake-indexeddb, installed) · last run 2026-09-21: honesty 73/0, night 42/0, engine 1653/0, derive 47/0, fit 18/0, reference 28/0 (all pass, ~10 s total). Headless smoke tests are rebuilt per session (not committed).
+- Tests: `node test/<name>.test.js` for honesty, night, engine, derive, fit, reference, stats, build (night's IndexedDB part needs `test/node_modules` fake-indexeddb) + `node test/app.browser.test.mjs` (WebKit via Playwright from `~/.claude/tools`, local server, all non-localhost requests blocked, mocks only) · last run 2026-10-17 on main: honesty 73/0, night 42/0, engine 3001/0, derive 49/0, fit 18/0, reference 28/0, stats 15/0, build 21/0, app.browser 30/0.
 - Live: https://timothyhadfield.github.io/secret-hitler-companion/ · repo https://github.com/TimothyHadfield/secret-hitler-companion · hosting: GitHub Pages + Firebase (Spark).

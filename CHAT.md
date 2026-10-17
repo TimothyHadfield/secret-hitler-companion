@@ -734,3 +734,9 @@ and Rules becomes admin-editable with zero new machinery.
 - **Built:** PROGRESS.md rewritten to the template (standing instructions, 40 decisions, traps, NOT verified, rejected/parked as one-liners). No code touched.
 - **Verified how:** archive copy hash-identical to the old PROGRESS.md; moved chat text byte-compared equal to the original; all six Node suites run 2026-09-21: honesty 73/0, night 42/0, engine 1653/0, derive 47/0, fit 18/0, reference 28/0.
 - **Open:** nothing authorized; see PROGRESS "Rejected / parked" for the idea list.
+
+## 2026-10-17 · Batch 1: new builds reach phones + four sweep bugs (builder agent, commit `3d43c5b`)
+- **Asked (Tim, via manager):** "any fixes or improvements you feel confident about go ahead and do, pretty much always."
+- **Built:** `js/build.js` + `version.json` + `?v=` on every local file; app.js update check (startup / return-to-visible, safe screens only, one try per build); build stamp at the bottom of Settings; `test/bump-build.js`. Fixed: fit panel refresh on the in-game Stats tab, full-quota writes in stats.js, malformed `claimLibs` crash, night recorder mic left on.
+- **Verified how:** each new test seen failing on the old code first (stats 10 fail, browser 18 fail), then all green on main; WebKit screenshots of Settings at 393 px and 1440 px (local + live); live `version.json` and index.html curled showing `2026-10-17.1`.
+- **Open:** real-iPhone check of auto-update and the mic fix (see NOT verified).
