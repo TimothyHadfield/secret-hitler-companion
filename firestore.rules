@@ -49,12 +49,12 @@ service cloud.firestore {
       return signedIn() && uid() in group(gid).memberUids;
     }
 
-    // ---- profiles: fetchable by id, writable only by you ----
-    // 'get' is open (you need a uid to ask, and members already expose display
-    // names within a group) but 'list' is CLOSED: otherwise any signed-in user
-    // could enumerate every account on the service and read their names.
+    // ---- profiles: readable and writable only by you ----
+    // A profile holds your groupIds, and a group id is the invite secret, so
+    // reading someone else's profile would let a stranger find and join their
+    // groups. The app only ever reads its own profile. 'list' is CLOSED too.
     match /profiles/{userId} {
-      allow get:    if signedIn();
+      allow get:    if signedIn() && uid() == userId;
       allow list:   if false;
       allow create: if signedIn() && uid() == userId
                     && request.resource.data.displayName is string
@@ -113,37 +113,75 @@ service cloud.firestore {
                     && request.resource.data.inviteCode is string;
 
       // Two distinct cases:
-      //  1. an existing member editing the group (rename, roster changes)
+      //  1. an existing member editing the group. Only `name`, `joinOpen` and
+      //     `memberUids` may change; `ownerUid` and `inviteCode` never do (a
+      //     member must not be able to make themselves owner). The member list
+      //     may only change by the caller removing THEMSELVES (leaving), or by
+      //     the owner removing others. Nobody adds other people, and the list
+      //     never becomes empty.
       //  2. a NON-member joining via an invite link — allowed to append only
       //     their OWN uid and to change nothing else. Pinning every other
       //     field is what stops a stranger renaming or hijacking the group.
       //     `joinOpen` makes an invite link revocable: members can close the
       //     group and old links stop working. Absent on groups created before
       //     the field existed, hence the .get() default of true.
+      function changed() {
+        return request.resource.data.diff(resource.data).affectedKeys();
+      }
+      function newUids() { return request.resource.data.memberUids; }
+      function oldUids() { return resource.data.memberUids; }
       allow update: if signedIn() && (
-                      isMember(groupId)
+                      (
+                        isMember(groupId)
+                        && changed().hasOnly(['name', 'joinOpen', 'memberUids'])
+                        && (!('name' in changed())
+                            || (request.resource.data.name is string
+                                && request.resource.data.name.size() > 0
+                                && request.resource.data.name.size() <= 60))
+                        && (!('joinOpen' in changed()) || request.resource.data.joinOpen is bool)
+                        && (!('memberUids' in changed())
+                            || (newUids() is list
+                                && newUids().size() > 0
+                                && (newUids() == oldUids().removeAll([uid()])
+                                    || (resource.data.ownerUid == uid()
+                                        && oldUids().toSet().hasAll(newUids().toSet())
+                                        && newUids().toSet().size() == newUids().size()))))
+                      )
                       || (
-                        resource.data.get('joinOpen', true) == true
+                        !isMember(groupId)
+                        && resource.data.get('joinOpen', true) == true
+                        && changed().hasOnly(['memberUids'])
                         && request.resource.data.memberUids == resource.data.memberUids.concat([uid()])
-                        && request.resource.data.name       == resource.data.name
-                        && request.resource.data.ownerUid   == resource.data.ownerUid
-                        && request.resource.data.inviteCode == resource.data.inviteCode
-                        && request.resource.data.get('joinOpen', true) == resource.data.get('joinOpen', true)
                       )
                     );
 
-      allow delete: if signedIn() && resource.data.ownerUid == uid();
+      // Only the owner, and only once they are the group's last member, may
+      // delete the group. Deleting it strands every game and voice (each
+      // member check reads this doc), so a former owner who left, or an owner
+      // of a shared group, cannot do it.
+      allow delete: if isMember(groupId)
+                    && resource.data.ownerUid == uid()
+                    && resource.data.memberUids.size() == 1;
 
       // ---- seats: a person who plays in this group, account optional ----
       match /members/{memberId} {
-        allow read, create, delete: if isMember(groupId);
+        allow read: if isMember(groupId);
+        // A new seat is either a guest (no account) or YOU, never someone else.
+        allow create: if isMember(groupId)
+                      && request.resource.data.get('uid', null) in [null, uid()];
+        // Guests and your own seat may be removed; another account's seat only
+        // by the group owner.
+        allow delete: if isMember(groupId)
+                      && (resource.data.get('uid', null) in [null, uid()]
+                          || group(groupId).ownerUid == uid());
 
-        // Members may edit roster entries freely EXCEPT the account link, which
-        // decides whose history a seat belongs to. You may only ever attach
-        // your OWN account, only to a seat nobody has claimed, and you may only
-        // release your own. Without this, any member could hand another
-        // member's identity to themselves.
-        allow update: if isMember(groupId) && (
+        // Members may edit guest seats and their own seat, never another
+        // account's seat. The account link decides whose history a seat
+        // belongs to: you may only ever attach your OWN account, only to a
+        // seat nobody has claimed, and you may only release your own.
+        allow update: if isMember(groupId)
+                      && resource.data.get('uid', null) in [null, uid()]
+                      && (
                         request.resource.data.get('uid', null) == resource.data.get('uid', null)
                         || (request.resource.data.get('uid', null) == uid()
                             && resource.data.get('uid', null) == null)

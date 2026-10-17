@@ -54,25 +54,34 @@ const GAME = {
   const testEnv = await initializeTestEnvironment({
     projectId: "demo-shtest",
     firestore: {
-      rules: fs.readFileSync(path.join(__dirname, "..", "firestore.rules"), "utf8"),
+      // RULES_FILE lets a new test be run against an older ruleset first, to
+      // prove it actually fails there (a test that can't fail proves nothing).
+      rules: fs.readFileSync(process.env.RULES_FILE || path.join(__dirname, "..", "firestore.rules"), "utf8"),
       host: "127.0.0.1",
       port: 8080,
     },
   });
 
   // ---- seed: one group owned by bob, containing one game ----
-  async function seed() {
+  // seed(true) also makes carol a (non-owner) member with her own seat, plus
+  // one guest seat, so member-vs-member rules can be tested.
+  async function seed(shared = false) {
     await testEnv.clearFirestore();
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       const db = ctx.firestore();
-      await setDoc(doc(db, "groups/g1"), GROUP);
+      await setDoc(doc(db, "groups/g1"), shared ? { ...GROUP, memberUids: ["bob", "carol"] } : GROUP);
       await setDoc(doc(db, "groups/g1/games/game1"), GAME);
       await setDoc(doc(db, "groups/g1/members/m1"), { displayName: "Bob", uid: "bob" });
-      await setDoc(doc(db, "profiles/bob"), { displayName: "Bob" });
+      if (shared) {
+        await setDoc(doc(db, "groups/g1/members/m2"), { displayName: "Carol", uid: "carol" });
+        await setDoc(doc(db, "groups/g1/members/m3"), { displayName: "Guest Dave", uid: null });
+      }
+      await setDoc(doc(db, "profiles/bob"), { displayName: "Bob", groupIds: ["g1"] });
     });
   }
 
   const bob = () => testEnv.authenticatedContext("bob").firestore();     // member + owner
+  const carol = () => testEnv.authenticatedContext("carol").firestore(); // member, NOT owner (seed(true))
   const alice = () => testEnv.authenticatedContext("alice").firestore(); // signed in, NOT a member
   const anon = () => testEnv.unauthenticatedContext().firestore();
 
@@ -95,10 +104,14 @@ const GAME = {
   await check("member CAN record a game as themselves", assertSucceeds(addDoc(collection(bob(), "groups/g1/games"), GAME)));
   await check("member CAN read the roster", assertSucceeds(getDocs(collection(bob(), "groups/g1/members"))));
 
-  console.log("\n4. Recorded history is append-only");
-  await check("member CANNOT edit a recorded game", assertFails(updateDoc(doc(bob(), "groups/g1/games/game1"), { result: { winner: "Fascist" } })));
-  await check("member CANNOT delete a recorded game", assertFails(deleteDoc(doc(bob(), "groups/g1/games/game1"))));
+  console.log("\n4. Recorded history: only the author edits the result; author or owner deletes");
+  await seed(true);
+  await check("another member CANNOT edit a recorded game", assertFails(updateDoc(doc(carol(), "groups/g1/games/game1"), { result: { winner: "Fascist" } })));
+  await check("another member CANNOT delete a recorded game", assertFails(deleteDoc(doc(carol(), "groups/g1/games/game1"))));
+  await check("the author CANNOT rewrite a game's log", assertFails(updateDoc(doc(bob(), "groups/g1/games/game1"), { events: [] })));
+  await check("the author CAN correct the result", assertSucceeds(updateDoc(doc(bob(), "groups/g1/games/game1"), { result: { winner: "Fascist" } })));
   await check("member CANNOT record a game as someone else", assertFails(addDoc(collection(bob(), "groups/g1/games"), { ...GAME, createdBy: "alice" })));
+  await check("the author CAN delete their game", assertSucceeds(deleteDoc(doc(bob(), "groups/g1/games/game1"))));
 
   console.log("\n5. Invite-join: a stranger may add ONLY themselves, and change nothing else");
   await seed();
@@ -149,10 +162,63 @@ const GAME = {
   await check("CANNOT write someone else's profile", assertFails(setDoc(doc(alice(), "profiles/bob"), { displayName: "Not Bob" })));
   await check("CANNOT delete a profile (would orphan history)", assertFails(deleteDoc(doc(bob(), "profiles/bob"))));
   await check("signed-out user CANNOT read profiles", assertFails(getDoc(doc(anon(), "profiles/bob"))));
-  await check("signed-in user CAN read profiles", assertSucceeds(getDoc(doc(alice(), "profiles/bob"))));
+  await check("a user CAN read their own profile", assertSucceeds(getDoc(doc(bob(), "profiles/bob"))));
+  // A profile lists the user's groupIds, and a group id is the invite secret.
+  await check("signed-in user CANNOT read someone else's profile (their group ids)", assertFails(getDoc(doc(alice(), "profiles/bob"))));
 
   console.log("\n9. Nothing outside the modelled collections is writable");
   await check("random top-level collection is denied", assertFails(setDoc(doc(alice(), "whatever/x"), { a: 1 })));
+
+  console.log("\n10. A member cannot take over the group");
+  const g1 = (db) => doc(db, "groups/g1");
+  await seed(true);
+  await check("member CANNOT make themselves owner", assertFails(updateDoc(g1(carol()), { ownerUid: "carol" })));
+  await check("member CANNOT remove another member", assertFails(updateDoc(g1(carol()), { memberUids: ["carol"] })));
+  await check("member CANNOT add someone else", assertFails(updateDoc(g1(carol()), { memberUids: ["bob", "carol", "mallory"] })));
+  await check("member CANNOT rotate the invite code", assertFails(updateDoc(g1(carol()), { inviteCode: "STOLEN" })));
+  await check("member CANNOT add extra fields", assertFails(updateDoc(g1(carol()), { junk: 1 })));
+  await check("member CANNOT blank the group name", assertFails(updateDoc(g1(carol()), { name: "" })));
+  await check("member CAN rename the group", assertSucceeds(updateDoc(g1(carol()), { name: "Friday Night" })));
+  await check("member CAN close the invite link", assertSucceeds(updateDoc(g1(carol()), { joinOpen: false })));
+  await check("member CAN re-open the invite link", assertSucceeds(updateDoc(g1(carol()), { joinOpen: true })));
+  await check("member CAN leave (remove only themselves)", assertSucceeds(updateDoc(g1(carol()), { memberUids: ["bob"] })));
+  await seed(true);
+  await check("owner CAN remove another member", assertSucceeds(updateDoc(g1(bob()), { memberUids: ["bob"] })));
+  await check("owner CANNOT empty the member list", assertFails(updateDoc(g1(bob()), { memberUids: [] })));
+  await seed(true);
+  await check("owner CANNOT add someone else either", assertFails(updateDoc(g1(bob()), { memberUids: ["bob", "carol", "mallory"] })));
+  await check("owner CAN leave a shared group", assertSucceeds(updateDoc(g1(bob()), { memberUids: ["carol"] })));
+  await seed();
+  await check("stranger CANNOT join AND add extra fields", assertFails(updateDoc(g1(alice()), { memberUids: ["bob", "alice"], junk: 1 })));
+  await seed();
+  await updateDoc(g1(bob()), { joinOpen: false });
+  await check("stranger CANNOT join a closed group", assertFails(updateDoc(g1(alice()), { memberUids: ["bob", "alice"] })));
+
+  console.log("\n11. Roster seats: you can't impersonate or remove another account");
+  const seat = (db, id) => doc(db, "groups/g1/members/" + id);
+  await seed(true);
+  await check("member CANNOT create a seat linked to someone else", assertFails(setDoc(seat(carol(), "x1"), { displayName: "Bob 2", uid: "bob" })));
+  await check("member CAN create a guest seat", assertSucceeds(setDoc(seat(carol(), "x2"), { displayName: "Eve", uid: null })));
+  await check("member CAN create their own seat", assertSucceeds(setDoc(seat(carol(), "x3"), { displayName: "Carol", uid: "carol" })));
+  await check("member CANNOT rename another account's seat", assertFails(updateDoc(seat(carol(), "m1"), { displayName: "Loser" })));
+  await check("member CANNOT claim another account's seat", assertFails(updateDoc(seat(carol(), "m1"), { uid: "carol" })));
+  await check("member CAN rename their own seat", assertSucceeds(updateDoc(seat(carol(), "m2"), { displayName: "Caroline" })));
+  await check("member CAN rename a guest seat", assertSucceeds(updateDoc(seat(carol(), "m3"), { displayName: "Dave" })));
+  await check("member CANNOT delete another account's seat", assertFails(deleteDoc(seat(carol(), "m1"))));
+  await check("member CAN delete a guest seat", assertSucceeds(deleteDoc(seat(carol(), "x2"))));
+  await check("member CAN release their own seat", assertSucceeds(updateDoc(seat(carol(), "m2"), { uid: null })));
+  await check("member CAN claim a guest seat", assertSucceeds(updateDoc(seat(carol(), "m3"), { uid: "carol" })));
+  await check("owner CAN delete another account's seat", assertSucceeds(deleteDoc(seat(bob(), "m3"))));
+
+  console.log("\n12. Deleting a group (it strands all its history)");
+  await seed(true);
+  await check("owner CANNOT delete a group others are still in", assertFails(deleteDoc(g1(bob()))));
+  await check("non-owner member CANNOT delete the group", assertFails(deleteDoc(g1(carol()))));
+  await seed(true);
+  await updateDoc(g1(bob()), { memberUids: ["carol"] }); // bob leaves; ownerUid still says bob
+  await check("former owner who left CANNOT delete the group", assertFails(deleteDoc(g1(bob()))));
+  await seed();
+  await check("owner who is the last member CAN delete the group", assertSucceeds(deleteDoc(g1(bob()))));
 
   await testEnv.cleanup();
   console.log(`\n${pass} passed, ${fail} failed\n`);
