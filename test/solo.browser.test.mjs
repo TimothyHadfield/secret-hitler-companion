@@ -112,6 +112,14 @@ async function playOne(n, level) {
   ok(maxOver <= 1, `${n}p: live table never scrolls the page on a 393×659 phone (worst overflow ${maxOver}px at "${worst.slice(0, 80)}")`);
   await page.waitForSelector("#soloAgain");
   ok(/You (win|lose)/.test(await page.textContent("#olAction")), `${n}p: game over says whether you won`);
+  const st = await page.evaluate(() => window.Profile ? Profile.stats() : null);
+  ok(st && st.games === 1 && st.byLevel && st.byLevel[level], `${n}p: My stats counted the game once, under ${level} (${st && JSON.stringify({ g: st.games, w: st.wins, lv: Object.keys(st.byLevel || {}) })})`);
+  await page.click("#soloStats2");
+  await page.waitForTimeout(1200);
+  const pf = await page.evaluate(() => { const p = document.querySelector(".pf-panel"); const r = p && p.getBoundingClientRect(); return p && { vis: r.height > 0, top: r.top, bottom: r.bottom, vh: innerHeight, w: document.scrollingElement.scrollWidth, vw: innerWidth }; });
+  ok(pf && pf.vis && pf.top >= 0 && pf.bottom <= pf.vh + 1 && pf.w <= pf.vw, `${n}p: My stats opens on screen (${JSON.stringify(pf)})`);
+  if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `mystats-${n}.png`) });
+  await page.keyboard.press("Escape");
   const games = await page.evaluate(() => localStorage.getItem("secretHitler.games.v1"));
   ok(!games || JSON.parse(games).length === 0, `${n}p: a computer game is not added to the recorded games`);
   ok(errors.length === 0, `${n}p: no page errors (${errors.join(" | ")})`);

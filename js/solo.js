@@ -65,6 +65,15 @@
     return base;
   }
 
+  // The chosen level is your opponents' strength; your teammates always play Normal.
+  // (Everyone at the same level barely moves your odds in a team game: measured, one
+  // Normal player wins 47/53/52% at all-Easy/Normal/Hard tables, but 70/53/40% when
+  // only the other team plays at that level. test/bots.test.js checks the ladder.)
+  function levelFor(u) {
+    const lib = (r) => r === "liberal";
+    return lib(S.roleOf[u]) === lib(S.roleOf[ME]) ? "normal" : level;
+  }
+
   function nextBotAction() {
     const pub = E().publicView(S);
     for (const u of S.seatOrder) {
@@ -74,7 +83,7 @@
     }
     for (const u of S.seatOrder) {
       if (u === ME) continue;
-      const a = B().act(pub, E().privateView(S, u), u, level, mems[u], Math.random);
+      const a = B().act(pub, E().privateView(S, u), u, levelFor(u), mems[u], Math.random);
       if (a) return Object.assign({ by: u }, a);
     }
     return null;

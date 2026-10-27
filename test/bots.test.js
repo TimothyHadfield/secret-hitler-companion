@@ -20,7 +20,9 @@ function rng(seed) {
 }
 
 /** Play one all-computer game. levelOf(uid, role) → level. Returns the result. */
-function playGame(n, levelOf, r) {
+// oppLevel (optional): levelOf returns null for seats that take "Normal if on p0's
+// team, else oppLevel" (the solo rule).
+function playGame(n, levelOf, r, oppLevel) {
   const uids = Array.from({ length: n }, (_, i) => "p" + i);
   let S = E.initGame(uids.map((u) => ({ uid: u, name: u })), r);
   const mem = {}; uids.forEach((u) => { mem[u] = B.newMemory(); });
@@ -33,7 +35,9 @@ function playGame(n, levelOf, r) {
       B.observe(mem[u], pub, priv, u);
     }
     for (const u of S.seatOrder) {
-      const a = B.act(pub, E.privateView(S, u), u, levelOf(u, S.roleOf[u]), mem[u], r);
+      const lv = levelOf(u, S.roleOf[u]) ||
+        (((S.roleOf[u] === "liberal") === (S.roleOf.p0 === "liberal")) ? "normal" : oppLevel);
+      const a = B.act(pub, E.privateView(S, u), u, lv, mem[u], r);
       if (!a) continue;
       const res = E.applyAction(S, Object.assign({ by: u }, a), r);
       if (!res.ok) { illegal++; continue; }
@@ -153,6 +157,28 @@ ok(seat.easy.fac > seat.hard.fac, `as a Fascist you win more vs easy (${(100 * s
   const bel = B.beliefs(pub, priv, "a", "normal", B.newMemory(), "private");
   ok(bel.pF.b > 0.7 && bel.pF.b > bel.pF.d + 0.3, `a "3 Liberals → Fascist enacted" government is suspected (b ${bel.pF.b.toFixed(2)}, c ${bel.pF.c.toFixed(2)}, d ${bel.pF.d.toFixed(2)})`);
   ok(Math.abs(bel.pF.a) < 1e-9, "a liberal never suspects itself");
+}
+
+// 6) The difficulty ladder a person feels (js/solo.js): one Normal-strength seat
+// ("you"), teammates Normal, the other team at the chosen level. Measured with
+// 900 games a level on 2026-10-27: 70% / 53% / 40% → Elo 1070 / 1200 / 1290
+// (the ratings js/app.js gives Profile). Here 300 a level, with margins.
+{
+  const G6 = QUICK ? 900 : 300;
+  const rate = {};
+  for (const L of ["easy", "normal", "hard"]) {
+    let w = 0;
+    for (let s = 0; s < G6; s++) {
+      const r = rng(77000 + s * 7 + L.length);
+      const n = 5 + (s % 6);
+      const res = playGame(n, (u, role) => (u === "p0" ? "normal" : null), r, L);
+      if (res.winner === (res.roleOf.p0 === "liberal" ? "Liberal" : "Fascist")) w++;
+    }
+    rate[L] = w / G6;
+  }
+  console.log("  you (Normal) vs opponents at each level, win rate:", JSON.stringify(rate));
+  ok(rate.easy - rate.normal > 0.08, `Easy opponents are clearly easier than Normal (${rate.easy.toFixed(2)} vs ${rate.normal.toFixed(2)})`);
+  ok(rate.normal - rate.hard > 0.05, `Hard opponents are clearly harder than Normal (${rate.hard.toFixed(2)} vs ${rate.normal.toFixed(2)})`);
 }
 
 console.log(`bots: ${pass} passed, ${fail} failed`);

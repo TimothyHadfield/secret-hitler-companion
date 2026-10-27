@@ -19,8 +19,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Secret Hitler">
   <!-- game-table kit (real cards/felt), loaded first so the app's own colours win. -->
-  <link rel="stylesheet" href="css/table.css?v=2026-10-27.2">
-  <link rel="stylesheet" href="styles.css?v=2026-10-27.2">
+  <link rel="stylesheet" href="css/table.css?v=2026-10-27.3">
+  <link rel="stylesheet" href="css/profile.css?v=2026-10-27.3">
+  <link rel="stylesheet" href="styles.css?v=2026-10-27.3">
 </head>
 <body>
   <div class="wrap">
@@ -274,43 +275,44 @@
 
   <!-- Rules + Game Theory handbook content (offline, no network). -->
   <!-- Build id first: app.js reads it for the update check and the Settings stamp. -->
-  <script src="js/build.js?v=2026-10-27.2"></script>
+  <script src="js/build.js?v=2026-10-27.3"></script>
   <!-- Shared kits: sounds/effects (game-fx) and the real-table pieces (game-table). -->
-  <script src="js/fx.js?v=2026-10-27.2"></script>
-  <script src="js/table.js?v=2026-10-27.2"></script>
-  <script src="js/reference.js?v=2026-10-27.2"></script>
+  <script src="js/fx.js?v=2026-10-27.3"></script>
+  <script src="js/table.js?v=2026-10-27.3"></script>
+  <script src="js/profile.js?v=2026-10-27.3"></script>
+  <script src="js/reference.js?v=2026-10-27.3"></script>
   <!-- Pure authoritative game logic for online play (also Node-tested). Loaded
        before online.js, which uses window.Engine. -->
-  <script src="js/engine.js?v=2026-10-27.2"></script>
+  <script src="js/engine.js?v=2026-10-27.3"></script>
   <!-- Computer players + the one-device game against them (no network). -->
-  <script src="js/bots.js?v=2026-10-27.2"></script>
-  <script src="js/solo.js?v=2026-10-27.2"></script>
-  <script src="js/probability.js?v=2026-10-27.2"></script>
+  <script src="js/bots.js?v=2026-10-27.3"></script>
+  <script src="js/solo.js?v=2026-10-27.3"></script>
+  <script src="js/probability.js?v=2026-10-27.3"></script>
   <!-- Lie detection. Loaded always but only ever *called* when the setting is
        on, so it costs nothing when the feature is off. See HONESTY_MODEL.md. -->
-  <script src="js/honesty.js?v=2026-10-27.2"></script>
+  <script src="js/honesty.js?v=2026-10-27.3"></script>
   <!-- Fits the report lie rates from the user's own recorded games (opt-in). Loads
        after honesty.js (reuses its kernels), only called from the stats screen. -->
-  <script src="js/fit.js?v=2026-10-27.2"></script>
-  <script src="js/stats.js?v=2026-10-27.2"></script>
+  <script src="js/fit.js?v=2026-10-27.3"></script>
+  <script src="js/stats.js?v=2026-10-27.3"></script>
   <!-- "In the night" narration: scripts, speech pacing, and IndexedDB clip
        storage. Classic script exposing window.Night. -->
-  <script src="js/night.js?v=2026-10-27.2"></script>
-  <script src="js/firebase-config.js?v=2026-10-27.2"></script>
+  <script src="js/night.js?v=2026-10-27.3"></script>
+  <script src="js/firebase-config.js?v=2026-10-27.3"></script>
   <!-- Pure rules engine (Node-testable). Must load before app.js, which binds
        it to the live state via Derive.derive(state, deps). -->
-  <script src="js/derive.js?v=2026-10-27.2"></script>
+  <script src="js/derive.js?v=2026-10-27.3"></script>
   <!-- Home-screen install + offline copy (game-pwa kit; network-first, never an old build). -->
-  <script src="js/pwa.js?v=2026-10-27.2" data-version="2026-10-27.2"></script>
-  <script src="js/app.js?v=2026-10-27.2"></script>
+  <script src="js/pwa.js?v=2026-10-27.3" data-version="2026-10-27.3"></script>
+  <script src="js/app.js?v=2026-10-27.3"></script>
   <!-- Loads Firebase from a CDN, so there is still no build step. Deferred by
        virtue of being a module, so app.js (classic) has already run; the two
        talk via window.Cloud and `cloud:*` events. The app works fully without
        this file ever loading. -->
-  <script type="module" src="js/cloud.js?v=2026-10-27.2"></script>
+  <script type="module" src="js/cloud.js?v=2026-10-27.3"></script>
   <!-- Online play (real-time). Module, loaded AFTER cloud.js so it reuses the
        same Firebase app + auth session. Talks to app.js via window.Online +
        `online:*` events; the rest of the app works without it. -->
-  <script type="module" src="js/online.js?v=2026-10-27.2"></script>
+  <script type="module" src="js/online.js?v=2026-10-27.3"></script>
 </body>
 </html>

@@ -916,11 +916,19 @@
       `<div class="online-sub">Computers</div>` +
       `<div class="ol-choices solo-pick" role="group" aria-label="Computer level">${LV.map(([k, l]) =>
         `<button class="ol-choice${k === p.level ? " sel" : ""}" data-lv="${k}" aria-pressed="${k === p.level}">${l}</button>`).join("")}</div>` +
-      `<div class="control-row"><button id="soloGo" class="primary">Deal roles</button></div>`;
+      `<div class="control-row"><button id="soloGo" class="primary">Deal roles</button>${myStatsBtn("soloStats")}</div>`;
     box.querySelectorAll("[data-n]").forEach((b) => { b.onclick = () => { p.n = +b.dataset.n; renderSoloSetup(box); }; });
     box.querySelectorAll("[data-lv]").forEach((b) => { b.onclick = () => { p.level = b.dataset.lv; renderSoloSetup(box); }; });
     $("soloGo").onclick = soloStart;
+    wireMyStats("soloStats");
   }
+
+  // -- My stats (game-profile kit): games vs the computers, per level, Elo, awards --
+  function myStatsBtn(id) {
+    if (!window.Profile) return "";
+    return `<button id="${id}" class="ghost pf-open">${Profile.avatarSVG(Profile.avatar, 22)}<span>My stats</span></button>`;
+  }
+  function wireMyStats(id) { if ($(id)) $(id).onclick = () => Profile.openPanel(); }
 
   function leaveOnlineScreen() {
     const S = solo();
@@ -1347,7 +1355,8 @@
         `<div class="ol-over ${win === "Fascist" ? "c-fac" : "c-lib"}">${win === mine ? "You win" : "You lose"} · ${escapeHtml(win)}s win</div>` +
         `<div class="online-hint">${escapeHtml(t.winReason || "")}</div>` +
         `<div class="control-row"><button id="soloAgain" class="primary">Play again</button>` +
-        `<button id="soloMenu" class="ghost">Menu</button></div>`;
+        `<button id="soloMenu" class="ghost">Menu</button>${myStatsBtn("soloStats2")}</div>`;
+      wireMyStats("soloStats2");
       $("soloAgain").onclick = () => { soloSetup = true; window.Solo.quit(); soloStart(); };
       $("soloMenu").onclick = () => { window.Solo.quit(); };
       return;
@@ -4884,8 +4893,38 @@
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkForUpdate(); });
   window.addEventListener("pageshow", (e) => { if (e.persisted) checkForUpdate(); }); // back-forward cache restore
 
+  // Awards for games vs the computers (game-profile kit).
+  const SOLO_AWARDS = [
+    { id: "first-win", title: "First win", desc: "Win a game vs the computers.", test: (c) => c.stats.wins >= 1 },
+    { id: "liberal-win", title: "Liberal victory", desc: "Win as a Liberal.", test: (c) => !!(c.last && c.last.won && c.last.extra && c.last.extra.role === "liberal") },
+    { id: "fascist-win", title: "Fascist victory", desc: "Win as a Fascist.", test: (c) => !!(c.last && c.last.won && c.last.extra && c.last.extra.role === "fascist") },
+    { id: "hitler-win", title: "Hidden in plain sight", desc: "Win as Hitler.", test: (c) => !!(c.last && c.last.won && c.last.extra && c.last.extra.role === "hitler") },
+    { id: "hard-win", title: "Sharp mind", desc: "Win against Hard computers.", test: (c) => !!(c.last && c.last.won && c.last.level === "hard") },
+    { id: "full-table", title: "Full table", desc: "Win a 10-player game.", test: (c) => !!(c.last && c.last.won && c.last.extra && c.last.extra.n === 10) },
+    { id: "streak-3", title: "On a roll", desc: "Win 3 games in a row.", test: (c) => c.stats.bestStreak >= 3 },
+    { id: "games-10", title: "Regular", desc: "Play 10 games vs the computers.", test: (c) => c.stats.games >= 10 },
+  ];
+
   // ------------------------------ boot ---------------------------------------
   if (window.FX && FX.init) { try { FX.init({ game: "secret-hitler", accent: "#d9a441" }); } catch (e) {} }
+  if (window.Profile) {
+    try {
+      // Elo of each level = how hard it plays you: one Normal-strength player wins
+      // 70 / 53 / 40 % against Easy / Normal / Hard opponents (test/bots.test.js §6).
+      Profile.init({
+        game: "secret-hitler",
+        levels: [{ id: "easy", name: "Easy", rating: 1070 }, { id: "normal", name: "Normal", rating: 1200 }, { id: "hard", name: "Hard", rating: 1290 }],
+        modes: { computer: { name: "Vs computers" } },
+        draws: false,
+        achievements: SOLO_AWARDS,
+      });
+    } catch (e) {}
+  }
+  // Every finished game vs the computers counts once (js/solo.js fires this once per game).
+  document.addEventListener("solo:finished", (e) => {
+    const d = e.detail || {};
+    if (window.Profile) try { Profile.recordResult({ mode: "computer", level: d.level, won: !!d.won, extra: { role: d.role, n: d.n } }); } catch (err) {}
+  });
   loadSettings();
   wire();
   initA11y();
