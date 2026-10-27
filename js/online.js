@@ -45,6 +45,18 @@ let processing = false;        // reentrancy guard for the action loop
 let rerun = false;             // an action snapshot arrived mid-process
 let recorded = false;          // the finished game has been saved once
 
+// Host-only: computer players in the seats nobody took. They run on the host's
+// device (js/bots.js, same as Play vs computers), see only what a player would
+// (publicView + their own privateView), and their moves are applied straight to
+// the host's state, so they never touch the action queue or firestore.rules.
+const BOT_NAMES = ["Ada", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo"];
+let bots = null;               // { level, uids: [...], mems: { uid: memory } }
+let botTimer = null;
+let lastPriv = {};             // uid -> JSON last written (skip unchanged private docs)
+let lastPub = "";              // JSON of the last public projection written
+const B = () => window.Bots;
+const isBot = (u) => !!(bots && bots.uids.indexOf(u) >= 0);
+
 const emit = (name, detail) => document.dispatchEvent(new CustomEvent(name, { detail }));
 const myName = () =>
   (me && (me.displayName || (me.email || "").split("@")[0])) || "Player";
@@ -117,6 +129,7 @@ function cleanupLocal() {
   if (actionsUnsub) { try { actionsUnsub(); } catch (e) {} actionsUnsub = null; }
   tableId = null; table = null; players = []; myPrivate = null;
   hostState = null; processing = false; rerun = false; recorded = false;
+  clearTimeout(botTimer); botTimer = null; bots = null; lastPriv = {}; lastPub = "";
   // Back at the browser: pick up whichever group is active now.
   if (window.Cloud && window.Cloud.groupId) gid = window.Cloud.groupId;
 }
@@ -207,16 +220,30 @@ async function abortTable() {
 // Builds the full authoritative state (js/engine.js), writes every player's
 // SECRET private doc + the public table doc + the host-only secret state, and
 // flips the table to "night". Only the host runs this (rules enforce it).
-async function startGame() {
+// opts.computers: how many computer players fill empty seats; opts.level: their level.
+async function startGame(opts) {
   if (!isHost()) return { ok: false, message: "Only the host can start the game." };
-  const roster = players.slice();
+  opts = opts || {};
+  const humans = players.slice();
+  const want = Math.max(0, Math.min(MAX_PLAYERS - humans.length, opts.computers | 0));
+  const taken = new Set(humans.map((p) => (p.name || "").toLowerCase()));
+  const botList = [];
+  for (let i = 0; botList.length < want && i < BOT_NAMES.length; i++) {
+    if (taken.has(BOT_NAMES[i].toLowerCase())) continue;
+    botList.push({ uid: "cpu-" + (i + 1), name: BOT_NAMES[i] });
+  }
+  const roster = humans.concat(botList);
   if (roster.length < MIN_PLAYERS) return { ok: false, message: `Need at least ${MIN_PLAYERS} players.` };
   if (roster.length > MAX_PLAYERS) return { ok: false, message: `Secret Hitler is ${MIN_PLAYERS}–${MAX_PLAYERS} players.` };
   try {
     hostState = E().initGame(roster.map((p) => ({ uid: p.uid, name: p.name || "Player" })), Math.random);
-    recorded = false;
+    const level = B() && B().LEVELS.indexOf(opts.level) >= 0 ? opts.level : "normal";
+    bots = botList.length ? { level, uids: botList.map((b) => b.uid), mems: {} } : null;
+    if (bots) bots.uids.forEach((u) => { bots.mems[u] = B().newMemory(); });
+    recorded = false; lastPriv = {}; lastPub = "";
     await pushState();
-    await updateDoc(pathTable(tableId), { status: "night", playerCount: hostState.n, names: hostState.names });
+    await updateDoc(pathTable(tableId), { status: "night", playerCount: hostState.n, names: hostState.names,
+      botUids: bots ? bots.uids : [], botLevel: bots ? level : null });
     return { ok: true };
   } catch (e) { return { ok: false, message: humanError(e) }; }
 }
@@ -234,22 +261,103 @@ async function beginPlay() {
 // host reload can resume), the PUBLIC projection (table doc), and each player's
 // PRIVATE doc. Firestore forbids nested arrays, so the secret blob is a JSON
 // string; the public/private views are plain maps the rules already allow.
+// To save Firestore writes, the public table and each private doc are written only
+// when they actually changed, and computers get no private doc (they live here).
 async function pushState() {
   if (!hostState) return;
-  await setDoc(pathHostState(tableId), { s: JSON.stringify(hostState), updatedAt: serverTimestamp() });
+  observeBots();
+  await setDoc(pathHostState(tableId), { s: JSON.stringify(hostState), b: bots ? JSON.stringify(botsForSave()) : null, updatedAt: serverTimestamp() });
   const pub = E().publicView(hostState);
-  await updateDoc(pathTable(tableId), pub);
+  const pubJ = JSON.stringify(pub);
+  if (pubJ !== lastPub) { await updateDoc(pathTable(tableId), pub); lastPub = pubJ; }
   for (const uid of hostState.seatOrder) {
-    await setDoc(pathPrivate(tableId, uid), E().privateView(hostState, uid));
+    if (isBot(uid)) continue;
+    const pv = E().privateView(hostState, uid);
+    const j = JSON.stringify(pv);
+    if (lastPriv[uid] === j) continue;
+    await setDoc(pathPrivate(tableId, uid), pv);
+    lastPriv[uid] = j;
   }
   if (hostState.phase === "gameover" && !recorded) { recorded = true; await finishGame(); }
+  scheduleBots();
 }
 
 async function loadHostState() {
   try {
     const snap = await getDoc(pathHostState(tableId));
-    if (snap.exists() && snap.data().s) hostState = JSON.parse(snap.data().s);
+    if (snap.exists() && snap.data().s) {
+      hostState = JSON.parse(snap.data().s);
+      const b = snap.data().b ? JSON.parse(snap.data().b) : null;
+      bots = b && b.uids && b.uids.length ? b : null;
+      if (bots) bots.uids.forEach((u) => { if (!bots.mems[u]) bots.mems[u] = B().newMemory(); });
+    }
   } catch (e) { /* not host / not ready */ }
+}
+
+// ------------------------------------------------- host: computer players
+function botsForSave() {
+  const m = {};
+  Object.keys(bots.mems).forEach((u) => { m[u] = Object.assign({}, bots.mems[u], { cache: null }); });
+  return { level: bots.level, uids: bots.uids, mems: m };
+}
+// Every computer watches every state (votes are only public until the next election).
+function observeBots() {
+  if (!bots || !hostState || !B()) return;
+  const pub = E().publicView(hostState);
+  bots.uids.forEach((u) => { B().observe(bots.mems[u], pub, E().privateView(hostState, u), u); });
+}
+// The computers' next moves: every computer vote at once (votes are simultaneous),
+// otherwise the one computer the game is waiting on.
+function nextBotActions() {
+  if (!bots || !hostState || !B()) return [];
+  observeBots();
+  const pub = E().publicView(hostState);
+  const out = [];
+  for (const u of hostState.seatOrder) {
+    if (!isBot(u)) continue;
+    const a = B().act(pub, E().privateView(hostState, u), u, bots.level, bots.mems[u], Math.random);
+    if (!a) continue;
+    out.push(Object.assign({ by: u }, a));
+    if (a.type !== "vote") break;
+  }
+  if (out.length > 1) return out.filter((a) => a.type === "vote");
+  return out;
+}
+function botDelay() { return (window.Solo && window.Solo.delay != null) ? window.Solo.delay : 900; }
+function scheduleBots() {
+  clearTimeout(botTimer); botTimer = null;
+  if (!isHost() || !bots || !hostState || !table || table.status !== "playing" || hostState.phase === "gameover") return;
+  const acts = nextBotActions();
+  if (!acts.length) return; // waiting on a person
+  botTimer = setTimeout(runBots, acts[0].type === "vote" ? Math.round(botDelay() * 0.35) : botDelay());
+}
+async function runBots() {
+  botTimer = null;
+  if (processing) { botTimer = setTimeout(runBots, 300); return; }
+  if (!isHost() || !hostState || !table || table.status !== "playing") return;
+  processing = true;
+  let changed = false, failed = false;
+  try {
+    for (const a of nextBotActions()) {
+      const r = E().applyAction(hostState, a, Math.random);
+      if (r.ok) { hostState = r.state; changed = true; }
+      if (hostState.phase === "gameover") break;
+    }
+    if (changed) await pushState();
+  } catch (e) { failed = true; /* a write failed: publish again shortly */ }
+  finally {
+    processing = false;
+    if (rerun) { rerun = false; processCatchUp(); }
+    else if (failed) botTimer = setTimeout(retryPush, 1500);
+    else if (!changed) botTimer = setTimeout(scheduleBots, 1500);
+  }
+}
+async function retryPush() {
+  botTimer = null;
+  if (processing) { botTimer = setTimeout(retryPush, 300); return; }
+  processing = true;
+  try { await pushState(); } catch (e) { botTimer = setTimeout(retryPush, 3000); }
+  finally { processing = false; }
 }
 
 // Drain the action queue: apply each move to the authoritative state (invalid
@@ -298,6 +406,8 @@ async function submitAction(action) {
 async function finishGame() {
   try { await updateDoc(pathTable(tableId), { status: "finished" }); } catch (e) {}
   const rec = E().toRecordedGame(hostState);
+  // Computers are marked in the recorded game so they never merge with a real friend's name.
+  if (bots) hostState.seatOrder.forEach((u, i) => { if (isBot(u) && rec.players[i]) rec.players[i].name += " (computer)"; });
   rec.id = newId();
   rec.groupId = gid; // the table's group, even if the host switched groups meanwhile
   emit("online:finished", { record: rec, isHost: isHost() });
@@ -308,8 +418,8 @@ async function finishGame() {
 function runHostLoop() {
   ensureHostLoop();
   if (isHost() && table && (table.status === "playing" || table.status === "night") && !hostState) {
-    loadHostState().then(() => { if (hostState) processCatchUp(); });
-  }
+    loadHostState().then(() => { if (hostState) processCatchUp().then(scheduleBots); });
+  } else if (isHost() && hostState && !botTimer && !processing) scheduleBots(); // e.g. night → playing
 }
 async function processCatchUp() {
   try { const s = await getDocs(colActions(tableId)); await processActions(s); } catch (e) {}
@@ -353,7 +463,7 @@ window.Online = {
   listTables,
   async joinTable(t) { try { return await joinTable(t); } catch (e) { return { ok: false, message: humanError(e) }; } },
   async leaveTable() { try { return await leaveTable(); } catch (e) { return { ok: false, message: humanError(e) }; } },
-  async startGame() { try { return await startGame(); } catch (e) { return { ok: false, message: humanError(e) }; } },
+  async startGame(opts) { try { return await startGame(opts); } catch (e) { return { ok: false, message: humanError(e) }; } },
   async beginPlay() { try { return await beginPlay(); } catch (e) { return { ok: false, message: humanError(e) }; } },
   async abortTable() { try { return await abortTable(); } catch (e) { return { ok: false, message: humanError(e) }; } },
   async submitAction(a) { try { return await submitAction(a); } catch (e) { return { ok: false, message: humanError(e) }; } },

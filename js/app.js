@@ -1048,10 +1048,24 @@
   }
 
   // -- lobby: waiting for players ---------------------------------------------
+  // Host's pick: computers for the empty seats (count + level), kept across redraws.
+  let lobbyCpu = { k: null, level: "normal" };
   function renderOnlineLobby(box, O) {
     const ps = O.players;
     const n = ps.length;
-    const canStart = n >= O.MIN_PLAYERS && n <= O.MAX_PLAYERS;
+    const room = Math.max(0, O.MAX_PLAYERS - n), need = Math.max(0, O.MIN_PLAYERS - n);
+    if (lobbyCpu.k == null) lobbyCpu.k = need;
+    lobbyCpu.k = Math.min(room, Math.max(need, lobbyCpu.k));
+    const total = n + lobbyCpu.k;
+    const canStart = total >= O.MIN_PLAYERS && total <= O.MAX_PLAYERS;
+    const cpuCounts = []; for (let k = need; k <= room; k++) cpuCounts.push(k);
+    const cpuPick = O.isHost && room > 0
+      ? `<div class="online-sub">Computers for empty seats</div>` +
+        `<div class="ol-choices" role="group" aria-label="Computer players">${cpuCounts.map((k) =>
+          `<button class="ol-choice${k === lobbyCpu.k ? " sel" : ""}" data-cpu="${k}" aria-pressed="${k === lobbyCpu.k}">${k}</button>`).join("")}</div>` +
+        (lobbyCpu.k > 0 ? `<div class="ol-choices" role="group" aria-label="Computer level">${[["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]].map(([v, l]) =>
+          `<button class="ol-choice${v === lobbyCpu.level ? " sel" : ""}" data-cpulv="${v}" aria-pressed="${v === lobbyCpu.level}">${l}</button>`).join("")}</div>` : "")
+      : "";
     const rows = ps.map((p) =>
       `<div class="ol-seat">${escapeHtml(p.name || "Player")}` +
       (p.uid === O.table.hostUid ? `<span class="ol-badge">host</span>` : "") +
@@ -1062,15 +1076,18 @@
       `<p class="online-tagline">${escapeHtml(activeGroupLabel())} · share this app with your group and have everyone open <b>Play online</b> to join.</p></div>` +
       `<div class="online-sub">Players <span class="muted">(${n} / ${O.MIN_PLAYERS}–${O.MAX_PLAYERS})</span></div>` +
       `<div class="ol-seats">${rows}</div>` +
+      cpuPick +
       (O.isHost
-        ? `<div class="online-hint">${canStart ? "Everyone in? Deal the roles when ready." : `Waiting for players — need ${O.MIN_PLAYERS}–${O.MAX_PLAYERS}.`}</div>` +
+        ? `<div class="online-hint">${canStart ? `Everyone in? Deal the roles when ready (${total} players).` : `Waiting for players — need ${O.MIN_PLAYERS}–${O.MAX_PLAYERS}.`}</div>` +
           `<div class="control-row"><button id="olStart" class="primary" ${canStart ? "" : "disabled"}>Start game</button>` +
           `<button id="olCancel" class="ghost-danger">Cancel game</button></div>`
         : `<div class="online-hint">Waiting for the host to start…</div>` +
           `<div class="control-row"><button id="olLeave" class="ghost">Leave</button></div>`);
+    box.querySelectorAll("[data-cpu]").forEach((b) => { b.onclick = () => { lobbyCpu.k = +b.dataset.cpu; renderOnlineLobby(box, O); }; });
+    box.querySelectorAll("[data-cpulv]").forEach((b) => { b.onclick = () => { lobbyCpu.level = b.dataset.cpulv; renderOnlineLobby(box, O); }; });
     if ($("olStart")) $("olStart").onclick = async () => {
       $("olStart").disabled = true;
-      const r = await O.startGame();
+      const r = await O.startGame({ computers: lobbyCpu.k, level: lobbyCpu.level });
       if (!r.ok) { $("olStart").disabled = false; showToast(r.message); }
     };
     if ($("olCancel")) $("olCancel").onclick = () => askConfirm(

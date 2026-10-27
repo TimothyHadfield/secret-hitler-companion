@@ -24,11 +24,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/fireba
 import {
   getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signOut as fbSignOut, updateProfile,
+  signOut as fbSignOut, updateProfile, connectAuthEmulator,
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection,
-  getDocs, serverTimestamp, query, where,
+  getDocs, serverTimestamp, query, where, connectFirestoreEmulator,
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
 const GAMES_KEY = "secretHitler.games.v1";
@@ -40,6 +40,12 @@ const membersKey = (gid) => `secretHitler.cloud.members.${gid}`;
 const app = initializeApp(window.FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
+// Test only: test/online.e2e.mjs sets window.__SH_EMU to point the app at the local
+// Firebase emulators (demo project). Never set on the real site.
+if (window.__SH_EMU) {
+  connectAuthEmulator(auth, window.__SH_EMU.auth, { disableWarnings: true });
+  connectFirestoreEmulator(db, window.__SH_EMU.host, window.__SH_EMU.port);
+}
 
 let currentUser = null;
 let activeGroupId = null;
