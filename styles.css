@@ -195,6 +195,9 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .menu-option .mo-text { display: flex; flex-direction: column; }
 .menu-option .mo-title { font-size: 19px; font-weight: 700; font-family: Georgia, serif; }
 .menu-option .mo-sub { font-size: 13px; color: var(--muted); }
+/* "Play vs computers" + "Play online" share one row as two half-width boxes. */
+.menu-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.menu-pair .menu-option { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px; }
 
 /* ---------- Setup screen ---------- */
 #playerList { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
@@ -1068,6 +1071,8 @@ body.lie-on span.lie-col { display: inline; }
 .ol-choices { display: flex; flex-wrap: wrap; gap: 7px; }
 .ol-choice { padding: 9px 14px; }
 .ol-choice.truth { border-color: var(--lib-2); }
+.ol-choice.sel { border-color: var(--gold); background: rgba(217,164,65,0.2); color: var(--gold); }
+.solo-pick .ol-choice { min-width: 48px; }
 .ol-cards { display: flex; gap: 8px; flex-wrap: wrap; }
 .ol-card { flex: 1; min-width: 92px; padding: 16px 10px; font-weight: 700; border-radius: 10px; }
 .ol-card.f { background: rgba(192,57,43,0.25); border-color: var(--fac); color: #fff; }
@@ -1080,6 +1085,130 @@ body.lie-on span.lie-col { display: inline; }
 .ol-hrow { padding: 6px 10px; border-radius: 7px; background: var(--panel-2); border: 1px solid var(--line); }
 .ol-action .c-fac, .ol-hrow .c-fac, .ol-learned .c-fac { color: var(--fac-2); }
 .ol-action .c-lib, .ol-hrow .c-lib, .ol-learned .c-lib { color: var(--lib-2); }
+/* ---- Live game (online + vs computers): a real table that fits the screen ----
+   Phone: seats round the felt (top/bottom), then the current step, then history,
+   with only the history scrolling inside. Laptop: table left, step + history right. */
+#onlineScreen.live:not(.hidden) { display: flex; flex-direction: column; overflow: hidden; }
+#onlineScreen.live .screen-head { margin-bottom: 6px; gap: 10px; }
+#onlineScreen .ol-headtitle { font-family: Georgia, serif; font-size: 16px; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#onlineScreen.live .online-body { flex: 1 1 auto; min-height: 0; max-width: none; padding-bottom: 0; }
+.ol-play { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; }
+.ol-tablecol { flex: 0 0 auto; min-width: 0; }
+.ol-sidecol { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.ol-sidecol .ol-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; gap: 3px; font-size: 12px; }
+.ol-sidecol .ol-hrow { padding: 4px 9px; }
+.ol-info { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.ol-info .ol-myrole, .ol-info .ol-learned { padding: 6px 10px; font-size: 12px; }
+.ol-play .ol-action { flex: 0 0 auto; padding: 10px; gap: 8px; }
+.ol-play .ol-prompt { font-size: 14px; }
+.ol-play .ol-choice { padding: 8px 12px; }
+.ol-play .ol-action .control-row { margin-top: 0; }
+.ol-play .ol-action .control-row > button { flex: 1 1 0; } /* Ja / Nein (and other pairs) side by side, equal width */
+.ol-claims { display: grid; grid-template-columns: 1fr 1fr; }
+.ol-claims .ol-choice { padding: 6px 8px; }
+
+.ol-table { display: flex; flex-direction: column; gap: 6px; }
+.ol-row { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 4px; }
+.ol-seat2 { display: flex; flex-direction: column; align-items: center; min-width: 0; gap: 2px; }
+.ol-av {
+  width: 34px; height: 34px; border-radius: 50%; position: relative; flex: 0 0 auto;
+  background: var(--panel-2); border: 2px solid var(--line); display: grid; place-items: center;
+  font-weight: 700; font-size: 14px; color: var(--ink);
+}
+.ol-seat2.pres .ol-av { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(217,164,65,0.35); }
+.ol-seat2.chan .ol-av { border-color: var(--lib-2); box-shadow: 0 0 0 3px rgba(69,184,214,0.35); }
+.ol-seat2.nom .ol-av { border-color: var(--lib-2); border-style: dashed; }
+.ol-seat2.termed .ol-av { border-style: dashed; opacity: 0.62; }
+.ol-seat2.dead .ol-av { opacity: 0.4; }
+.ol-seat2.r-lib .ol-av { border-color: var(--lib); background: rgba(31,143,176,0.3); }
+.ol-seat2.r-fac .ol-av { border-color: var(--fac); background: rgba(192,57,43,0.3); }
+.ol-seat2.r-hit .ol-av { border-color: #000; background: #000; }
+.ol-av-b { position: absolute; top: -6px; right: -9px; font-size: 9px; font-weight: 800; line-height: 1.3; border-radius: 4px; padding: 0 4px; }
+.ol-av-b.p { background: var(--gold); color: #1a1410; }
+.ol-av-b.c, .ol-av-b.n { background: var(--lib-2); color: #06222b; }
+.ol-skull { position: absolute; inset: 0; display: grid; place-items: center; font-size: 18px; }
+.ol-nm { font-size: 12px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ol-seat2.me .ol-nm { color: var(--gold); }
+.ol-sub { min-height: 15px; display: flex; gap: 3px; justify-content: center; align-items: center; flex-wrap: nowrap; }
+.ol-sub .ol-vote, .ol-sub .ol-odds, .ol-sub .ol-rt { font-size: 9px; padding: 0 5px; line-height: 15px; }
+.ol-vote.in { background: rgba(217,164,65,0.18); color: var(--gold); }
+
+.ol-felt {
+  display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 16px;
+  border: 6px solid #3b2a1c; box-shadow: inset 0 0 40px rgba(0,0,0,0.55), var(--shadow);
+}
+.ol-felt .boards-col { flex: 1 1 auto; display: grid; gap: 6px; min-width: 0; }
+.ol-felt .sh-board { padding: 5px 6px 6px; }
+.ol-felt .sh-tracker { margin-top: 4px; }
+.ol-felt .pile-col { width: 34px; }
+.ol-felt .pile-label { font-size: 9px; margin-bottom: 4px; }
+.ol-stack { --card-w: 28px; min-height: 39px; }
+.ol-stack .tbl-back { --ink: rgba(255,255,255,0.3); } /* the kit's back ink, not the app's text colour */
+
+.ol-cards { display: flex; gap: 10px; justify-content: center; flex-wrap: nowrap; }
+.ol-pcard {
+  width: 70px; aspect-ratio: 5 / 7; padding: 0; border-radius: 7px; background: #d9d6cf;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font-family: Georgia, serif; font-weight: 800; box-shadow: 0 3px 8px rgba(0,0,0,0.55);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.ol-pcard:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,0.6); }
+.ol-pcard.F { border: 3px solid var(--fac); color: var(--fac); }
+.ol-pcard.L { border: 3px solid var(--lib); color: var(--lib); }
+.ol-pcard .glyph { font-size: 24px; line-height: 1; }
+.ol-pcard-l { font-size: 10px; font-family: "Segoe UI", system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.3px; }
+
+@media (min-width: 900px) {
+  .ol-play { flex-direction: row; gap: 18px; }
+  .ol-tablecol { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; }
+  .ol-table { width: 100%; max-width: 720px; gap: 12px; }
+  .ol-sidecol { flex: 0 0 360px; }
+  .ol-av { width: 52px; height: 52px; font-size: 20px; }
+  .ol-nm { font-size: 14px; }
+  .ol-sub .ol-vote, .ol-sub .ol-odds, .ol-sub .ol-rt { font-size: 10px; }
+  .ol-felt { padding: 14px 12px; gap: 12px; }
+  .ol-felt .pile-col { width: 52px; }
+  .ol-stack { --card-w: 44px; min-height: 62px; }
+  .ol-felt .sh-board { padding: 7px 9px 9px; }
+  .ol-sidecol .ol-history { font-size: 13px; }
+  .ol-pcard { width: 84px; }
+}
+
+/* Phone on its side: table left, the current step + history right. */
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 899px) {
+  #onlineScreen.live .screen-head { margin-bottom: 2px; }
+  #onlineScreen.live .screen-head .backbtn { padding-top: 2px; padding-bottom: 2px; }
+  .ol-play { flex-direction: row; gap: 10px; }
+  .ol-tablecol { flex: 0 1 380px; min-width: 0; display: flex; align-items: center; }
+  .ol-table { width: 100%; gap: 3px; }
+  .ol-sidecol { flex: 1 1 0; min-width: 0; overflow-y: auto; }
+  .ol-av { width: 26px; height: 26px; font-size: 12px; }
+  .ol-nm { font-size: 10px; }
+  .ol-sub { min-height: 13px; }
+  .ol-felt { border-width: 4px; padding: 4px; }
+  .ol-felt .sh-power { font-size: 5px; min-height: 12px; }
+  .ol-play .ol-prompt { font-size: 13px; }
+  .ol-pcard { width: 52px; }
+  .ol-pcard .glyph { font-size: 17px; }
+}
+/* Small phones (iPhone SE height): shrink seats and cards so it still fits. */
+@media (orientation: portrait) and (max-height: 620px) {
+  .ol-av { width: 28px; height: 28px; font-size: 12px; }
+  .ol-nm { font-size: 11px; }
+  .ol-sub { min-height: 13px; }
+  .ol-table { gap: 4px; }
+  .ol-felt .sh-power { font-size: 6px; min-height: 13px; }
+  .ol-play .ol-prompt { font-size: 13px; }
+  .ol-play .ol-action { padding: 8px; gap: 6px; }
+  .ol-pcard { width: 54px; }
+  .ol-pcard .glyph { font-size: 18px; }
+  .ol-info .ol-myrole, .ol-info .ol-learned { padding: 4px 8px; }
+  .ol-play { gap: 5px; }
+  .ol-felt { padding: 3px 5px; }
+  .ol-felt .sh-board { padding: 3px 5px 5px; }
+  .ol-claims .ol-choice { padding: 5px 6px; }
+}
+
 
 /* ---- Accessibility: visible keyboard focus (session 44) --------------------
    Several controls set `outline:none`; restore a clear focus ring for keyboard
