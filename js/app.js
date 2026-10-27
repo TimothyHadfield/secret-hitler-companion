@@ -916,11 +916,18 @@
       `<div class="online-sub">Computers</div>` +
       `<div class="ol-choices solo-pick" role="group" aria-label="Computer level">${LV.map(([k, l]) =>
         `<button class="ol-choice${k === p.level ? " sel" : ""}" data-lv="${k}" aria-pressed="${k === p.level}">${l}</button>`).join("")}</div>` +
-      `<div class="control-row"><button id="soloGo" class="primary">Deal roles</button>${myStatsBtn("soloStats")}</div>`;
+      `<div class="control-row"><button id="soloGo" class="primary">Deal roles</button>${myStatsBtn("soloStats")}</div>` +
+      (window.COACH ? `<div class="control-row"><button id="soloHow" class="ghost">How to play</button><button id="soloTourBtn" class="ghost">Guided game</button></div>` : "");
     box.querySelectorAll("[data-n]").forEach((b) => { b.onclick = () => { p.n = +b.dataset.n; renderSoloSetup(box); }; });
     box.querySelectorAll("[data-lv]").forEach((b) => { b.onclick = () => { p.level = b.dataset.lv; renderSoloSetup(box); }; });
     $("soloGo").onclick = soloStart;
     wireMyStats("soloStats");
+    if ($("soloHow")) $("soloHow").onclick = openLiveRules;
+    if ($("soloTourBtn")) $("soloTourBtn").onclick = startSoloTour;
+    // First visit: offer the guided game once.
+    if (window.COACH && !COACH.offered(SOLO_TOUR_ID) && soloTourInit() && !soloTour.seen()) {
+      COACH.offer({ id: SOLO_TOUR_ID, title: "First game vs the computers?", text: "Play with a short guide that explains the table as you go.", yes: "Show me", no: "No thanks", onYes: startSoloTour });
+    }
   }
 
   // -- My stats (game-profile kit): games vs the computers, per level, Elo, awards --
@@ -963,6 +970,7 @@
     const O = online(), c = cloud();
     $("onlineScreen").classList.remove("live"); // the live game re-adds it (full-height table layout)
     if ($("onlineHeadTitle")) $("onlineHeadTitle").textContent = "";
+    if ($("olRulesBtn")) $("olRulesBtn").classList.add("hidden");
 
     if (solo()) {
       const st = O.table && O.table.status;
@@ -1262,6 +1270,7 @@
     const seats = olSeats(t, over);
     $("onlineScreen").classList.add("live");
     if ($("onlineHeadTitle")) $("onlineHeadTitle").textContent = head;
+    if ($("olRulesBtn")) $("olRulesBtn").classList.toggle("hidden", !window.COACH);
     box.innerHTML =
       `<div class="ol-play">` +
       `<div class="ol-tablecol">` +
@@ -4032,6 +4041,7 @@
     const rerender = () => { if (!$("onlineScreen").classList.contains("hidden")) renderOnline(); };
     document.addEventListener("online:state", (e) => {
       rerender();
+      if (window.COACH) COACH.update(); // the guided game re-checks its step against the new table
       // Non-hosts: once a game finishes, pull the host's recorded copy so it shows
       // up in Statistics (the host uploads it; we just need to download it).
       const O = online(), d = e.detail || {};
@@ -4893,6 +4903,71 @@
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkForUpdate(); });
   window.addEventListener("pageshow", (e) => { if (e.persisted) checkForUpdate(); }); // back-forward cache restore
 
+  // -- Quick rules + guided first game (game-coach kit) for the live table --------
+  // The full handbook stays on the menu (Rules); this is the short version you can
+  // open mid-game with "?" without leaving the table.
+  const LIVE_RULES = {
+    title: "How to play",
+    intro: "Secret Hitler in short. The full handbook is under Rules on the menu.",
+    sections: [
+      { id: "goal", title: "Goal", short: "Goal", html:
+        "<p><b>Liberals</b> win by enacting 5 Liberal policies, or by executing Hitler.</p>" +
+        "<p><b>Fascists</b> win by enacting 6 Fascist policies, or by getting Hitler elected Chancellor once 3 Fascist policies are on the board.</p>" +
+        "<p>Liberals are the majority but don't know who anyone is. Fascists know each other and who Hitler is. With 5–6 players Hitler knows the Fascists too; with 7–10 he doesn't.</p>" },
+      { id: "round", title: "A round", short: "Round", html:
+        "<ol><li>The <b>President</b> (it moves one seat round the table each round) nominates a <b>Chancellor</b>. The last elected President and Chancellor can't be nominated (with 5 players, only the last Chancellor).</li>" +
+        "<li>Everyone votes <b>Ja</b> or <b>Nein</b>. More than half Ja elects them.</li>" +
+        "<li>Rejected: the election tracker moves one step. Three rejections in a row and the top policy is enacted straight from the deck (no power), the tracker resets and anyone can be nominated.</li></ol>" },
+      { id: "laws", title: "Making a law", short: "Laws", html:
+        "<p>The President draws 3 policies, secretly discards 1 and passes 2. The Chancellor enacts 1 of those 2.</p>" +
+        "<p>Afterwards the President says what they drew. <b>Anyone may lie</b>: compare the claim with what got enacted and with the deck (11 Fascist, 6 Liberal).</p>" +
+        "<p class=\"tip\">A Liberal President who drew 3 Fascists has no choice. A Fascist can blame the cards.</p>" },
+      { id: "powers", title: "Powers", short: "Powers", html:
+        "<p>Some Fascist slots give the President a one-time power (shown above the slot):</p>" +
+        "<ul><li><b>Investigate</b>: see one player's party.</li><li><b>Special election</b>: pick the next President.</li>" +
+        "<li><b>Policy peek</b>: see the top 3 policies.</li><li><b>Kill</b>: execute a player. If it's Hitler, Liberals win.</li></ul>" +
+        "<p><b>Veto</b> (after 5 Fascist policies): the Chancellor may propose discarding both; if the President agrees, nothing is enacted and the tracker moves.</p>" },
+      { id: "computers", title: "Vs computers", short: "Computers", html:
+        "<p>Easy, Normal and Hard set how sharp the <b>other team</b> plays. Your own team-mates always play Normal.</p>" +
+        "<p>Computers read claims, votes and nominations like a person would, and Fascist computers lie.</p>" +
+        "<p class=\"tip\">Settings → Fast computers skips their thinking pauses.</p>" },
+    ],
+  };
+  function openLiveRules() { if (window.COACH) COACH.rules(LIVE_RULES); }
+
+  const SOLO_TOUR_ID = "sh-solo-first";
+  let soloTour = null;
+  function soloTourInit() {
+    if (!window.COACH || soloTour) return soloTour;
+    const T = () => (window.Solo && Solo.active && Solo.table) || null;
+    const myVoteDue = () => { const t = T(); return !!t && t.phase === "vote" && (t.votedUids || []).indexOf("you") < 0 && (t.deadUids || []).indexOf("you") < 0; };
+    soloTour = COACH.tour({
+      id: SOLO_TOUR_ID,
+      steps: [
+        { title: "Your secret role", text: "Only you can see this. Fascists also see who their team-mates are.", target: ".ol-role", when: () => !!document.querySelector(".ol-role:not(.loading)"), next: true },
+        { title: "Start", text: "Tap Begin game when you've read it.", target: "#olBegin", until: () => !!document.querySelector(".ol-felt") },
+        { title: "The table", text: "Fascist policies fill the top track (the power each slot gives is printed above it), Liberal ones the bottom. The three circles count rejected votes in a row.", target: ".ol-felt", next: true },
+        { title: "The players", text: "P is the President, C the Chancellor, C? a nominee. The President moves one seat round the table each round. Votes show under the names.", target: ".ol-table .ol-row.top", next: true },
+        { title: "Your move", text: "When it's your turn your choices appear here: nominate, vote, pick a card, use a power. Otherwise it says who the table is waiting for.", target: "#olAction", next: true },
+        { title: "Vote", text: "Ja to elect this government, Nein to reject it. Would you trust these two with the cards?", target: "#olAction", when: myVoteDue, until: () => !myVoteDue() },
+        { title: "What happened", text: "Each government, what the President claimed to draw, and any power, newest first. Claims can be lies.", target: ".ol-history", next: true },
+        { title: "Rules any time", text: "Tap ? for the short rules. Good luck!", target: "#olRulesBtn", next: true },
+      ],
+      pauseIf: () => !T() || $("onlineScreen").classList.contains("hidden") || COACH.rulesOpen() ||
+        !!document.querySelector(".overlay:not(.hidden)") || !!(window.Profile && Profile.isOpen && Profile.isOpen()),
+    });
+    return soloTour;
+  }
+  function startSoloTour() {
+    if (!soloTourInit()) return;
+    COACH.closeOffer();
+    soloTour.reset();
+    soloSetup = true;
+    if (window.Solo && Solo.active) Solo.quit();
+    soloStart();
+    soloTour.start();
+  }
+
   // Awards for games vs the computers (game-profile kit).
   const SOLO_AWARDS = [
     { id: "first-win", title: "First win", desc: "Win a game vs the computers.", test: (c) => c.stats.wins >= 1 },
@@ -4920,6 +4995,14 @@
       });
     } catch (e) {}
   }
+  if ($("olRulesBtn")) $("olRulesBtn").onclick = openLiveRules;
+  // Computers wait while you read: the short rules, or a guided-game note with a Next button.
+  if (window.Solo) Solo.hold = () => {
+    if (window.COACH && COACH.rulesOpen()) return true;
+    const s = soloTour && soloTour.active && soloTour.current();
+    const b = document.querySelector(".coach-bubble");
+    return !!(s && s.next && !s.until && b && b.getBoundingClientRect().width > 0 && getComputedStyle(b).visibility !== "hidden");
+  };
   // Every finished game vs the computers counts once (js/solo.js fires this once per game).
   document.addEventListener("solo:finished", (e) => {
     const d = e.detail || {};
@@ -4946,7 +5029,10 @@
     show("menuScreen");
     // An unfinished game vs the computers comes straight back after a reload
     // (not when the page was opened from a group invite link).
-    if (window.Solo && Solo.hasSaved() && !/[?&]join=/.test(location.search || "")) openSolo();
+    if (window.Solo && Solo.hasSaved() && !/[?&]join=/.test(location.search || "")) {
+      openSolo();
+      if (soloTourInit() && soloTour.saved()) soloTour.resume(); // a guided game carries on too
+    }
   }
   // Home-screen kit (js/pwa.js): reload onto a new deploy only when nothing is lost.
   // Stricter than the version.json check: never off the plain menu, tapped or not.

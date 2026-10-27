@@ -97,6 +97,8 @@
     timer = setTimeout(() => {
       timer = null;
       if (!S || status !== "playing") return;
+      // The page can hold the computers (e.g. while a guided-game note is being read).
+      if (typeof api.hold === "function" && api.hold()) { timer = setTimeout(pump, 300); return; }
       const res = E().applyAction(S, a, Math.random);
       if (res.ok) S = res.state;
       after();

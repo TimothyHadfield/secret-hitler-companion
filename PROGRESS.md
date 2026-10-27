@@ -23,6 +23,7 @@ Improve pass (manager's common brief, 2026-10-27): beat secrethitler.io. Done: p
 | Online play (host-authoritative) | live | real multi-client round-trip never tested (see NOT verified) |
 | Play vs computers (5–10 players, Easy/Normal/Hard) | live 10-27 | `js/bots.js` + `js/solo.js`; self-play `test/bots.test.js`, UI `test/solo.browser.test.mjs`; not recorded to Stats |
 | Home-screen install + offline (`_pwa` 1.2.0) | live 10-27 | `sw.js`, `js/pwa.js`, manifest, `icons/`; `node test/pwa.check.mjs --engine chromium` (kit check, Firebase blocked) |
+| Short rules + guided first game (`_coach` 1.0.0) | live 10-27 | "?" in the live-table header (online too); guided vs-computers game offered once on the setup, "How to play" / "Guided game" there; computers wait while a note or the rules are open (`Solo.hold`) |
 | My stats (`_profile` 1.1.0) | live 10-27 | vs-computer games only (per level, Elo 1070/1200/1290, 8 awards); buttons in the vs-computers setup + game over |
 | Live table look + sounds | live 10-27 | `_table` 1.0.2 (`css/table.css`, `js/table.js`) + `_fx` 1.0.3 (`js/fx.js`); kit copies unchanged, don't edit |
 | Accessibility | half-built | first pass done; History table / stats bars aria + full audit open |

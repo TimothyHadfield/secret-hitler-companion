@@ -81,6 +81,9 @@ async function playOne(n, level) {
   await page.click("#btnMenuSolo");
   await page.waitForSelector("#soloGo");
   ok(await page.isVisible("#soloGo"), `${n}p: setup shows Deal roles`);
+  await page.waitForTimeout(300);
+  ok(await page.isVisible(".coach-offer"), `${n}p: first visit offers the guided game`);
+  await page.click(".coach-offer [data-o=no]");
   await page.click("#soloGo");
   await page.waitForSelector("#olBegin");
   const role = await page.textContent(".ol-role");
@@ -129,9 +132,51 @@ async function playOne(n, level) {
 await playOne(5, "normal");
 await playOne(10, "hard");
 
+// Guided first game (game-coach): offered once, walks the table, survives a reload;
+// "?" opens the short rules on top of the game.
+{
+  const { ctx, page, errors } = await open({ "secretHitler.soloPick.v1": JSON.stringify({ n: 7, level: "normal" }) });
+  const bubble = () => page.evaluate(() => {
+    const b = document.querySelector(".coach-bubble"); if (!b) return null;
+    const r = b.getBoundingClientRect(), t = b.querySelector(".coach-title");
+    return { title: t ? t.textContent : "", on: r.width > 0 && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1 && getComputedStyle(b).visibility !== "hidden" && getComputedStyle(b).display !== "none" };
+  });
+  await page.click("#btnMenuSolo");
+  await page.waitForTimeout(300);
+  await page.click(".coach-offer [data-o=yes]");
+  await page.waitForTimeout(700);
+  let b = await bubble();
+  ok(b && b.on && /role/i.test(b.title), `tour: starts on your role card, fully on screen (${JSON.stringify(b)})`);
+  if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, "tour-1.png") });
+  await page.click(".coach-bubble [data-coach=next]");
+  await page.click("#olBegin");
+  await page.waitForTimeout(900);
+  b = await bubble();
+  ok(b && b.on && /table/i.test(b.title), `tour: moves to the table once the game begins (${JSON.stringify(b)})`);
+  const ev0 = await page.evaluate(() => JSON.stringify([Solo.table.phase, Solo.table.votedUids, Solo.table.nomineeUid]));
+  await page.waitForTimeout(2500);
+  const ev1 = await page.evaluate(() => JSON.stringify([Solo.table.phase, Solo.table.votedUids, Solo.table.nomineeUid]));
+  ok(ev0 === ev1, `tour: the computers wait while a note is being read (${ev0} → ${ev1})`);
+  if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, "tour-3.png") });
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(1200);
+  b = await bubble();
+  ok(b && b.on && /table/i.test(b.title), `tour: a reload carries on at the same step (${JSON.stringify(b)})`);
+  await page.click("#olRulesBtn");
+  await page.waitForTimeout(1200);
+  const rules = await page.evaluate(() => { const r = document.querySelector(".coach-rules"); const x = r && r.getBoundingClientRect(); return r && { top: x.top, bottom: x.bottom, vh: innerHeight, txt: r.textContent.slice(0, 40) }; });
+  ok(rules && rules.top >= 0 && rules.bottom <= rules.vh + 1 && /How to play/.test(rules.txt), `"?" opens the short rules on screen (${JSON.stringify(rules)})`);
+  if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, "rules.png") });
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  ok(!(await page.evaluate(() => window.COACH.rulesOpen())), "Esc closes the rules");
+  ok(errors.length === 0, "tour: no page errors (" + errors.join(" | ") + ")");
+  await ctx.close();
+}
+
 // Reload mid-game resumes it; Back asks before quitting.
 {
-  const { ctx, page, errors } = await open({ "secretHitler.soloPick.v1": JSON.stringify({ n: 7, level: "easy" }) });
+  const { ctx, page, errors } = await open({ "secretHitler.soloPick.v1": JSON.stringify({ n: 7, level: "easy"}), "coach-offer:sh-solo-first": "1" });
   await page.click("#btnMenuSolo");
   await page.click("#soloGo");
   await page.click("#olBegin");

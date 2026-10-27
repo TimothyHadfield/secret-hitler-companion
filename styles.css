@@ -1105,6 +1105,8 @@ body.lie-on span.lie-col { display: inline; }
 .ol-play .ol-action .control-row { margin-top: 0; }
 .ol-play .ol-action .control-row > button { flex: 1 1 0; } /* Ja / Nein (and other pairs) side by side, equal width */
 .ol-claims { display: grid; grid-template-columns: 1fr 1fr; }
+#onlineScreen .ol-rulesbtn { margin-left: auto; flex: 0 0 auto; font-weight: 800; }
+:root { --coach-accent: var(--gold); }
 /* My stats panel (game-profile kit) in this site's colours */
 .pf-panel { --card: var(--panel); --text: var(--ink); --accent: var(--gold); --good: var(--lib-2); --bad: var(--fac-2); }
 .ol-claims .ol-choice { padding: 6px 8px; }

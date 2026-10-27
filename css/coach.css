@@ -1,0 +1,104 @@
+/* coach.css: guided first game + rules sheet (game-coach 1.0.0). Copy unchanged into css/coach.css.
+   Looks like paper on the table: a cream note card for the coach, a printed rulebook sheet for the rules.
+   Theme with the variables below (set them on :root in the game's own css). Original look only. */
+:root {
+  --coach-paper: #fbf6e9;
+  --coach-paper-2: #f2ead6;
+  --coach-ink: #2b2519;
+  --coach-muted: #6d6452;
+  --coach-line: #d9ceb4;
+  --coach-accent: var(--accent, #2f6fdb);
+  --coach-accent-ink: #fff;
+  --coach-dim: rgba(6, 8, 12, .58);
+  --coach-z: 60;
+  /* --coach-offer-bottom: the offer card's gap from the bottom (set it above a bottom tab bar) */
+  --coach-font: inherit;
+}
+
+/* ---------------------------------------------------------------- tour layer */
+.coach-layer { position: fixed; inset: 0; z-index: var(--coach-z); pointer-events: none; font-family: var(--coach-font); }
+.coach-layer.coach-off { display: none; }
+/* four panels dim everything around the hole; taps pass through unless the step blocks them */
+.coach-block { position: fixed; background: var(--coach-dim); pointer-events: none; }
+.coach-blocking .coach-block { pointer-events: auto; }
+.coach-ring { position: fixed; border-radius: 10px; pointer-events: none;
+  box-shadow: 0 0 0 3px var(--coach-accent), 0 0 0 7px color-mix(in srgb, var(--coach-accent) 30%, transparent), 0 0 22px 4px color-mix(in srgb, var(--coach-accent) 45%, transparent);
+  animation: coach-glow 1.6s ease-in-out infinite; }
+@keyframes coach-glow { 50% { box-shadow: 0 0 0 3px var(--coach-accent), 0 0 0 10px color-mix(in srgb, var(--coach-accent) 18%, transparent), 0 0 30px 8px color-mix(in srgb, var(--coach-accent) 35%, transparent); } }
+
+/* the note card: cream paper, a little tilt-free shadow like a card lying on the table */
+.coach-bubble, .coach-offer {
+  position: fixed; pointer-events: auto; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
+  background: linear-gradient(180deg, var(--coach-paper), var(--coach-paper-2)); color: var(--coach-ink);
+  border: 1px solid var(--coach-line); border-radius: 12px; padding: 12px 13px 10px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 10px 28px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.3);
+  font-size: 15px; line-height: 1.42; -webkit-text-size-adjust: 100%;
+}
+.coach-title { display: block; font-size: 16px; margin: 0 0 3px; }
+.coach-text { margin: 0 0 9px; }
+.coach-text p { margin: 0 0 6px; }
+.coach-text b, .coach-text strong { color: inherit; }
+.coach-row { display: flex; align-items: center; gap: 8px; }
+.coach-count { flex: 1; font-size: 12.5px; color: var(--coach-muted); font-variant-numeric: tabular-nums; }
+.coach-offer .coach-row { justify-content: flex-end; }
+.coach-btn { min-height: 38px; padding: 0 14px; border-radius: 9px; border: 1px solid var(--coach-line); background: #fff; color: var(--coach-ink);
+  font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.coach-btn.primary { background: var(--coach-accent); border-color: var(--coach-accent); color: var(--coach-accent-ink); }
+.coach-btn.ghost { background: transparent; border-color: transparent; color: var(--coach-muted); padding: 0 8px; }
+.coach-btn:active { transform: scale(.97); }
+.coach-btn:focus-visible, .coach-x:focus-visible, .coach-rules-nav button:focus-visible { outline: 2px solid var(--coach-accent); outline-offset: 2px; }
+
+.coach-bubble.enter, .coach-offer.enter { animation: coach-in .22s ease-out; }
+@keyframes coach-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+.coach-bubble.nudge { animation: coach-nudge .32s ease-in-out; }
+@keyframes coach-nudge { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+/* "first time here?" card: bottom centre, above the game, never a full-screen wall */
+.coach-offer { left: 50%; transform: translateX(-50%); bottom: calc(var(--coach-offer-bottom, 14px) + env(safe-area-inset-bottom)); width: min(360px, calc(100vw - 16px));
+  z-index: calc(var(--coach-z) - 2); }
+.coach-offer.enter { animation: coach-offer-in .25s ease-out; }
+@keyframes coach-offer-in { from { opacity: 0; transform: translate(-50%, 10px); } }
+
+/* ---------------------------------------------------------------- rules sheet (a printed rulebook page) */
+.coach-rules-back { position: fixed; inset: 0; z-index: calc(var(--coach-z) + 5); background: rgba(0,0,0,.55);
+  display: flex; align-items: flex-end; justify-content: center; font-family: var(--coach-font); }
+.coach-rules { box-sizing: border-box; width: 100%; max-width: 640px; height: min(92dvh, 900px); display: flex; flex-direction: column;
+  background: linear-gradient(180deg, var(--coach-paper), var(--coach-paper-2)); color: var(--coach-ink);
+  border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.45); overflow: hidden; }
+.coach-rules-back.enter .coach-rules { animation: coach-up .24s ease-out; }
+@keyframes coach-up { from { transform: translateY(24px); opacity: .4; } }
+.coach-rules-head { display: flex; align-items: center; gap: 8px; padding: 12px 10px 6px 16px; }
+.coach-rules-head b { flex: 1; font-size: 18px; letter-spacing: .01em; }
+.coach-x { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--coach-line); background: #fff; color: var(--coach-ink);
+  font-size: 22px; line-height: 1; cursor: pointer; touch-action: manipulation; }
+.coach-rules-nav { display: flex; gap: 6px; padding: 4px 12px 8px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--coach-line); flex-shrink: 0; }
+.coach-rules-nav::-webkit-scrollbar { display: none; }
+.coach-rules-nav button { flex: 0 0 auto; min-height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid var(--coach-line); background: rgba(255,255,255,.65);
+  color: var(--coach-ink); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+.coach-rules-nav button[aria-current="true"] { background: var(--coach-ink); border-color: var(--coach-ink); color: var(--coach-paper); }
+.coach-rules-body { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 6px 18px calc(18px + env(safe-area-inset-bottom)); font-size: 15.5px; line-height: 1.5; outline: none; }
+.coach-rules-body section { padding: 8px 0 6px; border-bottom: 1px dashed var(--coach-line); }
+.coach-rules-body section:last-of-type { border-bottom: 0; }
+.coach-rules-body h3 { margin: 6px 0 6px; font-size: 17px; }
+.coach-rules-body h4 { margin: 10px 0 4px; font-size: 15.5px; }
+.coach-rules-body p { margin: 0 0 8px; }
+.coach-rules-body ul, .coach-rules-body ol { margin: 0 0 8px; padding-left: 22px; }
+.coach-rules-body li { margin: 2px 0; }
+.coach-rules-body table { border-collapse: collapse; margin: 4px 0 10px; font-size: 14.5px; }
+.coach-rules-body td, .coach-rules-body th { border: 1px solid var(--coach-line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.coach-rules-body .tip { display: block; background: rgba(255,255,255,.6); border-left: 3px solid var(--coach-accent); padding: 6px 10px; border-radius: 0 8px 8px 0; margin: 4px 0 10px; font-size: 14.5px; }
+.coach-rules-intro { color: var(--coach-muted); margin: 6px 0 4px !important; }
+.coach-rules-foot { color: var(--coach-muted); font-size: 13px; margin-top: 12px !important; }
+/* laptop: a centred page instead of a bottom sheet */
+@media (min-width: 760px) and (min-height: 520px) {
+  .coach-rules-back { align-items: center; }
+  .coach-rules { border-radius: 14px; height: min(86vh, 860px); box-shadow: 0 16px 50px rgba(0,0,0,.55); }
+  .coach-rules-body { padding: 8px 26px 22px; }
+}
+
+/* ---------------------------------------------------------------- motion off */
+.coach-still .coach-ring, .coach-still .coach-bubble { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .coach-ring, .coach-bubble, .coach-offer, .coach-rules-back .coach-rules { animation: none !important; }
+}
