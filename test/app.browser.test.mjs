@@ -126,9 +126,11 @@ async function open(ls, opts = {}) {
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e.message || e)));
-  // Real page loads = requests for the HTML (a history.replaceState isn't one).
-  const navs = { get length() { return pageLoads - before; } };
-  const before = pageLoads;
+  // Real page loads = main-frame navigation requests (a history.replaceState isn't
+  // one; the service worker's and js/pwa.js's own fetches of the HTML aren't either).
+  let loads = 0;
+  page.on("request", (r) => { if (r.isNavigationRequest() && r.frame() === page.mainFrame()) loads++; });
+  const navs = { get length() { return loads; } };
   await page.goto(BASE + (opts.path || "/"), { waitUntil: "load" });
   await page.waitForTimeout(opts.settle == null ? 600 : opts.settle);
   return { ctx, page, errors, navs };

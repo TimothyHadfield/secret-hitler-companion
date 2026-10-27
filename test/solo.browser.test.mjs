@@ -132,7 +132,7 @@ await playOne(10, "hard");
   const before = await page.evaluate(() => JSON.stringify(window.Solo.state.seatOrder) + window.Solo.state.events.length);
   await page.reload({ waitUntil: "load" });
   await page.waitForTimeout(400);
-  await page.click("#btnMenuSolo");
+  ok(await page.isVisible("#onlineScreen .ol-felt"), "reload: lands straight back in the computer game (no menu tap)");
   await page.waitForSelector(".ol-felt");
   const after = await page.evaluate(() => JSON.stringify(window.Solo.state.seatOrder) + window.Solo.state.events.length);
   ok(before.split("]")[0] === after.split("]")[0], "reload: the same game resumes (same seats)");

@@ -1,0 +1,10 @@
+{
+  "repo": "secret-hitler-companion",
+  "ready": "!!(window.Solo && document.querySelector('#menuScreen:not(.hidden) #btnMenuSolo, #onlineScreen:not(.hidden) .ol-felt'))",
+  "play": [
+    "(async () => { const w = ms => new Promise(r => setTimeout(r, ms)); if (!Solo.active) { document.getElementById('btnMenuSolo').click(); await w(150); document.getElementById('soloGo').click(); await w(150); } Solo.delay = 60; const b = document.getElementById('olBegin'); if (b) b.click(); await w(400); const c = document.querySelector('#olAction .ol-choice, #olJa'); if (c) c.click(); })()"
+  ],
+  "played": "!!(window.Solo && Solo.table && ((Solo.table.votedUids || []).length >= 1 || Solo.table.events.length > 0 || ['nominate', 'vote'].indexOf(Solo.table.phase) < 0))",
+  "safe": "(() => { document.getElementById('btnBackFromOnline').click(); const y = document.getElementById('cfYes'); if (y) y.click(); })()",
+  "debug": "JSON.stringify({ active: !!Solo.active, phase: Solo.table && Solo.table.phase, voted: Solo.table && Solo.table.votedUids, ev: Solo.table && Solo.table.events.length, action: (document.getElementById('olAction') || {}).textContent })"
+}

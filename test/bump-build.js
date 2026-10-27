@@ -18,6 +18,7 @@ if (!id) {
 const js = fs.readFileSync(f("js/build.js"), "utf8").replace(/(window\.SH_BUILD\s*=\s*")[^"]+(")/, `$1${id}$2`);
 fs.writeFileSync(f("js/build.js"), js);
 fs.writeFileSync(f("version.json"), JSON.stringify({ build: id }) .replace("{", "{ ").replace("}", " }") + "\n");
-const html = fs.readFileSync(f("index.html"), "utf8").replace(/\?v=[^"]+"/g, `?v=${id}"`);
+const html = fs.readFileSync(f("index.html"), "utf8").replace(/\?v=[^"]+"/g, `?v=${id}"`)
+  .replace(/data-version="[^"]*"/g, `data-version="${id}"`); // js/pwa.js (home-screen kit) cache name
 fs.writeFileSync(f("index.html"), html);
 console.log(`build ${old} -> ${id}`);

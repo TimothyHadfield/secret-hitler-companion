@@ -29,6 +29,14 @@ ok(refs.some((u) => u.startsWith("js/build.js")), "index.html loads js/build.js"
 const iBuild = html.indexOf("js/build.js"), iApp = html.indexOf("js/app.js");
 ok(iBuild >= 0 && iBuild < iApp, "js/build.js loads before js/app.js");
 
+// Home-screen kit: manifest linked, js/pwa.js before app.js (plain script, no defer)
+// with data-version = this build, and the service worker at the site root.
+const pwaTag = (/<script\b[^>]*src="js\/pwa\.js[^"]*"[^>]*>/.exec(html) || [""])[0];
+ok(/<link rel="manifest" href="manifest\.webmanifest">/.test(html), "index.html links manifest.webmanifest");
+ok(pwaTag.includes(`data-version="${BUILD}"`), `js/pwa.js carries data-version="${BUILD}"`);
+ok(pwaTag && !/\bdefer\b/.test(pwaTag) && html.indexOf("js/pwa.js") < iApp, "js/pwa.js loads (not deferred) before js/app.js");
+ok(fs.existsSync(path.join(ROOT, "sw.js")) && fs.existsSync(path.join(ROOT, "manifest.webmanifest")), "sw.js + manifest.webmanifest at the root");
+
 // The modules must not import local files (those would escape the ?v= stamp).
 ["cloud.js", "online.js"].forEach((f) => {
   const src = fs.readFileSync(path.join(ROOT, "js", f), "utf8");

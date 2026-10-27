@@ -4905,6 +4905,12 @@
       if (Array.isArray(saved)) setupPlayers = saved;
     } catch (e) {}
     show("menuScreen");
+    // An unfinished game vs the computers comes straight back after a reload
+    // (not when the page was opened from a group invite link).
+    if (window.Solo && Solo.hasSaved() && !/[?&]join=/.test(location.search || "")) openSolo();
   }
+  // Home-screen kit (js/pwa.js): reload onto a new deploy only when nothing is lost.
+  // Stricter than the version.json check: never off the plain menu, tapped or not.
+  if (window.PWA) PWA.safeToReload = () => !$("menuScreen").classList.contains("hidden") && updateIsSafe();
   checkForUpdate(); // startup: always allowed until the first tap
 })();
