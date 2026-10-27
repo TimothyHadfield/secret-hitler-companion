@@ -1,13 +1,13 @@
 # Secret Hitler Companion — progress (handoff for Claude)
 
 ## START HERE
-_Last updated 2026-10-17 (batch 1: auto-update to new builds + four sweep bug fixes, commit `3d43c5b`). For Claude only; Tim doesn't read this. Catch-up authorizes nothing: only "Authorized next steps" below is approved work._
+_Last updated 2026-10-27 (improve pass piece 1: play vs computers, live table look, sounds). For Claude only; Tim doesn't read this. Catch-up authorizes nothing: only "Authorized next steps" below is approved work._
 1. Read this file (it's short on purpose). There is no `direction.md`.
 2. **Before touching anything Firebase, read `DATA_SAFETY.md`** (rule zero). Deep detail on any feature: the pre-migration snapshot `docs/archive/progress-2026-09-21.md` (95 KB, full feature-by-feature notes).
 3. Skim the last 3 entries of `CHAT.md`. Sessions 1–27: `docs/archive/chat-archive.md`.
 
 ## Goal right now
-No active build. The app is feature-complete (companion + analyzer + accounts/groups + full online play + admin-editable handbooks). Next work is whatever Tim picks; the online-play improvements brainstorm (Rejected / parked) is the obvious candidate list.
+Improve pass (manager's common brief, 2026-10-27): beat secrethitler.io. Done: play vs computers + table look + sounds. Next pieces: computers fill empty online seats (with a Firestore-writes budget), two-page online test on fakes, `_coach` rules + guided first game, `_profile` My stats, `_pwa` install.
 
 ## Status
 | Area | State | Notes |
@@ -21,6 +21,8 @@ No active build. The app is feature-complete (companion + analyzer + accounts/gr
 | Night narration (device speech + own/shared voices) | live | real voice quality untested (needs device) |
 | Rules + Game theory handbooks, admin-editable | live | admin = `timhadfield7@gmail.com`, enforced in `firestore.rules` |
 | Online play (host-authoritative) | live | real multi-client round-trip never tested (see NOT verified) |
+| Play vs computers (5–10 players, Easy/Normal/Hard) | live 10-27 | `js/bots.js` + `js/solo.js`; self-play `test/bots.test.js`, UI `test/solo.browser.test.mjs`; not recorded to Stats |
+| Live table look + sounds | live 10-27 | `_table` 1.0.2 (`css/table.css`, `js/table.js`) + `_fx` 1.0.3 (`js/fx.js`); kit copies unchanged, don't edit |
 | Accessibility | half-built | first pass done; History table / stats bars aria + full audit open |
 | Vote tracking, chancellor-claim capture | parked by Tim | "keep the site as simple as possible" |
 
@@ -121,9 +123,11 @@ No active build. The app is feature-complete (companion + analyzer + accounts/gr
   Also: meta description, gstatic preconnect, icon-512 lossless recompression, and a new `CLAUDE.md`. Report: laptop-ops `coding-and-claude/reports/sweep-2026-10-16/secret-hitler-companion.md`.
 - D42 · 2026-10-17 · Auto-update: `version.json` fetched no-store at startup + on return to visible; differs → `location.replace(?b=<new>)` keeping query/hash, only before the first tap or on the plain menu (no dialog, typing, online table, night draft); sessionStorage `secretHitler.reloadedFor` = one try per build, never loops.
 - D43 · 2026-10-17 · Batch-1 fixes: fit "Use these rates"/"Use defaults" redraw their own stats mount; `Stats` writes return false on a full quota (handler shows the existing storage-full toast; saveRoles stays on screen); `ratioOf()` falls back to "?" for malformed `claimLibs`; night recorder mic request carries a ticket (re-entrant taps ignored, stream stopped if the user left).
+- D44 · 2026-10-27 · Computers see only `publicView` + their own `privateView` (fair). Levels by measured Liberal win rate vs Normal Fascists: Normal 66%, Hard Liberals 95%; Fascist strength Easy/Normal/Hard → Liberals win 73/66/58%. Solo reuses the online screens via `window.Solo` (same interface as `window.Online`); solo games are not written to Stats. Live table is the companion's own boards on a felt; phone ≤620 px tall and landscape phones get compact rules in styles.css.
 - D41 · 2026-09-27 · Phone rounds strip (≤640px) uses tighter block spacing so two round blocks fit whole at 375px; before, the strip scrolled to the current round and cut ~19–37px off Round 1. With 3+ rounds older blocks still scroll off (by design).
 
 ## NOT verified
+- Play vs computers on a real iPhone (sounds, haptics, landscape notch) · WebKit headless only, 5 sizes. `test/rules.test.js` (emulator) not rerun 10-27 (rules unchanged).
 - Real multi-client online game (several accounts, each reading only its private doc, host processing remote actions) · needs a real multi-device game.
 - Night narration real voice quality + mic recording · needs a real device. The 10-17 mic-left-on fix is proven with a mocked getUserMedia/MediaRecorder in WebKit only, not a real iPhone mic.
 - Auto-update on a real iPhone (home-screen app, Safari back-forward cache, Pages CDN timing) · proven only in WebKit with a local server (old page → new build once; stale host → one try, no loop; no reload mid-game or with Settings open).

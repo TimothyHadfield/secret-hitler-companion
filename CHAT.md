@@ -8,32 +8,6 @@ and our collaboration evolved.
 
 ---
 
-## Session 28 — fix: policy peek wasn't scored until the next hand was drawn
-
-**User bug report:** set up a round with only 2 liberals in the pool (known, post-reshuffle), then
-the peeking president claimed the top 3 were all liberal — a provable lie — but their fascist odds
-didn't move at all, and "the recording of the power decision got removed."
-
-**Root cause.** The peek was only scored by tying it to the NEXT government's hand (the cards it
-describes). Until that government was played — the live case, and the reshuffled case — the peek was
-"unverified" and contributed nothing. So a peek claiming more liberals than the pool can hold, a
-certain lie by conservation, moved nothing. (The "removed" was the same thing surfacing as the
-board's "(reshuffled)" strike-through on an unscored peek.)
-
-**Fix.** A peek that no government has drawn is now added to its round as a **phantom hand** — a
-vetoed pseudo-government reported by the peeker that consumes 3 real cards — so the round
-conservation law prices it right away. `analyzeRoles` classifies each peek: a next government in the
-same round ⇒ attach as a second report of that hand (unchanged); otherwise ⇒ phantom. The History
-lie chip matches: checked against the drawn hand when available, else against the round pool by
-conservation (so an impossible claim reads ~100% immediately). Phantom "governments" are excluded
-from the nomination signal.
-
-**Verified:** engine — an impossible phantom peek (claim 3L from a 2-liberal pool) lifts the peeker
-0.34 → **0.84**; a plausible one moves far less; the from-scratch brute-force mirror + all invariants
-still hold (**66 assertions**, up from 64). App — after recording the peek, the History row now shows
-a real lie estimate ("64% likely a lie") immediately instead of "unverified", with the 👁 recording
-intact.
-
 ## Session 29 — chronological game replay in the review (with live role odds)
 
 **User ask:** step through a saved game in the Stats section with back/forth arrows to "follow what
@@ -740,3 +714,9 @@ and Rules becomes admin-editable with zero new machinery.
 - **Built:** `js/build.js` + `version.json` + `?v=` on every local file; app.js update check (startup / return-to-visible, safe screens only, one try per build); build stamp at the bottom of Settings; `test/bump-build.js`. Fixed: fit panel refresh on the in-game Stats tab, full-quota writes in stats.js, malformed `claimLibs` crash, night recorder mic left on.
 - **Verified how:** each new test seen failing on the old code first (stats 10 fail, browser 18 fail), then all green on main; WebKit screenshots of Settings at 393 px and 1440 px (local + live); live `version.json` and index.html curled showing `2026-10-17.1`.
 - **Open:** real-iPhone check of auto-update and the mic fix (see NOT verified).
+
+## 2026-10-27 · Improve pass, piece 1: play vs computers (builder agent, branch `improve-computers`)
+- **Asked (Tim, via manager, common improve brief):** "start building every single improvement you can think of after your competitor analysis"; goal here: computer players with measured levels so one person can play a full 5–10 player game, real-table look (`_table`), sounds (`_fx`), no-scroll phone + laptop.
+- **Built:** `js/bots.js` (computer players; Bayesian read of claims, plus votes/nominations at Hard; Fascists bluff claims), `js/solo.js` (on-device host, resumes after reload), menu "Play vs computers" + setup (5–10 players, Easy/Normal/Hard), live table on felt with `_table` card stacks, `_fx` sounds + settings, "Fast computers" setting, landscape + small-phone layouts, license line in Settings.
+- **Verified how:** `test/bots.test.js` self-play (Liberal win rate, normal Liberals vs easy/normal/hard Fascists 73/66/58%, hard vs normal 95%, 360 mixed games 0 illegal); `test/solo.browser.test.mjs` plays full 5p/10p games through the UI in WebKit (failed first at 15 px overflow on the claim step, now 19/0); 5-size WebKit sweep (393, 320×568, 659×393, 1280, 1440): 0 px overflow, 0 errors; full suite green.
+- **Open:** computers filling empty online seats, online two-page test, `_coach`/`_profile`/`_pwa` (next pieces).
