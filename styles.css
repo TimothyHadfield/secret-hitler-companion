@@ -1107,6 +1107,12 @@ body.lie-on span.lie-col { display: inline; }
 .ol-claims { display: grid; grid-template-columns: 1fr 1fr; }
 #onlineScreen .ol-rulesbtn { margin-left: auto; flex: 0 0 auto; font-weight: 800; }
 :root { --coach-accent: var(--gold); }
+/* The site's button:hover (dark fill) out-ranks the kit's .coach-btn and stuck after a
+   tap on iPhone, leaving "Back" dark-on-dark. Keep the kit's own colours on hover. */
+.coach-btn:hover, .coach-x:hover { background: #fff; color: var(--coach-ink); border-color: var(--coach-line); }
+.coach-btn.primary:hover { background: var(--coach-accent); border-color: var(--coach-accent); color: var(--coach-accent-ink); }
+.coach-btn.ghost:hover { background: transparent; border-color: transparent; color: var(--coach-muted); }
+.coach-rules-nav button:not([aria-current="true"]):hover { background: rgba(255,255,255,.65); border-color: var(--coach-line); }
 /* My stats panel (game-profile kit) in this site's colours */
 .pf-panel { --card: var(--panel); --text: var(--ink); --accent: var(--gold); --good: var(--lib-2); --bad: var(--fac-2); }
 .ol-claims .ol-choice { padding: 6px 8px; }

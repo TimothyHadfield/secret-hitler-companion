@@ -899,6 +899,7 @@
     const p = soloLoad();
     try { localStorage.setItem("secretHitler.soloPick.v1", JSON.stringify(p)); } catch (e) {}
     soloSetup = false;
+    if (window.COACH) COACH.closeOffer();
     window.Solo.start({ n: p.n, level: p.level, name: soloMyName() });
   }
 
@@ -1135,7 +1136,7 @@
 
   // -- live game: board + table + the current step's controls -----------------
   const CLAIM_LABELS = ["Coal · 3F", "Golden · 2F 1L", "Silver · 1F 2L", "Bronze · 3L"]; // index = #liberals claimed
-  let olForm = { discard: null }; // transient President discard selection
+  let olForm = { discard: null, killPick: null }; // transient President picks (discard; Execute target awaiting a second tap)
 
   // Fascist odds per seat, reusing the analyzer — computed by briefly swapping in
   // an online-derived review state (restored immediately). Only when the setting
@@ -1167,7 +1168,7 @@
       const empty = i >= t.facEnacted;
       fac += `<div class="sh-slot${i === 5 ? " win" : ""}${empty && i >= 3 ? " hitler" : ""}" data-fslot="${i}">` +
         (i < t.facEnacted ? `<div class="policy-card F"><span class="glyph">✕</span></div>` : i === 5 ? `<span class="win-x">WIN</span>` : "") +
-        (i === 4 ? `<div class="veto-sign">Veto</div>` : "") + `</div>`;
+        (i === 4 && i >= t.facEnacted ? `<div class="veto-sign">Veto</div>` : "") + `</div>`;
     }
     let lib = "";
     for (let i = 0; i < 5; i++) {
@@ -1237,7 +1238,7 @@
       if (ty === "gov") {
         const pol = e.vetoed ? "vetoed" : (e.enacted === "F" ? "Fascist" : e.enacted === "L" ? "Liberal" : "—");
         const claim = CLAIM_LABELS[e.claimLibs] ? " · claim " + CLAIM_LABELS[e.claimLibs].split(" · ")[1] : "";
-        const pw = e.power ? " · " + e.power.type.replace("-", " ") : "";
+        const pw = e.power ? " · " + e.power.type.replace("-", " ") + (e.power.target != null && t.seatOrder[e.power.target] ? ": " + nm(e.power.target) : "") : "";
         return `<div class="ol-hrow"><b>${nm(e.presidentIdx)}</b> → ${nm(e.chancellorIdx)}: <span class="${e.enacted === "F" ? "c-fac" : "c-lib"}">${pol}</span>${claim}${pw}</div>`;
       }
       if (ty === "fail") return `<div class="ol-hrow muted">${t.seatOrder[e.presidentIdx] === (online() && online().me && online().me.uid) ? "Your" : nm(e.presidentIdx) + "’s"} government failed</div>`;
@@ -1444,8 +1445,14 @@
         } else {
           const label = kind === "investigate" ? "Investigate a player's party" : kind === "special" ? "Choose the next President" : "Execute a player";
           const opts = t.seatOrder.filter((u) => u !== meUid && (t.deadUids || []).indexOf(u) < 0 && (kind !== "investigate" || (t.investigatedUids || []).indexOf(u) < 0));
-          wrap.innerHTML = `<div class="ol-prompt">${label}:</div><div class="ol-choices">${opts.map((u) => `<button class="ol-choice" data-u="${escapeHtml(u)}">${nm(u)}</button>`).join("")}</div>`;
-          wrap.querySelectorAll(".ol-choice").forEach((b) => b.onclick = () => send({ type: "power", target: b.dataset.u }, b));
+          // Execute can't be undone: the first tap picks, a second tap on the same name confirms.
+          const arm = kind === "execute" ? olForm.killPick : null;
+          wrap.innerHTML = `<div class="ol-prompt">${label}${kind === "execute" ? (arm ? " — tap again to confirm" : " (tap twice)") : ""}:</div><div class="ol-choices">${opts.map((u) => `<button class="ol-choice${u === arm ? " sel" : ""}" data-u="${escapeHtml(u)}">${u === arm ? "Execute " : ""}${nm(u)}</button>`).join("")}</div>`;
+          wrap.querySelectorAll(".ol-choice").forEach((b) => b.onclick = () => {
+            if (kind === "execute" && olForm.killPick !== b.dataset.u) { olForm.killPick = b.dataset.u; renderOnlineAction(t, pv, meUid, O, over); return; }
+            olForm.killPick = null;
+            send({ type: "power", target: b.dataset.u }, b);
+          });
         }
       } else {
         const label = kind === "investigate" ? "investigating a player" : kind === "special" ? "calling a special election" : kind === "peek" ? "peeking at the deck" : "choosing who to execute";
@@ -1454,6 +1461,7 @@
     }
     // reset the President's transient discard selection if we've moved on
     if (phase !== "president_play") olForm.discard = null;
+    if (phase !== "power_execute") olForm.killPick = null;
   }
 
   // ------------------------------ SETUP --------------------------------------

@@ -199,6 +199,48 @@ await playOne(10, "hard");
   await ctx.close();
 }
 
+// Player-review fixes: the guided-game offer goes away once you deal; the Veto label
+// never sits on an enacted card; Execute needs a second tap; the history names who
+// a power hit.
+{
+  const { ctx, page, errors } = await open({ "secretHitler.soloPick.v1": JSON.stringify({ n: 7, level: "normal" }) });
+  await page.click("#btnMenuSolo");
+  await page.waitForTimeout(300);
+  ok(await page.isVisible(".coach-offer"), "review: the offer shows on the setup screen");
+  await page.click("#soloGo");
+  await page.waitForTimeout(400);
+  ok(!(await page.isVisible(".coach-offer")), "review: dealing roles closes the guided-game offer");
+  await page.evaluate(() => { window.Solo.delay = 1e7; }); // freeze the computers
+  await page.evaluate(() => document.getElementById("olBegin").click());
+  await page.waitForSelector(".ol-felt");
+  // Put five Fascist laws down and hand YOU the Execute power.
+  await page.evaluate(() => {
+    const S = window.Solo.state;
+    S.facEnacted = 5;
+    S.presIdx = S.seatOrder.indexOf("you");
+    const other = S.seatOrder.find((u) => u !== "you");
+    S.events.push({ type: "gov", presidentIdx: S.presIdx, chancellorIdx: S.seatOrder.indexOf(other), claimLibs: 0, conflict: false, enacted: "F" });
+    S._powerEventIdx = S.events.length - 1;
+    S.phase = "power_execute";
+    window.Solo.refresh();
+  });
+  await page.waitForTimeout(200);
+  const both = await page.evaluate(() => [...document.querySelectorAll(".sh-slot")].filter((s) => s.querySelector(".policy-card") && s.querySelector(".veto-sign")).length);
+  ok(both === 0, `review: the Veto label is hidden under an enacted card (${both} slots show both)`);
+  const target = await page.evaluate(() => { const b = [...document.querySelectorAll("#olAction .ol-choice")].find((x) => x.dataset.u !== window.Solo.state.hitlerUid); return { uid: b.dataset.u, name: window.Solo.state.names[b.dataset.u] }; });
+  await page.evaluate((u) => document.querySelector("#olAction .ol-choice[data-u='" + u + "']").click(), target.uid);
+  await page.waitForTimeout(200);
+  const mid = await page.evaluate(() => ({ phase: window.Solo.state.phase, dead: window.Solo.state.deadUids.slice(), txt: document.querySelector("#olAction").textContent }));
+  ok(mid.phase === "power_execute" && mid.dead.length === 0, `review: one tap on Execute doesn't kill yet (${JSON.stringify(mid)})`);
+  await page.evaluate((u) => { const b = document.querySelector("#olAction .ol-choice[data-u='" + u + "']"); if (b) b.click(); }, target.uid);
+  await page.waitForTimeout(300);
+  const done = await page.evaluate(() => ({ dead: window.Solo.state.deadUids.slice(), hist: (document.querySelector(".ol-history") || {}).textContent || "" }));
+  ok(done.dead.indexOf(target.uid) >= 0, `review: the second tap executes (${JSON.stringify(done.dead)})`);
+  ok(new RegExp("execution[^A-Za-z]*" + target.name).test(done.hist),`review: the history names who was executed (${done.hist.slice(0, 120)})`);
+  ok(errors.length === 0, "review: no page errors (" + errors.join(" | ") + ")");
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 console.log(`solo.browser: ${pass} passed, ${fail} failed`);

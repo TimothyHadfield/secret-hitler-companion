@@ -1,45 +1,12 @@
 # CHAT LOG — Secret Hitler Companion
 
-_Older entries (Sessions 1–27, 2026-07-21 → 2026-07-27) moved unchanged to `docs/archive/chat-archive.md` on 2026-09-21. Cap 60 KB; current state is in `PROGRESS.md`._
+_Older entries (Sessions 1–29; 28–29 moved 2026-10-27, 2026-07-21 → 2026-07-27) moved unchanged to `docs/archive/chat-archive.md` on 2026-09-21. Cap 60 KB; current state is in `PROGRESS.md`._
 
 A running, human-readable log of what the user asked for and what I changed, session by
 session. Newest at the bottom. Kept short on purpose — for reflecting on how the project
 and our collaboration evolved.
 
 ---
-
-## Session 29 — chronological game replay in the review (with live role odds)
-
-**User ask:** step through a saved game in the Stats section with back/forth arrows to "follow what
-happened throughout the game" — showing the President + Chancellor + what they enacted + any power
-plays, and watching **P(liberal)/P(fascist)** for each player evolve as the game goes on.
-
-**Design — reuse the derive-from-events architecture.** The whole board is a pure function of
-`state.events`, so a replay is just "truncate the event log to step *k* and re-render." No new engine
-code: `reviewGoto(k)` sets `state.events = _reviewEvents.slice(0, k)` and calls the normal
-`renderGame()`, so the table, policy tracks, piles, History and the role posterior all recompute for
-that moment. The saved game is never touched (review never persists).
-
-**What's new:**
-- `openReview()` seeds `_reviewEvents`, `reviewStep` (opens at the end = the existing reveal), and a
-  `playback` flag (true whenever short of the end). `rolesOn()` now also fires during a playback, so
-  the role model runs regardless of the two settings switches — the user explicitly asked to watch it.
-- **Stepper** in the review panel: `⏮ ◀ k / N ▶ ⏭` + **← / → arrow keys** (a first for the app — it
-  had no key handlers). A one-line **caption** per step (round, `Pres P → Chan C`, ratio claimed,
-  policy enacted, and any power via the existing `powerAnnotation`; fail/chaos/Hitler variants).
-- **`renderTable` playback mode:** while short of the end it **hides the true roles** (the reveal is
-  the final step) and instead badges the P/C of the step just revealed and shows every seat's live
-  fascist-% chip. The final step is the unchanged reveal (role colours + who won + stored odds ✓/✗).
-- **`livePlayerOdds()`** — the panel's per-player read at the current step: `NN%F` + its complement
-  `NN%L`, sorted most-suspect first, with a `♛` Hitler-suspicion flag. Reuses the `.ro-*` styling.
-
-**Verified** with the headless-Chrome recipe (seed a completed 7-player Fascist-win game into
-localStorage, drive the *real* Stats → review UI): all 13 assertions pass — captions carry the right
-actors/policy/powers (🔍 invest, ⚡→ special, 💀 kill), P/C badges track the revealed step, the odds
-list moves from ~base-rate at step 1 to a sharp read by step 7 and re-sorts, round advances across the
-reshuffle, back-stepping + arrow keys work, and the final step still reveals roles. Desktop + phone
-screenshots confirm the stepper fits the right control column and the below-table strip respectively.
-Files touched: `js/app.js`, `styles.css` only (no engine/test changes; the site stays dependency-free).
 
 ## Session 30 — main-menu hub + back-anywhere navigation
 
@@ -719,4 +686,5 @@ and Rules becomes admin-editable with zero new machinery.
 - **Asked (Tim, via manager, common improve brief):** "start building every single improvement you can think of after your competitor analysis"; goal here: computer players with measured levels so one person can play a full 5–10 player game, real-table look (`_table`), sounds (`_fx`), no-scroll phone + laptop.
 - **Built:** `js/bots.js` (computer players; Bayesian read of claims, plus votes/nominations at Hard; Fascists bluff claims), `js/solo.js` (on-device host, resumes after reload), menu "Play vs computers" + setup (5–10 players, Easy/Normal/Hard), live table on felt with `_table` card stacks, `_fx` sounds + settings, "Fast computers" setting, landscape + small-phone layouts, license line in Settings.
 - **Verified how:** `test/bots.test.js` self-play (Liberal win rate, normal Liberals vs easy/normal/hard Fascists 73/66/58%, hard vs normal 95%, 360 mixed games 0 illegal); `test/solo.browser.test.mjs` plays full 5p/10p games through the UI in WebKit (failed first at 15 px overflow on the claim step, now 19/0); 5-size WebKit sweep (393, 320×568, 659×393, 1280, 1440): 0 px overflow, 0 errors; full suite green.
-- **Open:** computers filling empty online seats, online two-page test, `_coach`/`_profile`/`_pwa` (next pieces).
+- **Later pieces (same day):** `_pwa` install, `_profile` My stats (Elo 1070/1200/1290 after making the level set only the other team's strength), `_coach` "?" rules + guided first game, then one player-review pass: Execute needs two taps, history names power targets, Veto label hides under a card, offer closes on Deal, coach Back readable. Tests: solo.browser 40/0 (new asserts failed first on the old build), app.browser 30/0, bots 13/0, build 35/0.
+- **Stopped:** computers in online seats + two-page online test. Measured: a 7-player online game costs ~930 writes / ~1,270 reads; a busy day is ~40K writes, over the brief's 2K (10%) limit even after diffing (~16K). Tim's call (see PROGRESS Goal).
