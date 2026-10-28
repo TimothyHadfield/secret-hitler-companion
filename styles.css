@@ -140,6 +140,11 @@ input, select {
   font: inherit; background: #120e0b; color: var(--ink);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
 }
+/* WebKit draws a native select as a white box with this pale text: draw our own */
+select {
+  -webkit-appearance: none; appearance: none; padding-right: 30px;
+  background: #120e0b url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23b8a888' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center / 12px 8px;
+}
 label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; box-shadow: var(--shadow); }

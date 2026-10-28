@@ -1,4 +1,4 @@
-/* coach.css: guided first game + rules sheet (game-coach 1.1.0). Copy unchanged into css/coach.css.
+/* coach.css: guided first game + rules sheet (game-coach 1.2.0). Copy unchanged into css/coach.css.
    Looks like paper on the table: a cream note card for the coach, a printed rulebook sheet for the rules.
    Theme with the variables below (set them on :root in the game's own css). Original look only. */
 :root {
@@ -12,6 +12,8 @@
   --coach-dim: rgba(6, 8, 12, .58);
   --coach-z: 60;
   /* --coach-offer-bottom: the offer card's gap from the bottom (set it above a bottom tab bar) */
+  /* --coach-offer-top: its gap from the top with COACH.offer({ place: 'top' | 'auto' }) (default 10px) */
+  /* --coach-link: link colour inside the rules sheet (default dark ink-blue #2a4f9e) */
   --coach-font: inherit;
 }
 
@@ -94,6 +96,15 @@
 .coach-rules-body table { border-collapse: collapse; margin: 4px 0 10px; font-size: 14.5px; }
 .coach-rules-body td, .coach-rules-body th { border: 1px solid var(--coach-line); padding: 4px 8px; text-align: left; vertical-align: top; }
 .coach-rules-body .tip { display: block; background: rgba(255,255,255,.6); border-left: 3px solid var(--coach-accent); padding: 6px 10px; border-radius: 0 8px 8px 0; margin: 4px 0 10px; font-size: 14.5px; }
+/* links: dark ink-blue on the cream paper (the sites' own link colour is light and unreadable here). Low
+   specificity on purpose: it beats a site-wide `a { color }`, and a game's own rule
+   (`.coach-rules-body a`, `.vids a`) still wins. */
+.coach-rules-body :where(a, a:link, a:visited) { color: var(--coach-link, #2a4f9e); text-decoration: underline; text-underline-offset: 2px; }
+.coach-rules-body :where(a):focus-visible { outline: 2px solid var(--coach-link, #2a4f9e); outline-offset: 2px; border-radius: 3px; }
+.coach-rules-body .coach-vids { list-style: none; padding-left: 0; }
+.coach-rules-body .coach-vids li { margin: 0 0 8px; }
+.coach-rules-body .coach-vids a { font-weight: 600; }
+.coach-vid-ch { display: block; color: var(--coach-muted); font-size: 13.5px; }
 .coach-rules-intro { color: var(--coach-muted); margin: 6px 0 4px !important; }
 .coach-rules-foot { color: var(--coach-muted); font-size: 13px; margin-top: 12px !important; }
 /* laptop: a centred page instead of a bottom sheet */

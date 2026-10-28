@@ -958,7 +958,7 @@
     if ($("soloTourBtn")) $("soloTourBtn").onclick = startSoloTour;
     // First visit: offer the guided game once.
     if (window.COACH && !COACH.offered(SOLO_TOUR_ID) && soloTourInit() && !soloTour.seen()) {
-      COACH.offer({ id: SOLO_TOUR_ID, title: "First game vs the computers?", text: "Play with a short guide that explains the table as you go.", yes: "Show me", no: "No thanks", onYes: startSoloTour });
+      COACH.offer({ id: SOLO_TOUR_ID, title: "First game vs the computers?", text: "Play with a short guide that explains the table as you go.", yes: "Show me", no: "No thanks", onYes: startSoloTour, place: "auto", avoid: ["#soloGo"] });
     }
   }
 

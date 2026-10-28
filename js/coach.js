@@ -1,4 +1,4 @@
-/* coach.js: guided first game + rules sheet for Tim's board game sites (game-coach 1.1.0).
+/* coach.js: guided first game + rules sheet for Tim's board game sites (game-coach 1.2.0).
    Copy unchanged into js/coach.js. Classic script (sets window.COACH) or CommonJS (node tests).
    No dependencies. Works with or without fx.js / table.js. Original look only. */
 (function (root, factory) {
@@ -7,7 +7,7 @@
   else root.COACH = api;
 })(typeof self !== 'undefined' ? self : typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
   const doc = () => (typeof document !== 'undefined' ? document : null);
 
   // ------------------------------------------------------------------ storage (never throws)
@@ -87,6 +87,30 @@
     // with more room, over the target's edge only by what is missing
     const h = Math.max(read, Math.min(box.h, Math.floor(room[v])));
     return { x: clamp(Math.round(cx - w / 2), m, view.w - m - w), y: v === 'below' ? view.h - m - h : m, w, maxH: h, side: 'over' };
+  }
+
+  // the area two rectangles share ({left, top, width, height}); 0 when apart
+  function overlapArea(a, b) {
+    if (!a || !b) return 0;
+    const w = Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left);
+    const h = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top);
+    return w > 0 && h > 0 ? w * h : 0;
+  }
+  // the first-visit card's spot (place: 'auto'): of the candidate boxes [{name, rect}], the one that covers
+  // the least: a "hard" box (a tab bar, the avoid list, data-coach-avoid) counts 100x a "soft" one (any
+  // other button or link). A box that would leave the screen is never picked unless all would. Ties keep
+  // the earlier candidate (so the usual bottom spot wins when nothing is in the way).
+  function offerPick(cands, hard, soft, view) {
+    let best = -1, bestS = Infinity;
+    (cands || []).forEach((c, i) => {
+      const r = c.rect;
+      const off = r.top < -0.5 || r.left < -0.5 || r.top + r.height > view.h + 0.5 || r.left + r.width > view.w + 0.5;
+      let s = off ? 1e12 : 0;
+      for (const x of hard || []) s += 100 * overlapArea(r, x);
+      for (const x of soft || []) s += overlapArea(r, x);
+      if (s < bestS - 0.5) { bestS = s; best = i; }
+    });
+    return best;
   }
 
   // ------------------------------------------------------------------ seeded + stackable random numbers
@@ -311,13 +335,85 @@
       <div class="coach-row"><button type="button" class="coach-btn ghost" data-o="no">${escH(o.no || 'No thanks')}</button><button type="button" class="coach-btn primary" data-o="yes">${escH(o.yes || 'Show me')}</button></div>`;
     (o.parent || doc().body).appendChild(box);
     store.set(KEY, 1);
+    // place: 'top' | 'bottom' | 'auto' (1.2.0). Left out = the game's own css decides (1.1.0 behaviour).
+    let onResize = null;
+    if (o.place === 'top' || o.place === 'bottom' || o.place === 'auto') {
+      const again = () => { if (!box.isConnected) { root.removeEventListener('resize', onResize); return; } placeOffer(box, o); };
+      onResize = again;
+      again();
+      // the game may draw its screen right after asking: look again before the first paint
+      if (root.requestAnimationFrame) root.requestAnimationFrame(again);
+      root.addEventListener('resize', onResize);
+    }
     box.addEventListener('click', e => {
       const b = e.target.closest('[data-o]'); if (!b) return;
+      if (onResize) root.removeEventListener('resize', onResize);
       box.remove();
       const f = b.dataset.o === 'yes' ? o.onYes : o.onNo;
       if (f) f();
     });
     return true;
+  }
+  // bars along the top / bottom edge of the screen (tab bars, fixed headers): fixed or sticky, or a
+  // nav / footer / tablist, at least 40% of the width and at most 35% of the height, touching the edge
+  function edgeBars(skip) {
+    const d = doc(), vw = root.innerWidth, vh = root.innerHeight, out = { top: [], bottom: [] };
+    if (!d.elementsFromPoint) return out;
+    const seen = new Set();
+    const isBar = e => {
+      if (e === d.body || e === d.documentElement || skip.contains(e) || (e.closest && e.closest('.coach-layer'))) return false;
+      let cs = null; try { cs = root.getComputedStyle(e); } catch (x) { return false; }
+      const tag = e.tagName ? e.tagName.toLowerCase() : '', role = e.getAttribute && e.getAttribute('role');
+      if (!(cs.position === 'fixed' || cs.position === 'sticky' || tag === 'nav' || tag === 'footer' || role === 'tablist' || role === 'navigation')) return false;
+      const r = e.getBoundingClientRect();
+      return r.width >= 0.4 * vw && r.height > 0 && r.height <= 0.35 * vh;
+    };
+    for (const [edge, y] of [['bottom', vh - 2], ['top', 2]]) {
+      for (const f of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+        let hits = []; try { hits = d.elementsFromPoint(Math.round(vw * f), y); } catch (x) { /* */ }
+        for (const e of hits.slice(0, 20)) {
+          if (seen.has(e) || !isBar(e)) continue;
+          seen.add(e);
+          const r = e.getBoundingClientRect();
+          if (edge === 'bottom' ? r.bottom >= vh - 4 : r.top <= 4) out[edge].push(r);
+        }
+      }
+    }
+    return out;
+  }
+  const visibleBoxes = (list, skip) => list.filter(n => !skip.contains(n) && !(n.closest && n.closest('.coach-layer'))).map(n => boxOf([n])).filter(Boolean);
+  function placeOffer(box, o) {
+    const st = box.style, vw = root.innerWidth, vh = root.innerHeight;
+    const SB = 'calc(var(--coach-offer-bottom, 14px) + env(safe-area-inset-bottom, 0px))';
+    const ST = 'calc(var(--coach-offer-top, 10px) + env(safe-area-inset-top, 0px))';
+    const put = c => { st.top = c.top; st.bottom = c.bottom; };
+    if (o.place === 'top' || o.place === 'bottom') {
+      put(o.place === 'top' ? { top: ST, bottom: 'auto' } : { top: 'auto', bottom: SB });
+      box.dataset.place = o.place; return o.place;
+    }
+    // auto: try each spot, measure it, keep the one that covers the least
+    const bars = edgeBars(box);
+    const cands = [{ name: 'bottom', top: 'auto', bottom: SB }];
+    if (bars.bottom.length) cands.push({ name: 'above-bar', top: 'auto', bottom: Math.round(vh - Math.min(...bars.bottom.map(r => r.top)) + 10) + 'px' });
+    cands.push({ name: 'top', top: ST, bottom: 'auto' });
+    if (bars.top.length) cands.push({ name: 'below-bar', top: Math.round(Math.max(...bars.top.map(r => r.bottom)) + 10) + 'px', bottom: 'auto' });
+    const h = box.offsetHeight, x = box.getBoundingClientRect();
+    for (const c of cands) {
+      put(c);
+      // from the computed top / bottom, not the box on screen: the slide-in animation moves that by a few px
+      const cs = root.getComputedStyle(box);
+      const y = c.top === 'auto' ? vh - parseFloat(cs.bottom) - h : parseFloat(cs.top);
+      c.rect = { left: x.left, top: y, width: x.width, height: h };
+    }
+    let avoid = [];
+    for (const a of [].concat(o.avoid || [])) avoid = avoid.concat(targets(a));
+    avoid = avoid.concat([...doc().querySelectorAll('[data-coach-avoid]')]);
+    const hard = visibleBoxes(avoid, box).concat(bars.top, bars.bottom);
+    const soft = visibleBoxes([...doc().querySelectorAll('button, a[href], input, select, textarea, [role="button"], [role="tab"]')], box);
+    const k = Math.max(0, offerPick(cands, hard, soft, { w: vw, h: vh }));
+    put(cands[k]);
+    box.dataset.place = cands[k].name;
+    return cands[k].name;
   }
   const offered = id => !!store.get('coach-offer:' + (id || 'tour'));
   const resetOffer = id => store.del('coach-offer:' + (id || 'tour'));
@@ -327,11 +423,20 @@
   // COACH.rules({ title, sections: [{ id, title, html }], open: 'id' }): a paper rulebook sheet with
   // a row of section tabs (no search). Close: X, tap outside, Esc, or COACH.closeRules() from Back.
   let rulesEl = null, rulesCfg = null;
+  // videos: [{ id: 'YouTube id', title, channel }] -> a list of links that open in a new tab. Rows with an id
+  // that is not an 11-character YouTube id are left out. Check each link first (see README).
+  function videosHtml(list) {
+    const rows = (list || []).filter(v => v && /^[\w-]{11}$/.test(String(v.id || '')));
+    if (!rows.length) return '';
+    return `<ul class="coach-vids">${rows.map(v => `<li><a href="https://www.youtube.com/watch?v=${v.id}" target="_blank" rel="noopener">${escH(v.title || 'Video')}</a>${v.channel ? ` <span class="coach-vid-ch">${escH(v.channel)}</span>` : ''}</li>`).join('')}</ul>`;
+  }
   function rules(cfg) {
     if (!doc()) return null;
     closeRules();
     rulesCfg = cfg || {};
-    const secs = rulesCfg.sections || [];
+    let secs = rulesCfg.sections || [];
+    const vids = videosHtml(rulesCfg.videos);
+    if (vids) secs = secs.concat([{ id: 'videos', title: rulesCfg.videosTitle || 'Videos', short: rulesCfg.videosShort || rulesCfg.videosTitle || 'Videos', html: vids }]);
     const back = el('div', 'coach-rules-back' + (motionOn() ? ' enter' : ''));
     back.innerHTML = `<div class="coach-rules" role="dialog" aria-modal="true" aria-label="${escH(rulesCfg.title || 'Rules')}">
       <div class="coach-rules-head"><b>${escH(rulesCfg.title || 'Rules')}</b><button type="button" class="coach-x" data-r="x" aria-label="Close">×</button></div>
@@ -371,5 +476,5 @@
   }
   const rulesOpen = () => !!rulesEl;
 
-  return { VERSION, tour, emit, update, offer, offered, resetOffer, closeOffer, rules, closeRules, rulesOpen, rng, findSeed, hash, place, unionRect, motionOn, get active() { return active; } };
+  return { VERSION, tour, emit, update, offer, offered, resetOffer, closeOffer, rules, closeRules, rulesOpen, videosHtml, rng, findSeed, hash, place, unionRect, overlapArea, offerPick, motionOn, get active() { return active; } };
 });
