@@ -12,6 +12,7 @@
  *      never leaves the microphone on
  *   E. update check: an old page moves to the new build once, never loops,
  *      and never reloads mid-game or with a dialog open
+ *   F. the home menu fits one screen at 393x659, 320x568, 1280x720, 1440x900
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -334,6 +335,25 @@ const newBuildJs = () => fs.readFileSync(path.join(ROOT, "js", "build.js"), "utf
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await page.waitForTimeout(2000);
   ok(navs.length === 2, `E5: reload on return once on the plain menu (${navs.length - 1})`);
+  await ctx.close();
+}
+
+// ===================================================================== F
+// The home menu fits one screen (no scrolling inside it) on phones and laptops.
+routes = {};
+for (const [w, h, mobile] of [[393, 659, true], [320, 568, true], [1280, 720, false], [1440, 900, false]]) {
+  const ctx = await browser.newContext(mobile ? { ...pw.devices["iPhone 15"], viewport: { width: w, height: h } } : { viewport: { width: w, height: h } });
+  await ctx.route("**/*", (route) => (route.request().url().startsWith(BASE) ? route.continue() : route.abort()));
+  const page = await ctx.newPage();
+  await page.goto(BASE + "/", { waitUntil: "load" });
+  await page.waitForTimeout(500);
+  const m = await page.evaluate(() => {
+    const s = document.getElementById("menuScreen");
+    const btns = [...s.querySelectorAll("button")].map((b) => b.getBoundingClientRect());
+    return { scroll: s.scrollHeight, client: s.clientHeight, bottom: Math.max(...btns.map((r) => r.bottom)), right: Math.max(...btns.map((r) => r.right)), sw: document.documentElement.scrollWidth };
+  });
+  ok(m.scroll <= m.client + 1 && m.bottom <= h, `F: menu fits ${w}x${h} without scrolling (content ${m.scroll}/${m.client}, last button bottom ${Math.round(m.bottom)})`);
+  ok(m.right <= w && m.sw <= w, `F: menu has no sideways overflow at ${w}x${h}`);
   await ctx.close();
 }
 

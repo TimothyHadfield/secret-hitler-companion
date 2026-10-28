@@ -149,10 +149,12 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
 
 /* ---------- Main menu (home hub) ---------- */
+/* The whole menu fits one screen. It is a size container, so the title and the
+   spacing scale with the real visible height (cqh) instead of page scrolling. */
 .menu-screen {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; align-items: center; gap: 18px;
-  padding: 6px 4px 24px;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; container-type: size;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 2px 4px 6px;
 }
 .menu-top { width: 100%; max-width: 460px; display: flex; align-items: center; justify-content: space-between; }
 .menu-corner {
@@ -161,29 +163,30 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 }
 .menu-corner:hover { border-color: var(--gold); background: #2a231d; }
 .menu-corner.icon { font-size: 18px; line-height: 1; }
-.menu-hero { text-align: center; margin: 12px 0 2px; }
+/* auto margins centre hero → options in the space under the top bar, and drop to 0 if tight */
+.menu-hero { text-align: center; margin: auto 0 clamp(0px, 1.5cqh, 14px); }
 .menu-title {
   margin: 0; font-family: Georgia, serif; color: var(--gold);
-  font-size: clamp(42px, 13vw, 76px); line-height: 0.92; letter-spacing: 1px;
+  font-size: clamp(30px, min(13cqw, 8.5cqh), 76px); line-height: 0.92; letter-spacing: 1px;
   text-shadow: 0 3px 16px rgba(0, 0, 0, 0.55);
 }
 .menu-tagline {
-  margin-top: 8px; text-transform: uppercase; letter-spacing: 6px;
+  margin-top: clamp(4px, 1.2cqh, 8px); text-transform: uppercase; letter-spacing: 6px;
   font-size: 12px; color: var(--muted);
 }
 .menu-group {
-  width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 2px;
-  text-align: left; padding: 12px 16px; border-radius: 12px;
+  width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 1px;
+  text-align: left; padding: clamp(7px, 1.4cqh, 12px) 16px; border-radius: 12px;
   background: var(--panel); border: 1px solid var(--gold);
 }
 .menu-group:hover { background: #2a231d; }
 .menu-group .mg-top { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); }
 .menu-group .mg-name { font-size: 18px; font-weight: 700; color: var(--ink); }
 .menu-group .mg-hint { font-size: 12px; color: var(--gold); margin-top: 1px; }
-.menu-options { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 14px; }
+.menu-options { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: clamp(8px, 1.6cqh, 14px); margin-bottom: auto; }
 .menu-option {
   display: flex; align-items: center; gap: 16px; text-align: left;
-  padding: 18px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--line);
+  padding: clamp(10px, 2.2cqh, 18px) 18px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--line);
 }
 .menu-option:hover { border-color: var(--gold); background: #33291f; }
 .menu-option.start { border-color: var(--fac-2); background: #3a201b; }
@@ -196,8 +199,31 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .menu-option .mo-title { font-size: 19px; font-weight: 700; font-family: Georgia, serif; }
 .menu-option .mo-sub { font-size: 13px; color: var(--muted); }
 /* "Play vs computers" + "Play online" share one row as two half-width boxes. */
-.menu-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.menu-pair .menu-option { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px; }
+.menu-pair { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(8px, 1.6cqh, 14px); }
+.menu-pair .menu-option { flex-direction: column; align-items: flex-start; gap: clamp(6px, 1.2cqh, 10px); padding: clamp(10px, 1.8cqh, 14px) 14px; }
+/* Statistics / Rules / Game theory: three boxes in one row; the titles say enough. */
+.menu-trio { grid-template-columns: 1fr 1fr 1fr; }
+.menu-trio .menu-option { padding: clamp(9px, 1.6cqh, 14px) 10px; min-width: 0; }
+.menu-trio .menu-option .mo-sub { display: none; }
+.menu-trio .menu-option .mo-title { font-size: 16px; line-height: 1.15; }
+@container (min-height: 820px) { .menu-trio .menu-option .mo-sub { display: block; } }
+/* short screens (small phones): smaller title, top buttons and box icons */
+@container (max-height: 600px) {
+  .menu-title { font-size: clamp(30px, min(12cqw, 8cqh), 76px); }
+  .menu-corner { padding-top: 6px; padding-bottom: 6px; }
+  .menu-option .mo-icon { width: 38px; height: 38px; font-size: 19px; border-radius: 10px; }
+  .menu-pair .menu-option .mo-icon { width: 32px; height: 32px; font-size: 17px; border-radius: 9px; }
+}
+@media (max-height: 600px) { .menu-screen { gap: 6px; } }
+/* phone held sideways: title + group on the left, the options on the right */
+@media (orientation: landscape) and (max-height: 500px) {
+  .menu-screen { display: grid; grid-template-columns: 2fr 3fr; grid-template-rows: auto 1fr 1fr; column-gap: 16px; row-gap: 8px; justify-items: center; }
+  .menu-top { grid-column: 1 / -1; max-width: none; }
+  .menu-hero { grid-column: 1; grid-row: 2; margin: 0 0 6px; align-self: end; }
+  .menu-group { grid-column: 1; grid-row: 3; align-self: start; }
+  .menu-options { grid-column: 2; grid-row: 2 / 4; margin: 0; align-self: center; }
+  .menu-pair .menu-option .mo-title { font-size: 17px; }
+}
 
 /* ---------- Setup screen ---------- */
 #playerList { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
