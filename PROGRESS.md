@@ -50,6 +50,7 @@ Improve pass (manager's common brief, 2026-10-27): beat secrethitler.io. Done: p
 - Verify it yourself headless; don't ask Tim to test. (old PROGRESS operational brief)
 
 ## Traps / rules that bite
+- **Kits 2026-10-28 (sweep, build 2026-10-28.4):** game-coach 1.2.0 (offer `place:"auto", avoid:["#soloGo"]`) + game-pwa 1.4.0; `select` styled dark in styles.css (appearance none + SVG arrow). Run the kit check only via `test/pwa.check.mjs` (blocks Firebase); `tools/pwa-check.mjs` alone looks for `tests/pwa-check.json`, which doesn't exist here.
 - **Kits re-copied 2026-10-27 (kitfix, build 2026-10-27.8 via `node test/bump-build.js`):** game-coach 1.1.0 (rules tabs wrap; a note beside a tall target keeps title + 2 lines + buttons) and game-pwa 1.3.0 (`data-extra`). Copies stay byte-identical to `../_coach` / `../_pwa`. `js/online.js` here is this game's own file, not the `_online` kit copy, so the kit's content stamp doesn't apply: it keeps `?v=<build>` (new every deploy, enforced by `test/build.test.js`).
 - Project moved: now `C:\Users\timha\OneDrive\Desktop\my-website\Code Projects\Board and Card Games\Secret_Hitler` (old notes say `Code Projects\Secret_Hitler`). Own git repo, branch `main`.
 - **NEVER** run `firebase firestore:delete --all-collections` or `… --recursive`; never put them in a script or doc. Admin/CLI tooling is the only real mass-delete vector (it bypasses rules).
