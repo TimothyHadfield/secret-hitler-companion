@@ -41,9 +41,9 @@
     return arr;
   }
 
-  function makeDeck() {
+  function makeDeck(fac) {
     const d = [];
-    for (let i = 0; i < 11; i++) d.push("F");
+    for (let i = 0; i < (fac == null ? 11 : fac); i++) d.push("F");
     for (let i = 0; i < 6; i++) d.push("L");
     return d;
   }
@@ -89,19 +89,35 @@
   }
 
   // -------------------------------------------------------- full live state
-  /** Build the complete authoritative state for a live game. */
-  function initGame(playersOrUids, rng) {
+  /**
+   * Optional "rebalanced" start, as secrethitler.io defines it (its rules page,
+   * github.com/cozuya/secret-hitler views/page-rules.pug): 6 players start with a
+   * Fascist policy already enacted, 7 players use 10 Fascist policies, 9 players
+   * use 9. Other counts are unchanged. `deckFac` = Fascist cards in the draw deck.
+   */
+  function rebalancedRules(n) {
+    if (n === 6) return { rebalance: true, deckFac: 10, startFac: 1 };
+    if (n === 7) return { rebalance: true, deckFac: 10, startFac: 0 };
+    if (n === 9) return { rebalance: true, deckFac: 9, startFac: 0 };
+    return { rebalance: true, deckFac: 11, startFac: 0 };
+  }
+
+  /** Build the complete authoritative state for a live game. `opts.rebalance`
+   *  turns on the rebalanced start (vs-computers only; online never passes it,
+   *  so online state stays exactly as before). */
+  function initGame(playersOrUids, rng, opts) {
     rng = rng || Math.random;
     const players = playersOrUids.map((p) => (typeof p === "string" ? { uid: p, name: p } : p));
     const uids = players.map((p) => p.uid);
     const s = setupGame(uids, rng);
     const names = {};
     players.forEach((p) => { names[p.uid] = p.name || "Player"; });
-    return {
+    const rules = opts && opts.rebalance ? rebalancedRules(s.playerCount) : null;
+    const S = {
       seatOrder: s.seatOrder, names, n: s.playerCount,
       roleOf: s.roleOf, hitlerUid: s.hitlerUid, fascistUids: s.fascistUids, reveals: s.reveals,
-      deck: shuffleInPlace(makeDeck(), rng), discard: [],
-      libEnacted: 0, facEnacted: 0, tracker: 0,
+      deck: shuffleInPlace(makeDeck(rules ? rules.deckFac : 11), rng), discard: [],
+      libEnacted: 0, facEnacted: rules ? rules.startFac : 0, tracker: 0,
       presIdx: s.firstPres, firstPres: s.firstPres,
       nomineeUid: null, chancellorUid: null,
       lastPresUid: null, lastChanUid: null,
@@ -113,6 +129,8 @@
       specialTarget: null, specialReturnIdx: null,
       events: [], winner: null, winReason: null,
     };
+    if (rules) S.rules = rules;
+    return S;
   }
 
   // helpers ------------------------------------------------------------------
@@ -378,6 +396,9 @@
       vetoRefused: !!S.vetoRefused,
       winner: S.winner, winReason: S.winReason,
     };
+    // Rebalanced start only (never set online): the deck's Fascist count and the
+    // pre-enacted Fascist policies, so the table and the computers can read it.
+    if (S.rules) { v.deckFac = S.rules.deckFac; v.startFac = S.rules.startFac; v.rebalance = true; }
     // At game over, reveal every role so the table (and the recorded game) shows them.
     if (S.phase === "gameover") {
       v.roleOf = S.roleOf; v.hitlerUid = S.hitlerUid; v.fascistUids = S.fascistUids;
@@ -444,7 +465,7 @@
 
   const api = {
     fascistTotal, hitlerKnowsFascists, shuffleInPlace, setupGame,
-    initGame, applyAction, publicView, privateView, toRecordedGame,
+    initGame, rebalancedRules, applyAction, publicView, privateView, toRecordedGame,
     // exposed for hosts/tests
     presUid, aliveUids, isAlive, termLimited, powerForCurrentSlot, POWERS,
   };

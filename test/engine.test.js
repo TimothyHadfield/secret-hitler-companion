@@ -314,5 +314,35 @@ ok(Object.keys(endings).length >= 2, "multiple distinct endings occurred: " + JS
   ok(rr.ok && !JSON.stringify(E.publicView(rr.state).events).match(/party|"order"|Liberal|Fascist"/), "public events carry no investigation result mid-game");
 })();
 
+// Rebalanced start (vs-computers option; secrethitler.io "rebalanced" games, see
+// its rules page): 6 players start with a Fascist policy enacted, 7 players play
+// with 10 Fascist policies, 9 players with 9. Other counts are unchanged.
+(function rebalanced() {
+  const count = (d, c) => d.filter((x) => x === c).length;
+  const WANT = { 5: [11, 0], 6: [10, 1], 7: [10, 0], 8: [11, 0], 9: [9, 0], 10: [11, 0] };
+  for (let n = 5; n <= 10; n++) {
+    const uids = Array.from({ length: n }, (_, i) => "p" + i);
+    const S = E.initGame(uids, rng(n), { rebalance: true });
+    const [fac, start] = WANT[n];
+    ok(count(S.deck, "F") === fac && count(S.deck, "L") === 6, `rebalanced ${n}p: deck ${fac}F/6L (got ${count(S.deck, "F")}F/${count(S.deck, "L")}L)`);
+    ok(S.facEnacted === start && S.libEnacted === 0, `rebalanced ${n}p: starts with ${start} Fascist enacted (got ${S.facEnacted})`);
+    const pv = E.publicView(S);
+    ok(pv.deckFac === fac && pv.facEnacted === start, `rebalanced ${n}p: public view says deckFac ${fac}`);
+    const plain = E.initGame(uids, rng(n));
+    ok(count(plain.deck, "F") === 11 && plain.facEnacted === 0 && !("deckFac" in E.publicView(plain)) && !("rules" in plain),
+      `standard ${n}p unchanged (online tables stay byte-identical)`);
+  }
+  // 6p rebalanced: the first Fascist policy played lands in slot 2 (no power at 6p), then slot 3 = peek.
+  const S6 = E.initGame(["a", "b", "c", "d", "e", "f"], rng(9), { rebalance: true });
+  S6.deck = ["F", "F", "F"].concat(S6.deck.slice(3));
+  let st = S6, r = rng(3);
+  const pres = E.presUid(st), chan = st.seatOrder.find((u) => u !== pres);
+  st = E.applyAction(st, { type: "nominate", by: pres, target: chan }, r).state;
+  st.seatOrder.forEach((u) => { st = E.applyAction(st, { type: "vote", by: u, vote: "ja" }, r).state; });
+  st = E.applyAction(st, { type: "president_play", by: pres, discard: 0, claim: 0 }, r).state;
+  st = E.applyAction(st, { type: "chancellor_play", by: chan, enact: 0 }, r).state;
+  ok(st.facEnacted === 2 && st.phase === "nominate", `rebalanced 6p: first Fascist enactment = 2nd slot, no power (fac ${st.facEnacted}, phase ${st.phase})`);
+})();
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

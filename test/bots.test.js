@@ -181,5 +181,46 @@ ok(seat.easy.fac > seat.hard.fac, `as a Fascist you win more vs easy (${(100 * s
   ok(rate.normal - rate.hard > 0.05, `Hard opponents are clearly harder than Normal (${rate.hard.toFixed(2)} vs ${rate.normal.toFixed(2)})`);
 }
 
+// 7) Rebalanced start (vs-computers option): computers play legal, finished games
+//    at 6/7/9 players, and read claims against the smaller deck.
+{
+  let games = 0, illegal = 0, stalled = 0, libWins = 0;
+  for (const n of [6, 7, 9]) {
+    for (let s = 0; s < 60; s++) {
+      const r = rng(31000 * n + s);
+      const uids = Array.from({ length: n }, (_, i) => "p" + i);
+      const lv = ["easy", "normal", "hard"];
+      let S = E.initGame(uids.map((u) => ({ uid: u, name: u })), r, { rebalance: true });
+      const mem = {}; uids.forEach((u) => { mem[u] = B.newMemory(); });
+      let steps = 0;
+      while (S.phase !== "gameover" && steps < 600) {
+        const pub = E.publicView(S);
+        let acted = false;
+        for (const u of S.seatOrder) B.observe(mem[u], pub, E.privateView(S, u), u);
+        for (const u of S.seatOrder) {
+          const a = B.act(pub, E.privateView(S, u), u, lv[(+u.slice(1) + s) % 3], mem[u], r);
+          if (!a) continue;
+          const res = E.applyAction(S, Object.assign({ by: u }, a), r);
+          if (!res.ok) { illegal++; continue; }
+          S = res.state; acted = true; steps++; break;
+        }
+        if (!acted) break;
+      }
+      games++; if (S.phase !== "gameover") stalled++; if (S.winner === "Liberal") libWins++;
+    }
+  }
+  ok(illegal === 0 && stalled === 0, `rebalanced 6/7/9p: no illegal moves, every game ends (${illegal} illegal, ${stalled} stalled of ${games})`);
+  console.log(`  rebalanced 6/7/9p mixed tables: ${games} games, Liberal win ${(100 * libWins / games).toFixed(1)}%`);
+  // A "3 Fascists" claim is less believable in a 9-Fascist deck than an 11-Fascist one.
+  const mk = (deckFac) => Object.assign({
+    seatOrder: ["a", "b", "c", "d", "e", "f", "g", "h", "i"], n: 9, deadUids: [], phase: "nominate", libEnacted: 0, facEnacted: 1,
+    events: [{ type: "gov", presidentIdx: 1, chancellorIdx: 2, claimLibs: 0, enacted: "F" }],
+  }, deckFac == null ? {} : { deckFac });
+  const priv = { role: "liberal", knownFascists: [], learned: [] };
+  const std = B.beliefs(mk(null), priv, "a", "hard", B.newMemory(), "private").pF.b;
+  const reb = B.beliefs(mk(9), priv, "a", "hard", B.newMemory(), "private").pF.b;
+  ok(reb > std + 0.005, `computers read claims against the rebalanced deck (P(fascist) after a 3-Fascist claim: 11F deck ${std.toFixed(3)}, 9F deck ${reb.toFixed(3)})`);
+}
+
 console.log(`bots: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

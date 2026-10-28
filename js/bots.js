@@ -156,7 +156,9 @@
       if (isElec(e)) elec++;
       if (e.type === "chaos") { lastChaosAt = ei; if (e.enacted === "L") lib++; else fac++; return; }
       if (e.type !== "gov") return;
-      const ctx = { dist: drawDist(Math.max(3, 17 - lib - fac), Math.max(0, 6 - lib)), knownH: null, knownPassed: null };
+      // deckFac: Fascist cards in the deck (11, or fewer in a rebalanced game)
+      const deck = (pub.deckFac == null ? 11 : pub.deckFac) + 6;
+      const ctx = { dist: drawDist(Math.max(3, deck - lib - fac), Math.max(0, 6 - lib)), knownH: null, knownPassed: null };
       if (pvt) {
         if (mem.myPres[elec]) { ctx.knownH = mem.myPres[elec].h; ctx.knownPassed = mem.myPres[elec].pl; }
         if (mem.myChan[elec] != null) ctx.knownPassed = libsIn(mem.myChan[elec]);

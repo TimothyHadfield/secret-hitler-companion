@@ -241,6 +241,35 @@ await playOne(10, "hard");
   await ctx.close();
 }
 
+// Rebalanced start option: off by default, remembered, deals the secrethitler.io
+// setup (6p: one Fascist policy on the board, 10 Fascist cards), and the computers
+// play a whole game with it.
+{
+  const { ctx, page, errors } = await open({ "secretHitler.soloPick.v1": JSON.stringify({ n: 6, level: "normal" }), "coach-offer:sh-solo-first": "1" });
+  await page.click("#btnMenuSolo");
+  await page.waitForSelector("#soloRebalance");
+  ok((await page.getAttribute("#soloRebalance", "aria-checked")) === "false", "rebalance: off by default");
+  await page.click("#soloRebalance");
+  ok((await page.getAttribute("#soloRebalance", "aria-checked")) === "true" && /already enacted/.test(await page.textContent(".solo-rule")), "rebalance: switch turns on and explains the 6-player change");
+  await page.click("#soloGo");
+  await page.waitForSelector("#olBegin");
+  const s0 = await page.evaluate(() => ({ fac: window.Solo.state.facEnacted, deckF: window.Solo.state.deck.filter((c) => c === "F").length, saved: JSON.parse(localStorage.getItem("secretHitler.soloPick.v1")).rebalance }));
+  ok(s0.fac === 1 && s0.deckF === 10 && s0.saved === true, `rebalance: 6p deals 1 Fascist enacted + 10 Fascist cards, choice remembered (${JSON.stringify(s0)})`);
+  await page.evaluate(() => { window.Solo.delay = 0; });
+  await page.click("#olBegin");
+  await page.waitForSelector(".ol-felt");
+  const boardF = await page.evaluate(() => document.querySelectorAll(".ol-felt .sh-board.fascist .filled, .ol-felt .sh-board.fascist .tk-card, .ol-felt .sh-board.fascist .policy").length);
+  for (let i = 0; i < 2500; i++) {
+    if (await page.evaluate(() => !window.Solo.table || window.Solo.table.phase === "gameover")) break;
+    const did = await humanStep(page);
+    await page.waitForTimeout(did ? 30 : 15);
+  }
+  const t = await page.evaluate(() => window.Solo.table && { phase: window.Solo.table.phase, winner: window.Solo.table.winner });
+  ok(t && t.phase === "gameover", `rebalance: 6p game reaches a winner (${JSON.stringify(t)}; fascist board cards at start ${boardF})`);
+  ok(errors.length === 0, "rebalance: no page errors (" + errors.join(" | ") + ")");
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 console.log(`solo.browser: ${pass} passed, ${fail} failed`);

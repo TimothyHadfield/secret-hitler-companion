@@ -885,8 +885,16 @@
     if (soloPick) return soloPick;
     let p = null;
     try { p = JSON.parse(localStorage.getItem("secretHitler.soloPick.v1") || "null"); } catch (e) {}
-    soloPick = { n: p && p.n >= 5 && p.n <= 10 ? p.n : 7, level: p && ["easy", "normal", "hard"].indexOf(p.level) >= 0 ? p.level : "normal" };
+    soloPick = { n: p && p.n >= 5 && p.n <= 10 ? p.n : 7, level: p && ["easy", "normal", "hard"].indexOf(p.level) >= 0 ? p.level : "normal",
+      rebalance: !!(p && p.rebalance === true) };
     return soloPick;
+  }
+  // One line per table size for the "Rebalanced start" option (secrethitler.io's definition).
+  function rebalanceDesc(n) {
+    if (n === 6) return "6 players: starts with one Fascist policy already enacted.";
+    if (n === 7) return "7 players: 10 Fascist policies in the deck instead of 11.";
+    if (n === 9) return "9 players: 9 Fascist policies in the deck instead of 11.";
+    return "Evens out 6, 7 and 9 player games. No change at " + n + ".";
   }
 
   function soloMyName() {
@@ -900,7 +908,7 @@
     try { localStorage.setItem("secretHitler.soloPick.v1", JSON.stringify(p)); } catch (e) {}
     soloSetup = false;
     if (window.COACH) COACH.closeOffer();
-    window.Solo.start({ n: p.n, level: p.level, name: soloMyName() });
+    window.Solo.start({ n: p.n, level: p.level, rebalance: !!p.rebalance, name: soloMyName() });
   }
 
   // -- vs computers: pick the table size and how sharp the computers are -------
@@ -917,10 +925,14 @@
       `<div class="online-sub">Computers</div>` +
       `<div class="ol-choices solo-pick" role="group" aria-label="Computer level">${LV.map(([k, l]) =>
         `<button class="ol-choice${k === p.level ? " sel" : ""}" data-lv="${k}" aria-pressed="${k === p.level}">${l}</button>`).join("")}</div>` +
+      `<div class="set-row solo-rule"><div class="set-text"><div class="set-name">Rebalanced start</div>` +
+      `<div class="set-desc">${escapeHtml(rebalanceDesc(p.n))}</div></div>` +
+      `<button id="soloRebalance" class="toggle-btn${p.rebalance ? " on" : ""}" role="switch" aria-checked="${!!p.rebalance}">${p.rebalance ? "On" : "Off"}</button></div>` +
       `<div class="control-row"><button id="soloGo" class="primary">Deal roles</button>${myStatsBtn("soloStats")}</div>` +
       (window.COACH ? `<div class="control-row"><button id="soloHow" class="ghost">How to play</button><button id="soloTourBtn" class="ghost">Guided game</button></div>` : "");
     box.querySelectorAll("[data-n]").forEach((b) => { b.onclick = () => { p.n = +b.dataset.n; renderSoloSetup(box); }; });
     box.querySelectorAll("[data-lv]").forEach((b) => { b.onclick = () => { p.level = b.dataset.lv; renderSoloSetup(box); }; });
+    $("soloRebalance").onclick = () => { p.rebalance = !p.rebalance; renderSoloSetup(box); };
     $("soloGo").onclick = soloStart;
     wireMyStats("soloStats");
     if ($("soloHow")) $("soloHow").onclick = openLiveRules;

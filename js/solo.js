@@ -149,7 +149,8 @@
       myName = (opts.name || "You").slice(0, 24);
       const players = [{ uid: ME, name: myName }];
       for (let i = 0; i < n - 1; i++) players.push({ uid: "cpu" + (i + 1), name: NAMES[i] });
-      S = E().initGame(players, Math.random);
+      // opts.rebalance: secrethitler.io's rebalanced start for 6/7/9 players (off by default)
+      S = E().initGame(players, Math.random, opts.rebalance ? { rebalance: true } : undefined);
       mems = {}; players.forEach((p) => { if (p.uid !== ME) mems[p.uid] = B().newMemory(); });
       status = "night"; active = true; finishedFired = false;
       save(); emitState();
