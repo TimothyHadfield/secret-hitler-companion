@@ -446,6 +446,24 @@
   }
   const hbClone = (kind) => JSON.parse(JSON.stringify(hbCats(kind)));
 
+  // Learn-by-watching links at the bottom of Rules. Every id checked 2026-10-28
+  // with YouTube's oEmbed (HTTP 200, title + channel below match).
+  const RULE_VIDEOS = [
+    { id: "APiugylcAJw", title: "How to play", by: "Max Temkin (co-designer)", len: "4 min" },
+    { id: "mbGXIDYdtas", title: "Rules in 4 minutes", by: "The Rules Girl", len: "4 min" },
+    { id: "zQZ5LWDqwNw", title: "Strategy: what cards to play", by: "Miketech", len: "6 min" },
+    { id: "Q9Wb0sc5Ft8", title: "Watch a full game", by: "Polygon · Overboard", len: "38 min" },
+    { id: "Rml6osnzxB8", title: "Review", by: "The Dice Tower", len: "8 min" },
+  ];
+  function rulesVideosHtml() {
+    return `<div class="online-sub ref-vid-head">Videos</div><div class="thy-cats ref-videos">` +
+      RULE_VIDEOS.map((v) =>
+        `<a class="thy-cat" href="https://www.youtube.com/watch?v=${v.id}" target="_blank" rel="noopener">` +
+        `<span class="thy-cat-title">${escapeHtml(v.title)}<span class="ref-vid-by">${escapeHtml(v.by)}</span></span>` +
+        `<span class="thy-cat-meta">${escapeHtml(v.len)} ↗</span></a>`).join("") +
+      `</div>`;
+  }
+
   function renderHandbook(kind) {
     const meta = HB[kind], st = hbState[kind];
     const box = $(meta.mount);
@@ -470,8 +488,9 @@
               `<button class="thy-mv" data-mv="down" data-i="${i}" aria-label="Move down" ${i === cats.length - 1 ? "disabled" : ""}>↓</button></span>`
             : "") +
           `</div>`).join("") +
-        `</div>`;
-      box.querySelectorAll(".thy-cat").forEach((b) =>
+        `</div>` +
+        (kind === "rules" ? rulesVideosHtml() : "");
+      box.querySelectorAll("button.thy-cat").forEach((b) =>
         b.onclick = () => { st.catId = b.dataset.cat; st.chatOpen = false; renderHandbook(kind); });
       const add = box.querySelector(".thy-add");
       if (add) add.onclick = () => {

@@ -357,6 +357,21 @@ for (const [w, h, mobile] of [[393, 659, true], [320, 568, true], [1280, 720, fa
   await ctx.close();
 }
 
+// ===================================================================== G
+// Rules ends with a Videos list: YouTube links that open in a new tab.
+{
+  const { ctx, page, errors } = await open({});
+  await page.click("#btnMenuRules");
+  await page.waitForTimeout(300);
+  const v = await page.$$eval("#rulesBody .ref-videos a", (as) => as.map((a) => ({ href: a.href, t: a.target, rel: a.rel })));
+  ok(v.length >= 2 && v.length <= 5, `G: Rules lists 2-5 videos (${v.length})`);
+  ok(v.every((x) => /^https:\/\/www\.youtube\.com\/watch\?v=[\w-]{11}$/.test(x.href) && x.t === "_blank" && /noopener/.test(x.rel)), "G: every video is a YouTube link opening in a new tab");
+  await page.click("#rulesBody button.thy-cat");
+  ok(await page.isVisible("#rulesBody .thy-back"), "G: rule sections still open from the list");
+  ok(errors.length === 0, "G: no page errors (" + errors.join(" | ") + ")");
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 console.log(`app.browser.test.mjs: ${pass} passed, ${fail} failed.`);

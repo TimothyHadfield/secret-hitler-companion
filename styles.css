@@ -1270,6 +1270,10 @@ body.lie-on span.lie-col { display: inline; }
 .thy-cat:hover { border-color: var(--gold); background: #322a22; }
 .thy-cat-title { font-weight: 700; font-size: 16px; }
 .thy-cat-meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
+/* Rules → Videos (links out to YouTube) */
+.ref-vid-head { margin: 16px 0 8px; }
+.ref-videos a.thy-cat { text-decoration: none; }
+.ref-vid-by { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
 
 .thy-back {
   background: none; border: none; color: var(--muted); cursor: pointer;
