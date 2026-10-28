@@ -1,4 +1,4 @@
-/* coach.js: guided first game + rules sheet for Tim's board game sites (game-coach 1.0.0).
+/* coach.js: guided first game + rules sheet for Tim's board game sites (game-coach 1.1.0).
    Copy unchanged into js/coach.js. Classic script (sets window.COACH) or CommonJS (node tests).
    No dependencies. Works with or without fx.js / table.js. Original look only. */
 (function (root, factory) {
@@ -7,7 +7,7 @@
   else root.COACH = api;
 })(typeof self !== 'undefined' ? self : typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const doc = () => (typeof document !== 'undefined' ? document : null);
 
   // ------------------------------------------------------------------ storage (never throws)
@@ -75,14 +75,18 @@
     for (const s of ['left', 'right'].sort((a, b) => room[b] - room[a])) {
       if (room[s] >= Math.max(sideMin, 200) && Math.ceil(box.h * w / room[s]) <= view.h - 2 * m) return at(s);
     }
-    // nothing fits whole: the roomier of above/below, the bubble scrolls inside (still not over the target)
+    // nothing fits whole: the roomier of above/below, the bubble scrolls inside (still not over the target),
+    // if that room shows a readable note: the title, 2 lines and the buttons (minH; the tour measures it, 136 =
+    // the default look). Less room than that was a thin strip of one line (Connect Four, 1.0.0).
+    const read = Math.min(box.h, o.minH || 136, view.h - 2 * m);
     const v = room.below >= room.above ? 'below' : 'above';
-    if (room[v] >= (o.minH || 72)) return at(v);
+    if (room[v] >= read) return at(v);
     const hz = room.right >= room.left ? 'right' : 'left';
     if (room[hz] >= sideMin) return at(hz);
-    // the target fills the screen: pin to the edge with more room (overlap is unavoidable here)
-    const h = Math.min(box.h, Math.round(view.h * 0.4));
-    return { x: Math.round((view.w - w) / 2), y: v === 'below' ? view.h - m - h : m, w, maxH: h, side: 'over' };
+    // the target leaves no readable room (it fills most of the screen): the readable note sits at the edge
+    // with more room, over the target's edge only by what is missing
+    const h = Math.max(read, Math.min(box.h, Math.floor(room[v])));
+    return { x: clamp(Math.round(cx - w / 2), m, view.w - m - w), y: v === 'below' ? view.h - m - h : m, w, maxH: h, side: 'over' };
   }
 
   // ------------------------------------------------------------------ seeded + stackable random numbers
@@ -263,13 +267,17 @@
       // height cap the placement had set, and the note grew back over its target)
       if (meas.key !== last || meas.bw !== bw) {
         ui.bub.style.width = bw + 'px'; ui.bub.style.maxHeight = '';
-        meas = { key: last, bw, h: ui.bub.offsetHeight }; prevSig = '';
+        // readable = the note with its text cut to 2 lines (title and buttons whole)
+        const tx = ui.bub.querySelector('.coach-text');
+        let lh = 21; try { lh = parseFloat(root.getComputedStyle(tx).lineHeight) || 21; } catch (e) { /* */ }
+        const th = tx ? tx.offsetHeight : 0;
+        meas = { key: last, bw, h: ui.bub.offsetHeight, read: Math.ceil(ui.bub.offsetHeight - th + Math.min(th, 2 * lh)) + 2 }; prevSig = '';
       }
       const bh = meas.h;
       const sig = [vw, vh, bh, hole && [hole.left, hole.top, hole.width, hole.height].map(Math.round).join(',')].join('|');
       if (sig === prevSig) return;
       prevSig = sig;
-      const p = place(hole, { w: bw, h: bh }, { w: vw, h: vh }, { prefer: s.place });
+      const p = place(hole, { w: bw, h: bh }, { w: vw, h: vh }, { prefer: s.place, minH: meas.read });
       Object.assign(ui.bub.style, { left: p.x + 'px', top: p.y + 'px', width: p.w + 'px', maxHeight: p.maxH + 'px' });
       ui.bub.dataset.side = p.side;
       if (hole) {

@@ -1,4 +1,4 @@
-/* coach.css: guided first game + rules sheet (game-coach 1.0.0). Copy unchanged into css/coach.css.
+/* coach.css: guided first game + rules sheet (game-coach 1.1.0). Copy unchanged into css/coach.css.
    Looks like paper on the table: a cream note card for the coach, a printed rulebook sheet for the rules.
    Theme with the variables below (set them on :root in the game's own css). Original look only. */
 :root {
@@ -34,6 +34,11 @@
   box-shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 10px 28px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.3);
   font-size: 15px; line-height: 1.42; -webkit-text-size-adjust: 100%;
 }
+/* a note squeezed by a big target keeps its title and buttons; only the text scrolls */
+.coach-bubble { display: flex; flex-direction: column; }
+.coach-bubble > .coach-title, .coach-bubble > .coach-row { flex-shrink: 0; }
+.coach-bubble > .coach-text { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.coach-bubble > .coach-text > :last-child { margin-bottom: 0; }
 .coach-title { display: block; font-size: 16px; margin: 0 0 3px; }
 .coach-text { margin: 0 0 9px; }
 .coach-text p { margin: 0 0 6px; }
@@ -71,7 +76,8 @@
 .coach-rules-head b { flex: 1; font-size: 18px; letter-spacing: .01em; }
 .coach-x { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--coach-line); background: #fff; color: var(--coach-ink);
   font-size: 22px; line-height: 1; cursor: pointer; touch-action: manipulation; }
-.coach-rules-nav { display: flex; gap: 6px; padding: 4px 12px 8px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--coach-line); flex-shrink: 0; }
+/* the tabs wrap onto a second row on a phone: every section shows, nothing scrolls sideways */
+.coach-rules-nav { display: flex; flex-wrap: wrap; gap: 6px; row-gap: 6px; padding: 4px 12px 8px; overflow-x: visible; scrollbar-width: none; border-bottom: 1px solid var(--coach-line); flex-shrink: 0; }
 .coach-rules-nav::-webkit-scrollbar { display: none; }
 .coach-rules-nav button { flex: 0 0 auto; min-height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid var(--coach-line); background: rgba(255,255,255,.65);
   color: var(--coach-ink); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; touch-action: manipulation; }
